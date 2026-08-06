@@ -4,17 +4,17 @@
 
 
 ##
-## Project inputs (inside inputs/)
+## Project inputs (inside folder inputs/)
 ##
 
-project_ref <- "Djang WPP"
+project_ref <- "Bash WPP"
 
 wtg_filename                <- "DZH_Turbines_Sergey_20250401_UTM.shp"  # in .shp
 idf_filename                <- "IDF_DZH.shp"                           # in .shp
 tier_start_scheme_filename  <- "tier_scheme_20260215.xlsx"             # em .xlsx
 tier3_start_scheme_filename <- "tier_3_commissioning_20260215.xlsx"    # em .xlsx
 
-proj_lat      <- 40.88
+proj_lat      <- 40.88 #
 proj_lon      <- 64.38
 proj_timezone <- "Asia/Samarkand"
 
@@ -27,9 +27,9 @@ crs_projection_plannar <- 32641 # codigo CRS da projecao planar a usar
 ## Os ficheiros sao identificados por padrao no nome, nao por nome fixo.
 ##
 
-databases_dir <- ".."
+databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 
-trackreport_pattern  <- "TrackReport.+csv"          # ex: TrackReport_20260201_....csv
+trackreport_pattern  <- "_Track_" #"TrackReport.+csv"          # ex: TrackReport_20260201_....csv
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
 scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_20260201_....csv
 heartbeats_pattern   <- "Heartbeats_.+csv"          # ex: Heartbeats_20260201_....csv
@@ -40,7 +40,7 @@ heartbeats_pattern   <- "Heartbeats_.+csv"          # ex: Heartbeats_20260201_..
 ##
 
 ini <- as.POSIXct('2026-02-01 00:00:00', tz = 'UTC')
-end <- as.POSIXct('2026-02-28 23:59:59', tz = 'UTC')
+end <- as.POSIXct('2026-06-30 23:59:59', tz = 'UTC')
 
 
 ##
@@ -49,7 +49,7 @@ end <- as.POSIXct('2026-02-28 23:59:59', tz = 'UTC')
 
 # Incluir time range e turbinas para o qual temos dados de SCADA, mesmo que no intervalo tenham "buracos" sem info
 scada_ini <- as.POSIXct('2026-02-01 05:00:00', tz = 'UTC')
-scada_end <- as.POSIXct('2026-02-28 21:59:59', tz = 'UTC')
+scada_end <- as.POSIXct('2026-06-30 23:59:59', tz = 'UTC')
 
 turbinas_scada <- c('DZH1', 'DZH2', 'DZH3', 'DZH62', 'DZH63', 'DZH64')
 
@@ -129,3 +129,7 @@ coverage_cylinder_inner_radius <- 600  # em metros; 3D coverage cylinder - inner
 
 ## Shutdown time, Missed curtailments & Delayed curtailment
 safe_shutdown_rpm <- 1 # threshold de rpm a considerar para uma safe passage; curtailment considerado feito com sucesso quando rpm da turbina < safe_shutdown_rpm
+
+## Heartbeats / disponibilidade (availability) das unidades IDF
+heartbeat_interval_min    <- 30 # intervalo esperado entre heartbeats de cada unidade IDF
+heartbeat_offline_gap_min <- 60 # gap (min) a partir do qual se considera a unidade offline (perdeu >=2 heartbeats seguidos)
