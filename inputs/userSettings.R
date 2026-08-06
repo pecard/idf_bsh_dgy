@@ -129,3 +129,7 @@ coverage_cylinder_inner_radius <- 600  # em metros; 3D coverage cylinder - inner
 
 ## Shutdown time, Missed curtailments & Delayed curtailment
 safe_shutdown_rpm <- 1 # threshold de rpm a considerar para uma safe passage; curtailment considerado feito com sucesso quando rpm da turbina < safe_shutdown_rpm
+
+## Heartbeats / disponibilidade (availability) das unidades IDF
+heartbeat_interval_min    <- 30 # intervalo esperado entre heartbeats de cada unidade IDF
+heartbeat_offline_gap_min <- 60 # gap (min) a partir do qual se considera a unidade offline (perdeu >=2 heartbeats seguidos)
