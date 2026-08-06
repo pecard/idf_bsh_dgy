@@ -333,11 +333,34 @@ options(error = function() message("Skipping failed step"))
   ### 3.1. System Availability ----
 
       # Obtained by IDF Team. Agreed that would be calculated for tier 3 WTG only
-      
+
       # IDF Availability (validacao independente para identificar "Down periods" - Apenas corre se tivermos dados de heartbeat)
       if (exists("heartb_dt")) {
-        source(file.path(folder_script_IDF, 'IDF_availability.R'))
-      } else {print("Subsample folder does not exist - IDF availability analysis was skipped")}
+
+        source("R/availability_daylight.R")
+
+        daylight_cal <- build_daylight_calendar(ini, end, proj_lat, proj_lon, proj_timezone)
+
+        idf_availability_dt <- daylight_availability(
+          heartb_dt, daylight_cal, proj_timezone,
+          offline_gap_min  = heartbeat_offline_gap_min,
+          online_grace_min = heartbeat_interval_min
+        )
+
+        idf_availability_summary <- summarise_availability(idf_availability_dt)
+
+        writexl::write_xlsx(idf_availability_summary$by_idf,
+                            file.path(folder_output, "idf_availability_summary_by_idf.xlsx"))
+        writexl::write_xlsx(idf_availability_summary$by_month,
+                            file.path(folder_output, "idf_availability_summary_by_month.xlsx"))
+
+        p_availability_cal <- plot_availability_calendar(idf_availability_dt)
+        ggsave(
+          file.path(folder_output, paste0("idf_availability_calendar_", report_start, "to", report_end, ".png")),
+          plot = p_availability_cal, width = 12, height = 14, dpi = 300, bg = "white"
+        )
+
+      } else {print("Heartbeat data not available - IDF availability analysis was skipped")}
     
     
       # System availability - data sent by IDF team

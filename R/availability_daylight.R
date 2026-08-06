@@ -13,7 +13,7 @@
 ## o nascer e o por do sol) de cada dia, calculado a partir da posicao
 ## (lat/lon) do projeto com o package suncalc.
 ##
-## Depende de: data.table, lubridate, suncalc
+## Depende de: data.table, lubridate, suncalc, ggplot2
 ##
 
 
@@ -149,4 +149,53 @@ summarise_availability <- function(daylight_availability_dt) {
   setorder(by_month, ym, -offline_mins_total)
 
   list(by_idf = by_idf[], by_month = by_month[])
+}
+
+
+## 6. Calendario com % de tempo diurno disponivel, por unidade IDF ----
+
+add_calendar_coords <- function(dt) {
+  dt <- copy(dt)
+  dt[, `:=`(
+    weekday_lab = factor(
+      c("M", "T", "W", "T.", "F", "S", "S.")[wday(date, week_start = 1)],
+      levels = c("M", "T", "W", "T.", "F", "S", "S.")
+    ),
+    week_of_month = {
+      ms  <- floor_date(date, "month")
+      wms <- wday(ms, week_start = 1)
+      as.integer(1 + ((mday(date) + wms - 2) %/% 7))
+    }
+  )]
+  dt[]
+}
+
+plot_availability_calendar <- function(daylight_availability_dt, idf_sel = NULL) {
+
+  dt <- add_calendar_coords(daylight_availability_dt)
+  dt[, availability_pct := 100 * (1 - offline_pct)]
+
+  if (!is.null(idf_sel)) dt <- dt[idf %in% idf_sel]
+
+  ggplot(dt, aes(x = weekday_lab, y = week_of_month, fill = availability_pct)) +
+    geom_tile(colour = "grey85", linewidth = 0.2) +
+    facet_grid(idf ~ ym, scales = "free_y") +
+    scale_y_reverse(breaks = seq(1, 6, 1)) +
+    scale_fill_gradient(
+      name = "Disponibilidade\n(% tempo diurno)",
+      low = "firebrick", high = "forestgreen",
+      limits = c(0, 100),
+      labels = function(x) paste0(x, "%")
+    ) +
+    labs(
+      x = NULL, y = "Semana do mes",
+      title = "Disponibilidade diurna por unidade IDF"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      panel.grid = element_blank(),
+      strip.background = element_rect(fill = "grey95", color = NA),
+      strip.text = element_text(face = "bold"),
+      axis.text.x = element_text(hjust = 0.5)
+    )
 }
