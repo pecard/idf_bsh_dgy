@@ -1,0 +1,412 @@
+[[1]]
+To cite package ‘purrr’ in publications use:
+
+  Wickham H, Henry L (2025). _purrr: Functional Programming Tools_. doi:10.32614/CRAN.package.purrr
+  <https://doi.org/10.32614/CRAN.package.purrr>, R package version 1.2.0,
+  <https://CRAN.R-project.org/package=purrr>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {purrr: Functional Programming Tools},
+    author = {Hadley Wickham and Lionel Henry},
+    year = {2025},
+    note = {R package version 1.2.0},
+    url = {https://CRAN.R-project.org/package=purrr},
+    doi = {10.32614/CRAN.package.purrr},
+  }
+
+[[2]]
+To cite package ‘rstudioapi’ in publications use:
+
+  Ushey K, Allaire J, Wickham H, Ritchie G (2024). _rstudioapi: Safely Access the RStudio API_.
+  doi:10.32614/CRAN.package.rstudioapi <https://doi.org/10.32614/CRAN.package.rstudioapi>, R package
+  version 0.17.1, <https://CRAN.R-project.org/package=rstudioapi>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {rstudioapi: Safely Access the RStudio API},
+    author = {Kevin Ushey and JJ Allaire and Hadley Wickham and Gary Ritchie},
+    year = {2024},
+    note = {R package version 0.17.1},
+    url = {https://CRAN.R-project.org/package=rstudioapi},
+    doi = {10.32614/CRAN.package.rstudioapi},
+  }
+
+[[3]]
+To cite package ‘tidyverse’ in publications use:
+
+  Wickham H, Averick M, Bryan J, Chang W, McGowan LD, François R, Grolemund G, Hayes A, Henry L,
+  Hester J, Kuhn M, Pedersen TL, Miller E, Bache SM, Müller K, Ooms J, Robinson D, Seidel DP, Spinu V,
+  Takahashi K, Vaughan D, Wilke C, Woo K, Yutani H (2019). “Welcome to the tidyverse.” _Journal of
+  Open Source Software_, *4*(43), 1686. doi:10.21105/joss.01686 <https://doi.org/10.21105/joss.01686>.
+
+A BibTeX entry for LaTeX users is
+
+  @Article{,
+    title = {Welcome to the {tidyverse}},
+    author = {Hadley Wickham and Mara Averick and Jennifer Bryan and Winston Chang and Lucy D'Agostino McGowan and Romain François and Garrett Grolemund and Alex Hayes and Lionel Henry and Jim Hester and Max Kuhn and Thomas Lin Pedersen and Evan Miller and Stephan Milton Bache and Kirill Müller and Jeroen Ooms and David Robinson and Dana Paige Seidel and Vitalie Spinu and Kohske Takahashi and Davis Vaughan and Claus Wilke and Kara Woo and Hiroaki Yutani},
+    year = {2019},
+    journal = {Journal of Open Source Software},
+    volume = {4},
+    number = {43},
+    pages = {1686},
+    doi = {10.21105/joss.01686},
+  }
+
+[[4]]
+To cite lubridate in publications use:
+
+  Garrett Grolemund, Hadley Wickham (2011). Dates and Times Made Easy with lubridate. Journal of
+  Statistical Software, 40(3), 1-25. URL https://www.jstatsoft.org/v40/i03/.
+
+A BibTeX entry for LaTeX users is
+
+  @Article{,
+    title = {Dates and Times Made Easy with {lubridate}},
+    author = {Garrett Grolemund and Hadley Wickham},
+    journal = {Journal of Statistical Software},
+    year = {2011},
+    volume = {40},
+    number = {3},
+    pages = {1--25},
+    url = {https://www.jstatsoft.org/v40/i03/},
+  }
+
+[[5]]
+To cite package ‘hms’ in publications use:
+
+  Müller K (2025). _hms: Pretty Time of Day_. doi:10.32614/CRAN.package.hms
+  <https://doi.org/10.32614/CRAN.package.hms>, R package version 1.1.4,
+  <https://CRAN.R-project.org/package=hms>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {hms: Pretty Time of Day},
+    author = {Kirill Müller},
+    year = {2025},
+    note = {R package version 1.1.4},
+    url = {https://CRAN.R-project.org/package=hms},
+    doi = {10.32614/CRAN.package.hms},
+  }
+
+[[6]]
+To cite ggplot2 in publications, please use
+
+  H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York, 2016.
+
+A BibTeX entry for LaTeX users is
+
+  @Book{,
+    author = {Hadley Wickham},
+    title = {ggplot2: Elegant Graphics for Data Analysis},
+    publisher = {Springer-Verlag New York},
+    year = {2016},
+    isbn = {978-3-319-24277-4},
+    url = {https://ggplot2.tidyverse.org},
+  }
+
+[[7]]
+To cite package ‘scales’ in publications use:
+
+  Wickham H, Pedersen T, Seidel D (2025). _scales: Scale Functions for Visualization_.
+  doi:10.32614/CRAN.package.scales <https://doi.org/10.32614/CRAN.package.scales>, R package version
+  1.4.0, <https://CRAN.R-project.org/package=scales>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {scales: Scale Functions for Visualization},
+    author = {Hadley Wickham and Thomas Lin Pedersen and Dana Seidel},
+    year = {2025},
+    note = {R package version 1.4.0},
+    url = {https://CRAN.R-project.org/package=scales},
+    doi = {10.32614/CRAN.package.scales},
+  }
+
+[[8]]
+To cite package ‘readxl’ in publications use:
+
+  Wickham H, Bryan J (2025). _readxl: Read Excel Files_. doi:10.32614/CRAN.package.readxl
+  <https://doi.org/10.32614/CRAN.package.readxl>, R package version 1.4.5,
+  <https://CRAN.R-project.org/package=readxl>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {readxl: Read Excel Files},
+    author = {Hadley Wickham and Jennifer Bryan},
+    year = {2025},
+    note = {R package version 1.4.5},
+    url = {https://CRAN.R-project.org/package=readxl},
+    doi = {10.32614/CRAN.package.readxl},
+  }
+
+[[9]]
+To cite package ‘janitor’ in publications use:
+
+  Firke S (2024). _janitor: Simple Tools for Examining and Cleaning Dirty Data_.
+  doi:10.32614/CRAN.package.janitor <https://doi.org/10.32614/CRAN.package.janitor>, R package version
+  2.2.1, <https://CRAN.R-project.org/package=janitor>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {janitor: Simple Tools for Examining and Cleaning Dirty Data},
+    author = {Sam Firke},
+    year = {2024},
+    note = {R package version 2.2.1},
+    url = {https://CRAN.R-project.org/package=janitor},
+    doi = {10.32614/CRAN.package.janitor},
+  }
+
+[[10]]
+To cite package sf in publications, please use:
+
+  Pebesma, E., & Bivand, R. (2023). Spatial Data Science: With Applications in R. Chapman and
+  Hall/CRC. https://doi.org/10.1201/9780429459016
+
+  Pebesma, E., 2018. Simple Features for R: Standardized Support for Spatial Vector Data. The R
+  Journal 10 (1), 439-446, https://doi.org/10.32614/RJ-2018-009
+
+To see these entries in BibTeX format, use 'print(<citation>, bibtex=TRUE)', 'toBibtex(.)', or set
+'options(citation.bibtex.max=999)'.
+
+[[11]]
+To cite package ‘geosphere’ in publications use:
+
+  Hijmans R (2026). _geosphere: Spherical Trigonometry_. doi:10.32614/CRAN.package.geosphere
+  <https://doi.org/10.32614/CRAN.package.geosphere>, R package version 1.6-5,
+  <https://CRAN.R-project.org/package=geosphere>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {geosphere: Spherical Trigonometry},
+    author = {Robert J. Hijmans},
+    year = {2026},
+    note = {R package version 1.6-5},
+    url = {https://CRAN.R-project.org/package=geosphere},
+    doi = {10.32614/CRAN.package.geosphere},
+  }
+
+[[12]]
+To cite package ‘gt’ in publications use:
+
+  Iannone R, Cheng J, Schloerke B, Haughton S, Hughes E, Lauer A, François R, Seo J, Brevoort K, Roy O
+  (2026). _gt: Easily Create Presentation-Ready Display Tables_. doi:10.32614/CRAN.package.gt
+  <https://doi.org/10.32614/CRAN.package.gt>, R package version 1.3.0,
+  <https://CRAN.R-project.org/package=gt>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {gt: Easily Create Presentation-Ready Display Tables},
+    author = {Richard Iannone and Joe Cheng and Barret Schloerke and Shannon Haughton and Ellis Hughes and Alexandra Lauer and Romain François and JooYoung Seo and Ken Brevoort and Olivier Roy},
+    year = {2026},
+    note = {R package version 1.3.0},
+    url = {https://CRAN.R-project.org/package=gt},
+    doi = {10.32614/CRAN.package.gt},
+  }
+
+[[13]]
+To cite package ‘skimr’ in publications use:
+
+  Waring E, Quinn M, McNamara A, Arino de la Rubia E, Zhu H, Ellis S (2026). _skimr: Compact and
+  Flexible Summaries of Data_. doi:10.32614/CRAN.package.skimr
+  <https://doi.org/10.32614/CRAN.package.skimr>, R package version 2.2.2,
+  <https://CRAN.R-project.org/package=skimr>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {skimr: Compact and Flexible Summaries of Data},
+    author = {Elin Waring and Michael Quinn and Amelia McNamara and Eduardo {Arino de la Rubia} and Hao Zhu and Shannon Ellis},
+    year = {2026},
+    note = {R package version 2.2.2},
+    url = {https://CRAN.R-project.org/package=skimr},
+    doi = {10.32614/CRAN.package.skimr},
+  }
+
+[[14]]
+To cite package ‘vtable’ in publications use:
+
+  Huntington-Klein N (2024). _vtable: Variable Table for Variable Documentation_.
+  doi:10.32614/CRAN.package.vtable <https://doi.org/10.32614/CRAN.package.vtable>, R package version
+  1.4.8, <https://CRAN.R-project.org/package=vtable>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {vtable: Variable Table for Variable Documentation},
+    author = {Nick Huntington-Klein},
+    year = {2024},
+    note = {R package version 1.4.8},
+    url = {https://CRAN.R-project.org/package=vtable},
+    doi = {10.32614/CRAN.package.vtable},
+  }
+
+[[15]]
+To cite package ‘data.table’ in publications use:
+
+  Barrett T, Dowle M, Srinivasan A, Gorecki J, Chirico M, Hocking T, Schwendinger B, Krylov I (2025).
+  _data.table: Extension of `data.frame`_. doi:10.32614/CRAN.package.data.table
+  <https://doi.org/10.32614/CRAN.package.data.table>, R package version 1.18.0,
+  <https://CRAN.R-project.org/package=data.table>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {data.table: Extension of `data.frame`},
+    author = {Tyson Barrett and Matt Dowle and Arun Srinivasan and Jan Gorecki and Michael Chirico and Toby Hocking and Benjamin Schwendinger and Ivan Krylov},
+    year = {2025},
+    note = {R package version 1.18.0},
+    url = {https://CRAN.R-project.org/package=data.table},
+    doi = {10.32614/CRAN.package.data.table},
+  }
+
+[[16]]
+To cite package ‘htmlwidgets’ in publications use:
+
+  Vaidyanathan R, Xie Y, Allaire J, Cheng J, Sievert C, Russell K (2023). _htmlwidgets: HTML Widgets
+  for R_. doi:10.32614/CRAN.package.htmlwidgets <https://doi.org/10.32614/CRAN.package.htmlwidgets>, R
+  package version 1.6.4, <https://CRAN.R-project.org/package=htmlwidgets>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {htmlwidgets: HTML Widgets for R},
+    author = {Ramnath Vaidyanathan and Yihui Xie and JJ Allaire and Joe Cheng and Carson Sievert and Kenton Russell},
+    year = {2023},
+    note = {R package version 1.6.4},
+    url = {https://CRAN.R-project.org/package=htmlwidgets},
+    doi = {10.32614/CRAN.package.htmlwidgets},
+  }
+
+[[17]]
+To cite package ‘ggTimeSeries’ in publications use:
+
+  Kothari A (2022). _ggTimeSeries: Time Series Visualisations Using the Grammar of Graphics_.
+  doi:10.32614/CRAN.package.ggTimeSeries <https://doi.org/10.32614/CRAN.package.ggTimeSeries>, R
+  package version 1.0.2, <https://CRAN.R-project.org/package=ggTimeSeries>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {ggTimeSeries: Time Series Visualisations Using the Grammar of Graphics},
+    author = {Aditya Kothari},
+    year = {2022},
+    note = {R package version 1.0.2},
+    url = {https://CRAN.R-project.org/package=ggTimeSeries},
+    doi = {10.32614/CRAN.package.ggTimeSeries},
+  }
+
+[[18]]
+To cite package ‘suncalc’ in publications use:
+
+  Thieurmel B, Elmarhraoui A (2022). _suncalc: Compute Sun Position, Sunlight Phases, Moon Position
+  and Lunar Phase_. doi:10.32614/CRAN.package.suncalc <https://doi.org/10.32614/CRAN.package.suncalc>,
+  R package version 0.5.1, <https://CRAN.R-project.org/package=suncalc>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {suncalc: Compute Sun Position, Sunlight Phases, Moon Position and Lunar
+Phase},
+    author = {Benoit Thieurmel and Achraf Elmarhraoui},
+    year = {2022},
+    note = {R package version 0.5.1},
+    url = {https://CRAN.R-project.org/package=suncalc},
+    doi = {10.32614/CRAN.package.suncalc},
+  }
+
+[[19]]
+To cite package ‘openxlsx’ in publications use:
+
+  Schauberger P, Walker A (2025). _openxlsx: Read, Write and Edit xlsx Files_.
+  doi:10.32614/CRAN.package.openxlsx <https://doi.org/10.32614/CRAN.package.openxlsx>, R package
+  version 4.2.8.1, <https://CRAN.R-project.org/package=openxlsx>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {openxlsx: Read, Write and Edit xlsx Files},
+    author = {Philipp Schauberger and Alexander Walker},
+    year = {2025},
+    note = {R package version 4.2.8.1},
+    url = {https://CRAN.R-project.org/package=openxlsx},
+    doi = {10.32614/CRAN.package.openxlsx},
+  }
+
+[[20]]
+To cite package ‘writexl’ in publications use:
+
+  Ooms J (2025). _writexl: Export Data Frames to Excel 'xlsx' Format_.
+  doi:10.32614/CRAN.package.writexl <https://doi.org/10.32614/CRAN.package.writexl>, R package version
+  1.5.4, <https://CRAN.R-project.org/package=writexl>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {writexl: Export Data Frames to Excel 'xlsx' Format},
+    author = {Jeroen Ooms},
+    year = {2025},
+    note = {R package version 1.5.4},
+    url = {https://CRAN.R-project.org/package=writexl},
+    doi = {10.32614/CRAN.package.writexl},
+  }
+
+[[21]]
+To cite package ‘rmarkdown’ in publications use:
+
+  Allaire J, Xie Y, Dervieux C, McPherson J, Luraschi J, Ushey K, Atkins A, Wickham H, Cheng J, Chang
+  W, Iannone R (2025). _rmarkdown: Dynamic Documents for R_. R package version 2.30,
+  <https://github.com/rstudio/rmarkdown>.
+
+  Xie Y, Allaire J, Grolemund G (2018). _R Markdown: The Definitive Guide_. Chapman and Hall/CRC, Boca
+  Raton, Florida. ISBN 9781138359338, <https://bookdown.org/yihui/rmarkdown>.
+
+  Xie Y, Dervieux C, Riederer E (2020). _R Markdown Cookbook_. Chapman and Hall/CRC, Boca Raton,
+  Florida. ISBN 9780367563837, <https://bookdown.org/yihui/rmarkdown-cookbook>.
+
+To see these entries in BibTeX format, use 'print(<citation>, bibtex=TRUE)', 'toBibtex(.)', or set
+'options(citation.bibtex.max=999)'.
+
+[[22]]
+To cite package ‘flextable’ in publications use:
+
+  Gohel D, Skintzos P (2026). _flextable: Functions for Tabular Reporting_.
+  doi:10.32614/CRAN.package.flextable <https://doi.org/10.32614/CRAN.package.flextable>, R package
+  version 0.10.0, <https://CRAN.R-project.org/package=flextable>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {flextable: Functions for Tabular Reporting},
+    author = {David Gohel and Panagiotis Skintzos},
+    year = {2026},
+    note = {R package version 0.10.0},
+    url = {https://CRAN.R-project.org/package=flextable},
+    doi = {10.32614/CRAN.package.flextable},
+  }
+
+[[23]]
+To cite package ‘systemfonts’ in publications use:
+
+  Pedersen T, Ooms J, Govett D (2025). _systemfonts: System Native Font Finding_.
+  doi:10.32614/CRAN.package.systemfonts <https://doi.org/10.32614/CRAN.package.systemfonts>, R package
+  version 1.3.1, <https://CRAN.R-project.org/package=systemfonts>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {systemfonts: System Native Font Finding},
+    author = {Thomas Lin Pedersen and Jeroen Ooms and Devon Govett},
+    year = {2025},
+    note = {R package version 1.3.1},
+    url = {https://CRAN.R-project.org/package=systemfonts},
+    doi = {10.32614/CRAN.package.systemfonts},
+  }
+
