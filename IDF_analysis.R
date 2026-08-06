@@ -84,8 +84,8 @@ options(error = function() message("Skipping failed step"))
   
   ##USER SETTINGS##
   source(file.path(folder_input,"userSettings.R")) #Import user defined settings #(e.g. model parameters, etc)
-  databases_dir <- file.path("..") #get files from dir that is one level up
-  folder_subsample <- file.path(databases_dir,"subsample_last_tracksonly")
+  #databases_dir <- file.path("..") #get files from dir that is one level up
+  #folder_subsample <- file.path(databases_dir,"subsample_last_tracksonly")
 
   
 ## 
@@ -143,7 +143,7 @@ options(error = function() message("Skipping failed step"))
   
   
   #Project-specific corrections --> handle_script.R
-  if(file.exists('handle_script.R')) {source('handle_script.R')}
+  #if(file.exists('handle_script.R')) {source('handle_script.R')}
   
   
   tier_dt <- setDT(tier)
@@ -336,7 +336,7 @@ options(error = function() message("Skipping failed step"))
       
       # IDF Availability (validacao independente para identificar "Down periods" - Apenas corre se tivermos dados de heartbeat)
       if (exists("heartb_dt")) {
-        source(file.path(folder_script_IDF, 'IDF_availability.R'))
+        source(file.path(R, 'availability_daylight.R'))
       } else {print("Subsample folder does not exist - IDF availability analysis was skipped")}
     
     
