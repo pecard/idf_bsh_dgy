@@ -83,7 +83,7 @@ options(error = function() message("Skipping failed step"))
   
   
   ##USER SETTINGS##
-  source(file.path(folder_input,"userSettings.txt")) #Import user defined settings #(e.g. model parameters, etc)
+  source(file.path(folder_input,"userSettings.R")) #Import user defined settings #(e.g. model parameters, etc)
   databases_dir <- file.path("..") #get files from dir that is one level up
   folder_subsample <- file.path(databases_dir,"subsample_last_tracksonly")
 
