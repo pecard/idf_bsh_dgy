@@ -158,13 +158,13 @@ add_calendar_coords <- function(dt) {
   dt <- copy(dt)
   dt[, `:=`(
     weekday_lab = factor(
-      c("M", "T", "W", "T.", "F", "S", "S.")[wday(date, week_start = 1)],
+      c("M", "T", "W", "T.", "F", "S", "S.")[lubridate::wday(date, week_start = 1)],
       levels = c("M", "T", "W", "T.", "F", "S", "S.")
     ),
     week_of_month = {
-      ms  <- floor_date(date, "month")
-      wms <- wday(ms, week_start = 1)
-      as.integer(1 + ((mday(date) + wms - 2) %/% 7))
+      ms  <- lubridate::floor_date(date, "month")
+      wms <- lubridate::wday(ms, week_start = 1)
+      as.integer(1 + ((lubridate::mday(date) + wms - 2) %/% 7))
     }
   )]
   dt[]
