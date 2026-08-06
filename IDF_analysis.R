@@ -355,6 +355,7 @@ options(error = function() message("Skipping failed step"))
                             file.path(folder_output, "idf_availability_summary_by_month.xlsx"))
 
         p_availability_cal <- plot_availability_calendar(idf_availability_dt)
+        
         ggsave(
           file.path(folder_output, paste0("idf_availability_calendar_", report_start, "to", report_end, ".png")),
           plot = p_availability_cal, width = 12, height = 14, dpi = 300, bg = "white"
