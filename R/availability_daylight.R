@@ -321,7 +321,7 @@ plot_heartbeat_slots <- function(slot_grid_dt, date_breaks = "2 days", title = N
       ),
       drop = FALSE
     ) +
-    scale_x_date(date_breaks = date_breaks, date_labels = "%d %b", expand = c(0, 0)) +
+    scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
     scale_y_continuous(
       limits = c(0, 24),
       breaks = seq(0, 24, 3),
