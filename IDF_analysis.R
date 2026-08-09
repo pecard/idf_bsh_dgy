@@ -136,10 +136,22 @@ options(error = function() message("Skipping failed step"))
   
   
   #Databases
+<<<<<<< HEAD
   # source(file.path(folder_script_IDF, 'read_TrackReport_Data.R'))   # Tracks data
   # source(file.path(folder_script_IDF, 'read_Curtailments_Data.R'))  # Curtailments data
   # source(file.path(folder_script_IDF, 'read_SCADA_Data.R'))         # SCADA data
   # source(file.path(folder_script_IDF, 'read_Heartbeat_Data.R'))     # Heartbeat data
+=======
+  source("R/read_tracks.R")
+  source("R/read_curtailments.R")
+  source("R/read_scada.R")
+  source("R/read_heartbeats.R")
+
+  track_dt_unfilt  <- read_tracks_data(databases_dir, trackreport_pattern)   # Tracks data
+  curtl_dt_unfilt  <- read_curtailments_data(databases_dir, curtailments_pattern) # Curtailments data
+  scada_dt_unfilt  <- read_scada_data(databases_dir, scada_pattern)          # SCADA data
+  heartb_dt_unfilt <- read_heartbeats_data(databases_dir, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
+>>>>>>> d3e9cfd25c4b83014e9e05971a1118dac3d0a8d0
   
   
   #Project-specific corrections --> handle_script.R
