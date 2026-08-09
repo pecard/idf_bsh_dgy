@@ -411,7 +411,7 @@ options(error = function() message("Skipping failed step"))
     
       # System availability - data sent by IDF team
       #source(file.path(folder_script_IDF, 'WTG_protect_time.R')) 
-      #### TEM HARD CODE ####
+      # TEM HARD CODE #
   
 
     
@@ -474,6 +474,7 @@ options(error = function() message("Skipping failed step"))
           source(file.path(folder_script_IDF, 'curtailments_threshold_dist.R'))
       }
 
+    
 ##
 ## 4. Coverage ----
 ##
