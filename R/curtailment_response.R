@@ -119,17 +119,19 @@ classify_curtailment_response <- function(curtl_dt, scada_dt,
     .(curtailment_id = i.curtailment_id, window_start = i.window_start, datetime, rpm)
   ]
 
-  drop_summary <- rpm_window[, .(
-    n_readings_in_window = sum(!is.na(rpm)),
-    first_drop_time = {
-      below <- datetime[!is.na(rpm) & rpm < rpm_threshold]
-      if (length(below) == 0) as.POSIXct(NA) else min(below)
-    }
-  ), by = curtailment_id]
+  # numero de leituras por curtailment (inclui os que tem 0, para distinguir no_data)
+  n_readings_dt <- rpm_window[, .(n_readings_in_window = sum(!is.na(rpm))), by = curtailment_id]
 
-  # window_start volta a ser ligado explicitamente pela tabela original
-  # (curtailment_id e um inteiro simples -- evita agrupar por uma 2a chave
-  # POSIXct, que estava a produzir um time_to_drop_sec sempre igual a 0)
+  # 1o instante, dentro da janela, com rpm abaixo do limiar -- calculado a
+  # parte (filtrar e so depois agregar), sem bloco condicional dentro do
+  # agregado, para nao repetir o bug de time_to_drop_sec sair sempre 0
+  drop_times_dt <- rpm_window[
+    !is.na(rpm) & rpm < rpm_threshold,
+    .(first_drop_time = min(datetime)),
+    by = curtailment_id
+  ]
+
+  drop_summary <- merge(n_readings_dt, drop_times_dt, by = "curtailment_id", all.x = TRUE)
   drop_summary <- merge(drop_summary, windows[, .(curtailment_id, window_start)], by = "curtailment_id")
   drop_summary[, time_to_drop_sec := as.numeric(difftime(first_drop_time, window_start, units = "secs"))]
 
