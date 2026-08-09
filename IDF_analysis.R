@@ -144,8 +144,8 @@ options(error = function() message("Skipping failed step"))
   source("R/read_heartbeats.R")
 
   track_dt_unfilt  <- read_tracks_data(databases_dir, trackreport_pattern)   # Tracks data
-  curtl_dt_unfilt  <- read_curtailments_data(databases_dir, curtailments_pattern) # Curtailments data
-  scada_dt_unfilt  <- read_scada_data(databases_dir, scada_pattern)          # SCADA data
+  curtl_dt_unfilt  <- read_curtailments_data(databases_dir_alt, curtailments_pattern) # Curtailments data
+  scada_dt_unfilt  <- read_scada_data(databases_dir_alt, scada_pattern)          # SCADA data
   heartb_dt_unfilt <- read_heartbeats_data(databases_dir, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
   
   unique(heartb_dt_unfilt$idf)

@@ -4,7 +4,7 @@
 ## Depende de: data.table
 ##
 
-read_scada_data <- function(databases_dir, pattern = "SCADA_.+csv") {
+read_scada_data <- function(databases_dir, pattern) { # alternative folder 
 
   files <- list.files(databases_dir, pattern = pattern, full.names = TRUE)
 

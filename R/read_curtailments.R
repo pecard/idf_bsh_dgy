@@ -4,7 +4,7 @@
 ## Depende de: readxl, janitor, lubridate, dplyr
 ##
 
-read_curtailments_data <- function(databases_dir, pattern = "curtail_orders|Curtailments") {
+read_curtailments_data <- function(databases_dir, pattern) { # alternative folder 
 
   files <- list.files(databases_dir, pattern = pattern, full.names = TRUE)
 
