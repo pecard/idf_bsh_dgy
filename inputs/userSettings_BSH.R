@@ -33,11 +33,7 @@ databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 trackreport_pattern  <- "_Track_" #"TrackReport.+csv"          # ex: TrackReport_20260201_....csv
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
 scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_20260201_....csv
-<<<<<<< HEAD
-heartbeats_pattern   <- "Heartbeats_.+csv"          # ex: Heartbeats_20260201_....csv
-=======
 heartbeats_pattern   <- "Bash_Heartbeats.+csv"          # ex: Heartbeats_20260201_....csv
->>>>>>> 78877ecc773b8a6e11621bad97750903912ccd16
 
 
 ##
@@ -45,11 +41,7 @@ heartbeats_pattern   <- "Bash_Heartbeats.+csv"          # ex: Heartbeats_2026020
 ##
 
 ini <- as.POSIXct('2025-10-15 00:00:00', tz = 'UTC')
-<<<<<<< HEAD
-end <- as.POSIXct('2025-06-30 23:59:59', tz = 'UTC')
-=======
 end <- as.POSIXct('2026-06-30 23:59:59', tz = 'UTC')
->>>>>>> 78877ecc773b8a6e11621bad97750903912ccd16
 
 
 ##
