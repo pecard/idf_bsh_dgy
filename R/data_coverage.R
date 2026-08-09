@@ -103,12 +103,12 @@ plot_data_coverage <- function(coverage_dt) {
     geom_tile(colour = "white", linewidth = 0.1) +
     scale_fill_manual(
       values = c(`TRUE` = "steelblue", `FALSE` = "grey85"),
-      labels = c(`TRUE` = "Com dados", `FALSE` = "Sem dados"),
+      labels = c(`TRUE` = "Data available", `FALSE` = "No data"),
       name = NULL
     ) +
     scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m") +
     labs(
-      title = "Cobertura temporal das bases de dados",
+      title = "Data coverage timeline",
       x = NULL, y = NULL
     ) +
     theme_minimal() +

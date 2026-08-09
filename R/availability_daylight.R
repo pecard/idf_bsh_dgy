@@ -215,9 +215,9 @@ plot_availability_calendar <- function(daylight_availability_dt, by_idf_summary,
     ) +
     scale_y_reverse(breaks = seq(1, 6, 1)) +
     labs(
-      x = NULL, y = "Semana do mes",
-      title = "Calendario de % offline durante o dia, por unidade IDF",
-      subtitle = sprintf("Top %d unidades IDF por tempo offline", length(idf_sel))
+      x = NULL, y = "Week of month",
+      title = "Daylight offline (%) calendar by IDF unit",
+      subtitle = sprintf("Top %d IDF units by offline time", length(idf_sel))
     ) +
     theme_minimal(base_size = 9) +
     theme(
@@ -237,9 +237,107 @@ plot_availability_frequency <- function(by_idf_summary) {
   ggplot(by_idf_summary, aes(x = availability_cat)) +
     geom_bar(fill = "steelblue") +
     labs(
-      x = "Categoria de disponibilidade",
-      y = "Numero de unidades IDF",
-      title = "Frequencia de unidades IDF por disponibilidade diurna"
+      x = "Availability category",
+      y = "Number of IDF units",
+      title = "Frequency of IDF units by daylight availability"
     ) +
     theme_minimal()
+}
+
+
+## 8. Grelha de heartbeats por slot (ex: 30 min), classificada dia/noite ----
+##    Reutiliza o `daylight_cal` (funcao 1) em vez de recalcular o suncalc.
+
+heartbeat_slot_grid <- function(heartb_dt, daylight_cal, tz,
+                                start_date, end_date,
+                                idf_sel = NULL, slot_mins = 30) {
+
+  if (!is.null(idf_sel)) heartb_dt <- heartb_dt[idf %in% idf_sel]
+  all_idf <- if (is.null(idf_sel)) sort(unique(heartb_dt$idf)) else idf_sel
+
+  start_dt <- as.POSIXct(paste(as.Date(start_date), "00:00:00"), tz = tz)
+  end_dt   <- as.POSIXct(paste(as.Date(end_date) + 1, "00:00:00"), tz = tz)
+
+  slots <- seq(start_dt, end_dt - minutes(slot_mins), by = paste(slot_mins, "min"))
+
+  grid <- CJ(idf = all_idf, slot = slots)
+  grid[, date := as.Date(slot, tz = tz)]
+  grid[, time_decimal := lubridate::hour(slot) + lubridate::minute(slot) / 60]
+
+  # heartbeats observados, arredondados para o slot correspondente
+  hb_slots <- heartb_dt[
+    idf %in% all_idf & timestamp >= start_dt & timestamp < end_dt,
+    .(idf, slot = lubridate::floor_date(timestamp, unit = paste(slot_mins, "minutes")))
+  ]
+  hb_slots <- unique(hb_slots, by = c("idf", "slot"))
+  hb_slots[, heartbeat_present := TRUE]
+
+  grid <- hb_slots[grid, on = .(idf, slot)]
+  grid[is.na(heartbeat_present), heartbeat_present := FALSE]
+
+  # dia/noite: comparar o ponto medio do slot com o sunrise/sunset desse dia
+  grid <- daylight_cal[, .(date, sunrise, sunset)][grid, on = "date"]
+  grid[, slot_midpoint := slot + minutes(slot_mins / 2)]
+  grid[, daylight := slot_midpoint >= sunrise & slot_midpoint < sunset]
+
+  grid[, slot_status := fcase(
+    daylight  & heartbeat_present,  "Heartbeat - daylight",
+    daylight  & !heartbeat_present, "Missing - daylight",
+    !daylight & heartbeat_present,  "Heartbeat - night",
+    !daylight & !heartbeat_present, "Missing - night"
+  )]
+  grid[, slot_status := factor(
+    slot_status,
+    levels = c("Heartbeat - daylight", "Missing - daylight",
+              "Heartbeat - night", "Missing - night")
+  )]
+
+  grid[]
+}
+
+
+## 9. Plot da grelha de heartbeats (dia/noite, presente/em falta), por unidade IDF ----
+
+plot_heartbeat_slots <- function(slot_grid_dt, date_breaks = "2 days", title = NULL) {
+
+  if (is.null(title)) {
+    title <- sprintf(
+      "IdentiFlight heartbeat availability (%s to %s)",
+      format(min(slot_grid_dt$date), "%d %b %Y"),
+      format(max(slot_grid_dt$date), "%d %b %Y")
+    )
+  }
+
+  ggplot(slot_grid_dt, aes(x = date, y = time_decimal, fill = slot_status)) +
+    geom_tile(width = 0.95, height = 0.48) +
+    facet_wrap(~idf, ncol = 1) +
+    scale_fill_manual(
+      name = "IDF status",
+      values = c(
+        "Heartbeat - daylight" = "#2C7FB8",
+        "Missing - daylight"   = "#D7301F",
+        "Heartbeat - night"    = "#BDBDBD",
+        "Missing - night"      = "#252525"
+      ),
+      drop = FALSE
+    ) +
+    scale_x_date(date_breaks = date_breaks, date_labels = "%d %b", expand = c(0, 0)) +
+    scale_y_continuous(
+      limits = c(0, 24),
+      breaks = seq(0, 24, 3),
+      labels = function(x) sprintf("%02d:00", x),
+      expand = c(0, 0)
+    ) +
+    labs(
+      x = "Date", y = "Local time",
+      title = title,
+      subtitle = "Daylight vs. night, heartbeat present vs. missing"
+    ) +
+    theme_minimal(base_size = 9) +
+    theme(
+      panel.grid = element_blank(),
+      strip.text = element_text(face = "bold"),
+      axis.text.x = element_text(size = 8),
+      legend.position = "bottom"
+    )
 }
