@@ -117,3 +117,82 @@ plot_data_coverage <- function(coverage_dt) {
       panel.grid = element_blank()
     )
 }
+
+
+## 6. Sobreposicao temporal entre DOIS datasets (ex: SCADA vs Curtailments) ----
+##    Reaproveita daily_presence() (funcao 3). Util para confirmar que ha
+##    dias com dados em ambos antes de tentar cruza-los (ex: no
+##    curtailment_response.R).
+
+daily_overlap <- function(dt_a, col_a, label_a, dt_b, col_b, label_b) {
+
+  daily <- rbindlist(list(
+    daily_presence(dt_a, col_a, label_a),
+    daily_presence(dt_b, col_b, label_b)
+  ))
+
+  if (nrow(daily) == 0L) stop("Nenhum dos dois datasets tem dados.")
+
+  full_range <- seq(min(daily$date), max(daily$date), by = "day")
+
+  grid <- CJ(dataset = c(label_a, label_b), date = full_range)
+  grid[daily, n := i.n, on = .(dataset, date)]
+  grid[is.na(n), n := 0L]
+  grid[, has_data := n > 0]
+
+  wide <- dcast(grid, date ~ dataset, value.var = "has_data")
+  wide[, overlap := get(label_a) & get(label_b)]
+
+  wide[]
+}
+
+
+## 7. Resumo da sobreposicao (quantos dias em comum, etc.) ----
+
+overlap_summary <- function(overlap_dt, label_a, label_b) {
+
+  days_a       <- sum(overlap_dt[[label_a]])
+  days_b       <- sum(overlap_dt[[label_b]])
+  days_overlap <- sum(overlap_dt$overlap)
+
+  data.table(
+    dataset_a           = label_a,
+    dataset_b           = label_b,
+    total_days          = nrow(overlap_dt),
+    days_a              = days_a,
+    days_b              = days_b,
+    days_overlap        = days_overlap,
+    pct_a_with_overlap  = round(100 * days_overlap / days_a, 1),
+    pct_b_with_overlap  = round(100 * days_overlap / days_b, 1)
+  )
+}
+
+
+## 8. Plot "calendario" da sobreposicao entre os dois datasets ----
+
+plot_daily_overlap <- function(overlap_dt, label_a, label_b) {
+
+  long <- melt(
+    overlap_dt[, c("date", label_a, label_b, "overlap"), with = FALSE],
+    id.vars = "date", variable.name = "dataset", value.name = "has_data"
+  )
+  long[, dataset := factor(dataset, levels = rev(c(label_a, label_b, "overlap")))]
+
+  ggplot(long, aes(x = date, y = dataset, fill = has_data)) +
+    geom_tile(colour = "white", linewidth = 0.1) +
+    scale_fill_manual(
+      values = c(`TRUE` = "steelblue", `FALSE` = "grey85"),
+      labels = c(`TRUE` = "Data available", `FALSE` = "No data"),
+      name = NULL
+    ) +
+    scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m") +
+    labs(
+      title = paste("Data coverage overlap:", label_a, "vs", label_b),
+      x = NULL, y = NULL
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid = element_blank()
+    )
+}
