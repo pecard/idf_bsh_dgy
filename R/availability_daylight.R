@@ -19,7 +19,7 @@
 
 ## 1. Calendario de luz do dia (sunrise/sunset) para um intervalo de datas ----
 
-build_daylight_calendar <- function(ini, end, lat, lon, tz) {
+build_daylight_calendar <- function(start_date, end_date, lat, lon, tz) {
 
   dates <- seq(as.Date(start_date), as.Date(end_date), by = "day")
 

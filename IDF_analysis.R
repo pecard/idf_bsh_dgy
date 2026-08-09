@@ -79,7 +79,7 @@ options(error = function() message("Skipping failed step"))
   lapply(Rfiles, function(x) source(x))
   
   #scripts especificos do IDF
-  folder_script_IDF <- "scripts_IDF"
+  folder_script_IDF <- "R"
   
   ##USER SETTINGS##
   source(file.path(folder_input,"userSettings_BSH.R")) #Import user defined settings #(e.g. model parameters, etc)
@@ -135,10 +135,10 @@ options(error = function() message("Skipping failed step"))
   
   
   #Databases
-  source(file.path(folder_script_IDF, 'read_TrackReport_Data.R'))   # Tracks data
-  source(file.path(folder_script_IDF, 'read_Curtailments_Data.R'))  # Curtailments data
-  source(file.path(folder_script_IDF, 'read_SCADA_Data.R'))         # SCADA data
-  source(file.path(folder_script_IDF, 'read_Heartbeat_Data.R'))     # Heartbeat data
+  source(file.path(folder_script_IDF, 'read_tracks.R'))   # Tracks data
+  source(file.path(folder_script_IDF, 'read_curtailments.R'))  # Curtailments data
+  source(file.path(folder_script_IDF, 'read_scada.R'))         # SCADA data
+  source(file.path(folder_script_IDF, 'read_heartbeats.R'))     # Heartbeat data
   
   
   #Project-specific corrections --> handle_script.R
