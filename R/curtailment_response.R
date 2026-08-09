@@ -125,8 +125,12 @@ classify_curtailment_response <- function(curtl_dt, scada_dt,
       below <- datetime[!is.na(rpm) & rpm < rpm_threshold]
       if (length(below) == 0) as.POSIXct(NA) else min(below)
     }
-  ), by = .(curtailment_id, window_start)]
+  ), by = curtailment_id]
 
+  # window_start volta a ser ligado explicitamente pela tabela original
+  # (curtailment_id e um inteiro simples -- evita agrupar por uma 2a chave
+  # POSIXct, que estava a produzir um time_to_drop_sec sempre igual a 0)
+  drop_summary <- merge(drop_summary, windows[, .(curtailment_id, window_start)], by = "curtailment_id")
   drop_summary[, time_to_drop_sec := as.numeric(difftime(first_drop_time, window_start, units = "secs"))]
 
   ## Combinar tudo ----

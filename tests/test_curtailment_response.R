@@ -153,7 +153,10 @@ response_dt <- classify_curtailment_response(
 expected_b <- data.table(
   turbine = c("TEST1", "TEST2", "TEST3", "TEST4", "TEST5"),
   expected_status         = c("responded", "no_response", "already_stopped", "no_data", "responded"),
-  expected_time_to_drop   = c(39.5, NA, NA, NA, 22)
+  # TEST3: todas as leituras da janela ja estao <1rpm desde o t=0, que
+  # coincide com window_start -- por isso o "tempo ate cair" da 0, nao NA
+  # (a classificacao fica "already_stopped" na mesma, por prioridade)
+  expected_time_to_drop   = c(39.5, NA, 0, NA, 22)
 )
 
 check_b <- merge(response_dt, expected_b, by = "turbine")
