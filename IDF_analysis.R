@@ -200,22 +200,23 @@ options(error = function() message("Skipping failed step"))
 ##
 ## 0. Data Quality/Data Control (DQ/DC) ----
 ##
-  
+  ## DESATIVADO por agora - depende de scripts_IDF/, ainda nao migrado para R/
+  ## Reativar (remover #) quando estes modulos forem migrados
 
-  
+
     ###
     ### Check data gaps
     ###
-    
+
     #Check for data gaps - Graphs
-    source(file.path(folder_script_IDF, 'DQ_check_data_gaps_graphs.R')) 
-    
+    #source(file.path(folder_script_IDF, 'DQ_check_data_gaps_graphs.R'))
+
     #Check for data gaps - excel file with data gaps and range
-    source(file.path(folder_script_IDF, 'DQ_check_data_gaps_excel.R')) 
-    
-  
-  
-  
+    #source(file.path(folder_script_IDF, 'DQ_check_data_gaps_excel.R'))
+
+
+
+
 ##
 ## 0. Filter data ----
 ## 
@@ -285,23 +286,24 @@ options(error = function() message("Skipping failed step"))
 ##
 ## 0. Other ----
 ##
-    
-    #create tier calendar
-    source(file.path(folder_script_IDF, 'wtg_tier_starting_date_calendar.R')) 
-    
-    
-    #Create tier 3 only calendar
-    source(file.path(folder_script_IDF, 'wtg_tier3_starting_date_calendar.R'))
+    ## DESATIVADO por agora - depende de scripts_IDF/, ainda nao migrado para R/
 
-    
+    #create tier calendar
+    #source(file.path(folder_script_IDF, 'wtg_tier_starting_date_calendar.R'))
+
+
+    #Create tier 3 only calendar
+    #source(file.path(folder_script_IDF, 'wtg_tier3_starting_date_calendar.R'))
+
+
     #General metrics
-    source(file.path(folder_script_IDF, 'general_metrics.R'))
-    
+    #source(file.path(folder_script_IDF, 'general_metrics.R'))
+
     #Total curtailments & spatial distribution
-    source(file.path(folder_script_IDF, 'curtailments_spatial.R')) 
-    
-    
-    
+    #source(file.path(folder_script_IDF, 'curtailments_spatial.R'))
+
+
+
 ##  
 ## 1. Performance ----
 ##
@@ -312,13 +314,14 @@ options(error = function() message("Skipping failed step"))
     # 3. Validar subsample por ortinologo --> ornitologo tem de preencher "subsample_valid.xlsx"
     # 4. Depois entao fazer esta analise:
     
+    ## DESATIVADO por agora - depende de scripts_IDF/, ainda nao migrado para R/
     if (exists("folder_subsample") && dir.exists(folder_subsample)) { #Apenas correr se existir folder da subsample
-      source(file.path(folder_script_IDF, 'ID_confusion_matrix.R')) ##FALTA DESENVOLVER
+      #source(file.path(folder_script_IDF, 'ID_confusion_matrix.R')) ##FALTA DESENVOLVER
     } else {print("Subsample folder does not exist - Confusion matrix analysis was skipped")}
-    
+
     ### 1.2. ID transitions (stability in ID)
-    source(file.path(folder_script_IDF, 'ID_transitions.R')) 
-    
+    #source(file.path(folder_script_IDF, 'ID_transitions.R'))
+
     
     
 ##  
@@ -410,132 +413,133 @@ options(error = function() message("Skipping failed step"))
   
 
     
+  ## Secções 3.2 a 5 (abaixo) e as exportações finais estão DESATIVADAS por agora -
+  ## dependem de scripts_IDF/, ainda nao migrado para R/. Vamos reativando
+  ## bloco a bloco à medida que cada módulo for trazido para R/.
+
   ### 3.2. Curtailments due to ID transitions ----
-    source(file.path(folder_script_IDF, 'curtailments_ID_transitions.R')) 
-    
-    
-    
+    #source(file.path(folder_script_IDF, 'curtailments_ID_transitions.R'))
+
+
+
   ### 3.3. Species-specific curtailment ----
-      source(file.path(folder_script_IDF, 'curtailments_species.R')) 
-    
-  
+      #source(file.path(folder_script_IDF, 'curtailments_species.R'))
+
+
 
   ### 3.4. Short-track curtailment ----
-  
+
       # shorttrack_min_points  --> definido no userSettings.txt
       # shorttrack_eval_range  --> definido no userSettings.txt
-      source(file.path(folder_script_IDF, 'curtailments_short-track.R')) 
-    
+      #source(file.path(folder_script_IDF, 'curtailments_short-track.R'))
 
-    
+
+
   ### 3.5. Curtailment validation metrics ----
-    
-    
+
+
       # NOTA:
       # Analise sera feita apenas para range temporal que tiver dados de SCADA
-    
+
       #scada_ini  --> definido no userSettings.txt
       #scada_end  --> definido no userSettings.txt
       #turbinas_scada --> definido no userSettings.txt
       #safe_shutdown_rpm --> definido no userSettings.txt
-    
-      if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
-      
-          turbinas_teste <- turbinas_scada 
+
+      if (FALSE && exists("scada_dt")) { #Apenas corre se tiver dados de SCADA (desativado)
+
+          turbinas_teste <- turbinas_scada
           turbine_list <- turbinas_scada
-            
+
           #Preparar tabela CURTAILMENTS+SCADA que vai ser necessario para os prox analises
           source(file.path(folder_script_IDF, 'curtailments_scada_roll_join.R'))
-          source(file.path(folder_script_IDF, 'curtailments_time_to_curtail_calc.R')) 
-          
+          source(file.path(folder_script_IDF, 'curtailments_time_to_curtail_calc.R'))
+
           ###... B.1 Response time (time to -10% rpm) ----
-          source(file.path(folder_script_IDF, 'response_time.R')) 
-          
+          source(file.path(folder_script_IDF, 'response_time.R'))
+
           ###... B.2 Shutdown time (time to < safe_shutdown_rpm e.g. <1rpm) ----
-          source(file.path(folder_script_IDF, 'shutdown_time.R')) 
-          
+          source(file.path(folder_script_IDF, 'shutdown_time.R'))
+
           ###... B.3. Missed  curtailments (if safe_shutdown_rpm is reached e.g. <1rpm is reached) ----
-          source(file.path(folder_script_IDF, 'curtailments_missed.R')) 
-          
+          source(file.path(folder_script_IDF, 'curtailments_missed.R'))
+
           ###... B.4. Curtailment safe distances (distance to reach rotor at safe_shutdown_rpm) ----
-          source(file.path(folder_script_IDF, 'curtailments_safe_distances.R')) 
-          
+          source(file.path(folder_script_IDF, 'curtailments_safe_distances.R'))
+
           ###... B.5. Delayed curtailments ----
-          source(file.path(folder_script_IDF, 'curtailments_delayed.R'))     
-          source(file.path(folder_script_IDF, 'curtailments_threshold_dist.R'))    
+          source(file.path(folder_script_IDF, 'curtailments_delayed.R'))
+          source(file.path(folder_script_IDF, 'curtailments_threshold_dist.R'))
       }
-      
+
 ##
 ## 4. Coverage ----
-## 
-  
-    
-      ### 4.1. WF coverage ----
-      source(file.path(folder_script_IDF, 'coverage_analysis_WF.R'))
-    
- 
-      ### 4.2. WTG coverage ----
-      source(file.path(folder_script_IDF, 'coverage_analysis_WTG.R'))
-    
-    
-    
+##
 
-          
-  
+
+      ### 4.1. WF coverage ----
+      #source(file.path(folder_script_IDF, 'coverage_analysis_WF.R'))
+
+
+      ### 4.2. WTG coverage ----
+      #source(file.path(folder_script_IDF, 'coverage_analysis_WTG.R'))
+
+
+
+
 ##
 ## 5. Biological (supporting info) ----
-## 
-  
+##
+
 
     ### 5.1. Flight speed per species ----
-    source(file.path(folder_script_IDF, 'bio_flight_speed.R')) 
-    
- 
+    #source(file.path(folder_script_IDF, 'bio_flight_speed.R'))
+
+
     ### 5.2. Flight height per species ----
-    source(file.path(folder_script_IDF, 'bio_flight_height.R')) 
-  
+    #source(file.path(folder_script_IDF, 'bio_flight_height.R'))
+
     ###Plot flight height and speed per species
-    source(file.path(folder_script_IDF, 'bio_distrib_flight_height_speed_per_species.R')) 
-          
-           
-  
-      
+    #source(file.path(folder_script_IDF, 'bio_distrib_flight_height_speed_per_species.R'))
+
+
+
     ### 5.3. Risk per species ----
-  
+
     #NOTA:
     # riskHeight_lower --> definido no userSettings.txt
     # riskHeight_upper --> definido no userSettings.txt
-    source(file.path(folder_script_IDF, 'bio_risk_per_species.R')) 
-    
+    #source(file.path(folder_script_IDF, 'bio_risk_per_species.R'))
 
-  
+
 ##
 ## Export various metrics in a single excel file  ----
+## DESATIVADO - depende dos objetos criados pelas seccoes 3.2-5 acima
 ##
-  
-  writexl::write_xlsx(
-    list(
-      Crtl_prior = curtails_priority,
-      Crtl_nprio = curtails_nonpriority,
-      Crtl_other = curtails_others,
-      Ntrk_prior = summary_priority,
-      Ntrk_nprio = summary_nonpriority,
-      Ntrk_other = summary_other,
-      speed = mspeed,
-      height = fheight,
-      crtl_wtg = curtails_per_wtg
-    ),
-    file.path(folder_output, paste0("Tracks&Curtls_summary.xlsx")) 
-  )
-  
-          
+
+  # writexl::write_xlsx(
+  #   list(
+  #     Crtl_prior = curtails_priority,
+  #     Crtl_nprio = curtails_nonpriority,
+  #     Crtl_other = curtails_others,
+  #     Ntrk_prior = summary_priority,
+  #     Ntrk_nprio = summary_nonpriority,
+  #     Ntrk_other = summary_other,
+  #     speed = mspeed,
+  #     height = fheight,
+  #     crtl_wtg = curtails_per_wtg
+  #   ),
+  #   file.path(folder_output, paste0("Tracks&Curtls_summary.xlsx"))
+  # )
+
+
 ##
 ## Export report  ----
+## DESATIVADO - depende de scripts_IDF/report.R e dos outputs das seccoes acima
 ##
-          
-    source(file.path(folder_script_IDF, 'report.R')) 
-          
-          
-          
-  
+
+    #source(file.path(folder_script_IDF, 'report.R'))
+
+
+
 ## ----------- END SCRIPT -----------
