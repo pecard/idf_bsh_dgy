@@ -305,7 +305,7 @@ options(error = function() message("Skipping failed step"))
     # 3. Validar subsample por ortinologo --> ornitologo tem de preencher "subsample_valid.xlsx"
     # 4. Depois entao fazer esta analise:
     
-    if (dir.exists(folder_subsample)) { #Apenas correr se existir folder da subsample
+    if (exists("folder_subsample") && dir.exists(folder_subsample)) { #Apenas correr se existir folder da subsample
       source(file.path(folder_script_IDF, 'ID_confusion_matrix.R')) ##FALTA DESENVOLVER
     } else {print("Subsample folder does not exist - Confusion matrix analysis was skipped")}
     
