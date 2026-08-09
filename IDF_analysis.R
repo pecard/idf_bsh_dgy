@@ -354,7 +354,16 @@ options(error = function() message("Skipping failed step"))
         writexl::write_xlsx(idf_availability_summary$by_month,
                             file.path(folder_output, "idf_availability_summary_by_month.xlsx"))
 
-        p_availability_cal <- plot_availability_calendar(idf_availability_dt, idf_availability_summary$by_idf)
+        # Unidades com mais tempo offline - usado nos 2 graficos abaixo, para
+        # manterem as mesmas unidades e ficarem legiveis
+        idf_availability_top_n <- 12L
+        idf_sel <- idf_availability_summary$by_idf[
+          order(-offline_mins_total)][seq_len(min(idf_availability_top_n, .N)), idf]
+
+        p_availability_cal <- plot_availability_calendar(
+          idf_availability_dt, idf_availability_summary$by_idf,
+          idf_sel = idf_sel, top_n = idf_availability_top_n
+        )
         ggsave(
           file.path(folder_output, paste0("idf_availability_calendar_", report_start, "to", report_end, ".png")),
           plot = p_availability_cal, width = 200, height = 90, units = "mm", dpi = 300, bg = "white"
@@ -364,6 +373,25 @@ options(error = function() message("Skipping failed step"))
         ggsave(
           file.path(folder_output, paste0("idf_availability_frequency_", report_start, "to", report_end, ".png")),
           plot = p_availability_freq, width = 6, height = 3, units = "in", dpi = 300, bg = "white"
+        )
+
+        # Grelha de heartbeats (dia/noite, presente/em falta) por slot de heartbeat_interval_min,
+        # para as mesmas unidades com mais tempo offline
+        heartbeat_slots_dt <- heartbeat_slot_grid(
+          heartb_dt, daylight_cal, proj_timezone,
+          start_date = report_start, end_date = report_end,
+          idf_sel = idf_sel, slot_mins = heartbeat_interval_min
+        )
+
+        n_report_days <- as.numeric(report_end - report_start) + 1
+        slot_date_breaks <- if (n_report_days <= 31) "2 days" else if (n_report_days <= 92) "1 week" else "1 month"
+
+        p_heartbeat_slots <- plot_heartbeat_slots(heartbeat_slots_dt, date_breaks = slot_date_breaks)
+        ggsave(
+          file.path(folder_output, paste0("idf_heartbeat_slots_", report_start, "to", report_end, ".png")),
+          plot = p_heartbeat_slots,
+          width = max(150, n_report_days * 3), height = max(60, length(idf_sel) * 40),
+          units = "mm", dpi = 300, bg = "white", limitsize = FALSE
         )
 
       } else {print("Heartbeat data not available - IDF availability analysis was skipped")}
