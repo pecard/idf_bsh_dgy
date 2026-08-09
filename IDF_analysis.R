@@ -81,9 +81,8 @@ options(error = function() message("Skipping failed step"))
   #scripts especificos do IDF
   folder_script_IDF <- "scripts_IDF"
   
-  
   ##USER SETTINGS##
-  source(file.path(folder_input,"userSettings.R")) #Import user defined settings #(e.g. model parameters, etc)
+  source(file.path(folder_input,"userSettings_BSH.R")) #Import user defined settings #(e.g. model parameters, etc)
   #databases_dir <- file.path("..") #get files from dir that is one level up
   #folder_subsample <- file.path(databases_dir,"subsample_last_tracksonly")
 

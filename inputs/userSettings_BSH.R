@@ -9,13 +9,14 @@
 
 project_ref <- "Bash WPP"
 
-wtg_filename                <- "DZH_Turbines_Sergey_20250401_UTM.shp"  # in .shp
-idf_filename                <- "IDF_DZH.shp"                           # in .shp
-tier_start_scheme_filename  <- "tier_scheme_20260215.xlsx"             # em .xlsx
-tier3_start_scheme_filename <- "tier_3_commissioning_20260215.xlsx"    # em .xlsx
+wtg_filename                <- "Bash_Turbines_UTM.shp"  # in .shp
 
-proj_lat      <- 40.88 #
-proj_lon      <- 64.38
+idf_filename                <- "Bash_IDF_coord.shp"                           # in .shp
+tier_start_scheme_filename  <- "Bash_tier_scheme_20260215.xlsx"             # em .xlsx
+tier3_start_scheme_filename <- "Bash_tier_3_commissioning_20260215.xlsx"    # em .xlsx
+
+proj_lat      <- 40.65 # 40.656620,64.672409
+proj_lon      <- 64.67
 proj_timezone <- "Asia/Samarkand"
 
 crs_projection_plannar <- 32641 # codigo CRS da projecao planar a usar
@@ -51,7 +52,7 @@ end <- as.POSIXct('2026-06-30 23:59:59', tz = 'UTC')
 scada_ini <- as.POSIXct('2026-02-01 05:00:00', tz = 'UTC')
 scada_end <- as.POSIXct('2026-06-30 23:59:59', tz = 'UTC')
 
-turbinas_scada <- c('DZH1', 'DZH2', 'DZH3', 'DZH62', 'DZH63', 'DZH64')
+turbinas_scada <- c('BSH54')
 
 
 ##
