@@ -73,13 +73,13 @@ options(error = function() message("Skipping failed step"))
   dir.create(folder_input, showWarnings = FALSE, recursive = TRUE)
   dir.create(folder_output_DC, showWarnings = FALSE, recursive = TRUE)
   
-  ##Import all scripts
+  ##Import scripts
   folder_script <- "scripts\\"
   Rfiles <- list.files(folder_script, pattern = '.R', full.names = T)
   lapply(Rfiles, function(x) source(x))
   
   #scripts especificos do IDF
-  folder_script_IDF <- "scripts_IDF"
+  folder_script_IDF <- "R"
   
   
   ##USER SETTINGS##
@@ -136,10 +136,10 @@ options(error = function() message("Skipping failed step"))
   
   
   #Databases
-  source(file.path(folder_script_IDF, 'read_TrackReport_Data.R'))   # Tracks data
-  source(file.path(folder_script_IDF, 'read_Curtailments_Data.R'))  # Curtailments data
-  source(file.path(folder_script_IDF, 'read_SCADA_Data.R'))         # SCADA data
-  source(file.path(folder_script_IDF, 'read_Heartbeat_Data.R'))     # Heartbeat data
+  # source(file.path(folder_script_IDF, 'read_TrackReport_Data.R'))   # Tracks data
+  # source(file.path(folder_script_IDF, 'read_Curtailments_Data.R'))  # Curtailments data
+  # source(file.path(folder_script_IDF, 'read_SCADA_Data.R'))         # SCADA data
+  # source(file.path(folder_script_IDF, 'read_Heartbeat_Data.R'))     # Heartbeat data
   
   
   #Project-specific corrections --> handle_script.R

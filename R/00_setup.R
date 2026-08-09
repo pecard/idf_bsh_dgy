@@ -33,9 +33,9 @@ source(file.path(folder_input, "userSettings.R"))
 
 ## Funcoes de leitura ----
 
-source("R/read_tracks.R")
-source("R/read_curtailments.R")
-source("R/read_scada.R")
+#source("R/read_tracks.R")
+#source("R/read_curtailments.R")
+#source("R/read_scada.R")
 source("R/read_heartbeats.R")
 
 
@@ -53,9 +53,9 @@ tier3 <- read_xlsx(file.path(folder_input, tier3_start_scheme_filename), sheet =
 
 # Bases de dados externas (tracks, curtailments, SCADA, heartbeats)
 # --> ficam na pasta acima do projeto (databases_dir, definido em userSettings.R)
-track_dt_unfilt  <- read_tracks_data(databases_dir, trackreport_pattern)
-curtl_dt_unfilt  <- read_curtailments_data(databases_dir, curtailments_pattern)
-scada_dt_unfilt  <- read_scada_data(databases_dir, scada_pattern)
+#track_dt_unfilt  <- read_tracks_data(databases_dir, trackreport_pattern)
+#curtl_dt_unfilt  <- read_curtailments_data(databases_dir, curtailments_pattern)
+#scada_dt_unfilt  <- read_scada_data(databases_dir, scada_pattern)
 heartb_dt_unfilt <- read_heartbeats_data(databases_dir, heartbeats_pattern, tz = proj_timezone)
 
 
