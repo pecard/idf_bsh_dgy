@@ -242,7 +242,7 @@ options(error = function() message("Skipping failed step"))
     )]
     
     #Curtail data
-    curtl_dt <- curtl_dt_unfilt[
+    curtl_dt <- as.data.table(curtl_dt_unfilt)[
       start >= ini & start <= end
     ]
     #check 
