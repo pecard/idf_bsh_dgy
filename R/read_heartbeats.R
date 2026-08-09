@@ -4,7 +4,7 @@
 ## Depende de: data.table, janitor, lubridate
 ##
 
-read_heartbeats_data <- function(databases_dir, pattern = "Heartbeats_.+csv",
+read_heartbeats_data <- function(databases_dir, pattern = "Bash_Heartbeats.+csv",
                                   tz = "UTC", exclude_idf = c("TIE-ZAR-119", "")) {
 
   files <- list.files(databases_dir, pattern = pattern, full.names = TRUE)
