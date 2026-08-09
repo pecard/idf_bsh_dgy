@@ -34,7 +34,7 @@ trackreport_pattern  <- "_Track_" #"TrackReport.+csv"          # ex: TrackReport
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
 scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_20260201_....csv
 heartbeats_pattern   <- "Bash_Heartbeats.+csv"          # ex: Heartbeats_20260201_....csv
-
+heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11")
 
 ##
 ## Timeframe for analysis/reporting period

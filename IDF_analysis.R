@@ -148,6 +148,7 @@ options(error = function() message("Skipping failed step"))
   scada_dt_unfilt  <- read_scada_data(databases_dir, scada_pattern)          # SCADA data
   heartb_dt_unfilt <- read_heartbeats_data(databases_dir, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
   
+  unique(heartb_dt_unfilt$idf)
   
   #Project-specific corrections --> handle_script.R
   #if(file.exists('handle_script.R')) {source('handle_script.R')}
@@ -261,13 +262,14 @@ options(error = function() message("Skipping failed step"))
     
     #Heartbeat data
     heartb_dt <- heartb_dt_unfilt %>%
+      filter(idf %in% heartbeat_idf_units) %>%
       filter(timestamp >= ini & timestamp <= end)
     #check
     heartb_dt[, .(
       min_datetime = min(timestamp, na.rm = TRUE),
       max_datetime = max(timestamp, na.rm = TRUE)
     )]
-    
+    unique(heartb_dt$idf)
     
     ###
     ### Tier 3 data only
@@ -359,10 +361,10 @@ options(error = function() message("Skipping failed step"))
 
         idf_availability_summary <- summarise_availability(idf_availability_dt)
 
-        writexl::write_xlsx(idf_availability_summary$by_idf,
-                            file.path(folder_output, "idf_availability_summary_by_idf.xlsx"))
-        writexl::write_xlsx(idf_availability_summary$by_month,
-                            file.path(folder_output, "idf_availability_summary_by_month.xlsx"))
+        # writexl::write_xlsx(idf_availability_summary$by_idf,
+        #                     file.path(folder_output, "idf_availability_summary_by_idf.xlsx"))
+        # writexl::write_xlsx(idf_availability_summary$by_month,
+        #                     file.path(folder_output, "idf_availability_summary_by_month.xlsx"))
 
         # Unidades com mais tempo offline - usado nos 2 graficos abaixo, para
         # manterem as mesmas unidades e ficarem legiveis
