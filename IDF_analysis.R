@@ -354,10 +354,16 @@ options(error = function() message("Skipping failed step"))
         writexl::write_xlsx(idf_availability_summary$by_month,
                             file.path(folder_output, "idf_availability_summary_by_month.xlsx"))
 
-        p_availability_cal <- plot_availability_calendar(idf_availability_dt)
+        p_availability_cal <- plot_availability_calendar(idf_availability_dt, idf_availability_summary$by_idf)
         ggsave(
           file.path(folder_output, paste0("idf_availability_calendar_", report_start, "to", report_end, ".png")),
-          plot = p_availability_cal, width = 12, height = 14, dpi = 300, bg = "white"
+          plot = p_availability_cal, width = 200, height = 90, units = "mm", dpi = 300, bg = "white"
+        )
+
+        p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
+        ggsave(
+          file.path(folder_output, paste0("idf_availability_frequency_", report_start, "to", report_end, ".png")),
+          plot = p_availability_freq, width = 6, height = 3, units = "in", dpi = 300, bg = "white"
         )
 
       } else {print("Heartbeat data not available - IDF availability analysis was skipped")}

@@ -10,7 +10,7 @@
 
 ## Pacotes ----
 
-packages <- c('data.table', 'dplyr', 'readxl', 'janitor', 'lubridate', 'sf', 'suncalc', 'ggplot2')
+packages <- c('data.table', 'dplyr', 'readxl', 'janitor', 'lubridate', 'sf', 'suncalc', 'ggplot2', 'scales')
 
 for (p in packages) {
   if (!require(p, character.only = TRUE)) install.packages(p)

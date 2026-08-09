@@ -13,7 +13,7 @@
 ## o nascer e o por do sol) de cada dia, calculado a partir da posicao
 ## (lat/lon) do projeto com o package suncalc.
 ##
-## Depende de: data.table, lubridate, suncalc, ggplot2
+## Depende de: data.table, lubridate, suncalc, ggplot2, scales
 ##
 
 
@@ -137,6 +137,12 @@ summarise_availability <- function(daylight_availability_dt) {
 
   by_idf[, monitoring_period_pct := round(100 * offline_mins_total / daylight_mins_total, 1)]
   by_idf[, availability_pct := round(100 - monitoring_period_pct, 1)]
+  by_idf[, availability_cat := cut(
+    availability_pct,
+    breaks = c(-Inf, 60, 80, 90, 96, Inf),
+    labels = c("<60%", "60-80%", "80-90%", "90-96%", ">96%"),
+    right = TRUE
+  )]
   setorder(by_idf, -monitoring_period_pct)
 
   by_month <- daylight_availability_dt[, .(
@@ -170,32 +176,70 @@ add_calendar_coords <- function(dt) {
   dt[]
 }
 
-plot_availability_calendar <- function(daylight_availability_dt, idf_sel = NULL) {
+## `by_idf_summary` (de summarise_availability()$by_idf) e usado so para
+## selecionar as `top_n` unidades com mais tempo offline quando `idf_sel`
+## nao e indicado -- mantem o grafico legivel quando ha muitas unidades IDF.
+
+plot_availability_calendar <- function(daylight_availability_dt, by_idf_summary,
+                                       idf_sel = NULL, top_n = 12L) {
+
+  if (is.null(idf_sel)) {
+    idf_sel <- by_idf_summary[order(-offline_mins_total)][seq_len(min(top_n, .N)), idf]
+  }
 
   dt <- add_calendar_coords(daylight_availability_dt)
-  dt[, availability_pct := 100 * (1 - offline_pct)]
+  dt <- dt[idf %in% idf_sel]
 
-  if (!is.null(idf_sel)) dt <- dt[idf %in% idf_sel]
+  # celulas sem qualquer offline (cinza) separadas das celulas com offline > 0 (gradiente)
+  dat_zero <- dt[!is.na(offline_pct) & offline_pct <= 0]
+  dat_pos  <- dt[!is.na(offline_pct) & offline_pct > 0]
 
-  ggplot(dt, aes(x = weekday_lab, y = week_of_month, fill = availability_pct)) +
-    geom_tile(colour = "grey85", linewidth = 0.2) +
-    facet_grid(idf ~ ym, scales = "free_y") +
-    scale_y_reverse(breaks = seq(1, 6, 1)) +
-    scale_fill_gradient(
-      name = "Disponibilidade\n(% tempo diurno)",
-      low = "firebrick", high = "forestgreen",
-      limits = c(0, 100),
-      labels = function(x) paste0(x, "%")
+  ggplot() +
+    geom_tile(
+      data = dat_zero,
+      aes(x = weekday_lab, y = week_of_month),
+      fill = "grey90", colour = "grey85", linewidth = 0.2
     ) +
+    geom_tile(
+      data = dat_pos,
+      aes(x = weekday_lab, y = week_of_month, fill = offline_pct),
+      colour = "grey85", linewidth = 0.2
+    ) +
+    facet_grid(idf ~ ym, scales = "free_y") +
+    scale_fill_gradient(
+      name = "Offline (%)",
+      limits = c(0, 1),
+      labels = scales::percent,
+      breaks = scales::pretty_breaks(5),
+      low = "#e0f3db", high = "#0868ac"
+    ) +
+    scale_y_reverse(breaks = seq(1, 6, 1)) +
     labs(
       x = NULL, y = "Semana do mes",
-      title = "Disponibilidade diurna por unidade IDF"
+      title = "Calendario de % offline durante o dia, por unidade IDF",
+      subtitle = sprintf("Top %d unidades IDF por tempo offline", length(idf_sel))
     ) +
-    theme_minimal(base_size = 11) +
+    theme_minimal(base_size = 9) +
     theme(
       panel.grid = element_blank(),
       strip.background = element_rect(fill = "grey95", color = NA),
       strip.text = element_text(face = "bold"),
-      axis.text.x = element_text(hjust = 0.5)
+      axis.text.x = element_text(hjust = 0.5),
+      axis.ticks = element_blank()
     )
+}
+
+
+## 7. Frequencia de unidades IDF por categoria de disponibilidade ----
+
+plot_availability_frequency <- function(by_idf_summary) {
+
+  ggplot(by_idf_summary, aes(x = availability_cat)) +
+    geom_bar(fill = "steelblue") +
+    labs(
+      x = "Categoria de disponibilidade",
+      y = "Numero de unidades IDF",
+      title = "Frequencia de unidades IDF por disponibilidade diurna"
+    ) +
+    theme_minimal()
 }
