@@ -127,24 +127,28 @@ classify_curtailment_response <- function(curtl_dt, scada_dt,
     windows,
     on = .(turbine, datetime >= window_start, datetime <= window_end),
     allow.cartesian = TRUE,
-    .(curtailment_id = i.curtailment_id, window_start = i.window_start, datetime, rpm)
+    .(curtailment_id = i.curtailment_id, window_start = i.window_start,
+      datetime = x.datetime, rpm = x.rpm)
   ]
 
   # numero de leituras por curtailment (inclui os que tem 0, para distinguir no_data)
   n_readings_dt <- rpm_window[, .(n_readings_in_window = sum(!is.na(rpm))), by = curtailment_id]
 
-  # 1o instante, dentro da janela, com rpm abaixo do limiar -- calculado a
-  # parte (filtrar e so depois agregar), sem bloco condicional dentro do
-  # agregado, para nao repetir o bug de time_to_drop_sec sair sempre 0
+  # 1o instante, dentro da janela, com rpm abaixo do limiar -- window_start
+  # vem do MESMO grupo (first(), nao de um merge() separado depois -- e o
+  # padrao que confirmamos funcionar bem em assess_curtailment_response())
   drop_times_dt <- rpm_window[
     !is.na(rpm) & rpm < rpm_threshold,
-    .(first_drop_time = min(datetime)),
+    .(first_drop_time = min(datetime), window_start = first(window_start)),
     by = curtailment_id
   ]
+  drop_times_dt[, time_to_drop_sec := as.numeric(difftime(first_drop_time, window_start, units = "secs"))]
 
-  drop_summary <- merge(n_readings_dt, drop_times_dt, by = "curtailment_id", all.x = TRUE)
-  drop_summary <- merge(drop_summary, windows[, .(curtailment_id, window_start)], by = "curtailment_id")
-  drop_summary[, time_to_drop_sec := as.numeric(difftime(first_drop_time, window_start, units = "secs"))]
+  drop_summary <- merge(
+    n_readings_dt,
+    drop_times_dt[, .(curtailment_id, first_drop_time, time_to_drop_sec)],
+    by = "curtailment_id", all.x = TRUE
+  )
 
   ## Combinar tudo ----
   result <- merge(
