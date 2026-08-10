@@ -127,7 +127,8 @@ classify_curtailment_response <- function(curtl_dt, scada_dt,
     windows,
     on = .(turbine, datetime >= window_start, datetime <= window_end),
     allow.cartesian = TRUE,
-    .(curtailment_id = i.curtailment_id, window_start = i.window_start, datetime, rpm)
+    .(curtailment_id = i.curtailment_id, window_start = i.window_start,
+      datetime = x.datetime, rpm = x.rpm)
   ]
 
   # numero de leituras por curtailment (inclui os que tem 0, para distinguir no_data)
