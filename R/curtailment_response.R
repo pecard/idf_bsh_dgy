@@ -320,9 +320,21 @@ summarise_curtailment_assessment <- function(assess_dt) {
 
   by_status <- assess_dt[, .(n = .N), by = final_status]
   by_status[, pct := round(100 * n / sum(n), 1)]
+  # % sobre os curtailments com match valido (exclui no_data) -- da o peso
+  # real do partial_or_no_stop ("missed curtailments") sem ser diluido pelo
+  # no_data, que pode ser a maioria dos casos e esconder a taxa de falha
+  n_valid_status <- sum(by_status[final_status != "no_data", n])
+  by_status[, pct_of_valid := fifelse(
+    final_status == "no_data", NA_real_, round(100 * n / n_valid_status, 1)
+  )]
 
   by_immediate <- assess_dt[, .(n = .N), by = no_immediate_response]
   by_immediate[, pct := round(100 * n / sum(n), 1)]
+  # % sobre os casos em que foi possivel determinar (exclui NA)
+  n_determined <- sum(by_immediate[!is.na(no_immediate_response), n])
+  by_immediate[, pct_of_determined := fifelse(
+    is.na(no_immediate_response), NA_real_, round(100 * n / n_determined, 1)
+  )]
 
   by_turbine <- assess_dt[, .(
     n_curtailments          = .N,
@@ -334,8 +346,14 @@ summarise_curtailment_assessment <- function(assess_dt) {
     mean_rpm_delta_pct      = mean(rpm_delta_pct, na.rm = TRUE)
   ), by = turbine]
 
+  by_turbine[, n_valid_matches := n_curtailments - n_no_data]
   by_turbine[, no_immediate_response_pct := round(100 * n_no_immediate_response / n_curtailments, 1)]
-  setorder(by_turbine, -no_immediate_response_pct)
+  # "missed curtailments" -- partial_or_no_stop sobre o universo com match
+  # valido (exclui no_data), por turbina
+  by_turbine[, missed_pct := fifelse(
+    n_valid_matches > 0, round(100 * n_partial_or_no_stop / n_valid_matches, 1), NA_real_
+  )]
+  setorder(by_turbine, -missed_pct)
 
   list(by_status = by_status[], by_immediate = by_immediate[], by_turbine = by_turbine[])
 }
