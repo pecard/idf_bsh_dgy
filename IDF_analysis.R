@@ -441,38 +441,56 @@ options(error = function() message("Skipping failed step"))
 
 
       # NOTA:
-      # Analise sera feita apenas para range temporal que tiver dados de SCADA
+      # Analise sera feita apenas para range temporal e turbinas que tiverem dados de SCADA
 
-      #scada_ini  --> definido no userSettings.txt
-      #scada_end  --> definido no userSettings.txt
-      #turbinas_scada --> definido no userSettings.txt
-      #safe_shutdown_rpm --> definido no userSettings.txt
+      #scada_ini  --> definido no userSettings_BSH.R
+      #scada_end  --> definido no userSettings_BSH.R
+      #turbinas_scada --> definido no userSettings_BSH.R
+      #safe_shutdown_rpm --> definido no userSettings_BSH.R
 
-      if (FALSE && exists("scada_dt")) { #Apenas corre se tiver dados de SCADA (desativado)
+      if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
 
-          turbinas_teste <- turbinas_scada
-          turbine_list <- turbinas_scada
+        source("R/curtailment_response.R")
 
-          #Preparar tabela CURTAILMENTS+SCADA que vai ser necessario para os prox analises
-          source(file.path(folder_script_IDF, 'curtailments_scada_roll_join.R'))
-          source(file.path(folder_script_IDF, 'curtailments_time_to_curtail_calc.R'))
+        curtl_scada_dt <- curtl_dt[
+          turbine %in% turbinas_scada & start >= scada_ini & start <= scada_end
+        ]
 
-          ###... B.1 Response time (time to -10% rpm) ----
-          source(file.path(folder_script_IDF, 'response_time.R'))
+        ###... B.1 Avaliacao principal: baseline apertado + resposta imediata + delta start->end ----
+        assess_dt <- assess_curtailment_response(
+          curtl_scada_dt, scada_dt,
+          start_end_gap_sec = 2, max_next_gap_sec = 20,
+          drop_pct_threshold = 0.10, rpm_threshold = safe_shutdown_rpm
+        )
+        summary_assess <- summarise_curtailment_assessment(assess_dt)
 
-          ###... B.2 Shutdown time (time to < safe_shutdown_rpm e.g. <1rpm) ----
-          source(file.path(folder_script_IDF, 'shutdown_time.R'))
+        writexl::write_xlsx(
+          list(
+            Assessment   = assess_dt,
+            By_status    = summary_assess$by_status,
+            By_immediate = summary_assess$by_immediate,
+            By_turbine   = summary_assess$by_turbine
+          ),
+          file.path(folder_output, paste0("curtailment_response_assessment_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+        )
 
-          ###... B.3. Missed  curtailments (if safe_shutdown_rpm is reached e.g. <1rpm is reached) ----
-          source(file.path(folder_script_IDF, 'curtailments_missed.R'))
+        ###... B.2 Vista complementar: janela larga de 90s, tolerancia mais permissiva (15s) ----
+        response_dt <- classify_curtailment_response(
+          curtl_scada_dt, scada_dt,
+          monitor_window_sec = 90, rpm_threshold = safe_shutdown_rpm, max_gap_sec = 15
+        )
+        summary_response <- summarise_curtailment_response(response_dt)
 
-          ###... B.4. Curtailment safe distances (distance to reach rotor at safe_shutdown_rpm) ----
-          source(file.path(folder_script_IDF, 'curtailments_safe_distances.R'))
+        writexl::write_xlsx(
+          list(
+            Window_response = response_dt,
+            By_status       = summary_response$by_status,
+            By_turbine      = summary_response$by_turbine
+          ),
+          file.path(folder_output, paste0("curtailment_response_window_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+        )
 
-          ###... B.5. Delayed curtailments ----
-          source(file.path(folder_script_IDF, 'curtailments_delayed.R'))
-          source(file.path(folder_script_IDF, 'curtailments_threshold_dist.R'))
-      }
+      } else {print("SCADA data not available - Curtailment response assessment was skipped")}
 
     
 ##
