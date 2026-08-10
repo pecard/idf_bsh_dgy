@@ -445,7 +445,26 @@ options(error = function() message("Skipping failed step"))
       #scada_end  --> definido no userSettings_BSH.R
       #turbinas_scada --> definido no userSettings_BSH.R
       #safe_shutdown_rpm --> definido no userSettings_BSH.R
-
+    
+    # os três sub-resumos em summary_assess cobrem exatamente o mesmo universo, 
+    # só que cada um agrega por um critério diferente. Vale a pena somar para confirmar:
+    #   
+    # Os três totais batem certo — não há inconsistência, só parece diferente porque as categorias são outras.
+    # 
+    # O universo comum: curtl_scada_dt
+    # Todos os três vêm de assess_dt, que por sua vez vem de 
+    # assess_curtailment_response(curtl_scada_dt, scada_dt, ...). 
+    # E curtl_scada_dt é definido assim, na secção 3.5:
+    #   
+    # curtl_scada_dt <- curtl_dt[turbine %in% turbinas_scada & start >= scada_ini & start <= scada_end]
+    # Ou seja: todos os curtailments (sucesso, falha, ou sem dados — todos) das turbinas em turbinas_scada, 
+    # dentro da janela [scada_ini, scada_end]. Cada curtailment aparece nos três sumários, 
+    # só agrupado de forma diferente:
+    #   
+    # $by_status — agrupa esses curtailments totais pelo final_status (o resultado global: parou / não parou / já estava parada / sem dados).
+    # $by_immediate — agrupa os mesmos totais pelo no_immediate_response (só a verificação da leitura seguinte ao sinal — um critério diferente, independente do final_status).
+    # $by_turbine — agrupa os mesmos totais por turbina, cruzando os dois critérios numa linha por turbina.
+    # 
       if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
 
         source("R/curtailment_response.R")
