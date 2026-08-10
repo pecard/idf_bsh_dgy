@@ -183,3 +183,145 @@ cat(paste(
   "'responded'. Isto mostra porque a deteccao usa uma janela de leituras",
   "e nao depende so do match nearest do sinal de start.\n"
 ))
+
+
+##
+## PARTE C -- resposta imediata + delta start->end (assess_curtailment_response)
+##
+## Parametros usados: start_end_gap_sec=2, max_next_gap_sec=20,
+## drop_pct_threshold=0.10, rpm_threshold=1 (mesmos valores da decisao tomada
+## na conversa, e os defaults da funcao).
+##
+## 7 turbinas sinteticas, uma por caminho de decisao:
+##   TESTC1 -- respondeu logo (queda >=10% na leitura seguinte) e parou ate ao fim
+##   TESTC2 -- reagiu devagar (no_immediate_response=TRUE) mas AINDA ASSIM parou ate ao fim
+##   TESTC3 -- reagiu devagar E nunca parou -- falha grave (partial_or_no_stop)
+##   TESTC4 -- already_stopped (ja <1rpm no sinal de start, match apertado valido)
+##   TESTC5 -- o ponto que o Paulo levantou: o match do start fica a 4s (a
+##             tolerancia ANTIGA de 15s teria aceite; a NOVA de 2s rejeita) --
+##             mesmo assim, o match do end (independente) ainda da resultado
+##   TESTC6 -- a leitura seguinte ao start só aparece 35s depois (buraco a
+##             seguir ao sinal, > max_next_gap_sec=20s) -- no_immediate_response
+##             fica NA, nao FALSE nem TRUE, porque nao ha como saber
+##   TESTC7 -- no_data (sem SCADA nenhum para esta turbina)
+
+## TESTC1: respondeu logo, parou ate ao fim ---------------------------------
+base_c1 <- as.POSIXct("2026-02-01 00:00:00", tz = "UTC")
+scada_c1 <- data.table(
+  turbinelabel = "TESTC1",
+  datetime     = base_c1 + c(0, 10, 20, 30, 40),
+  value        = c(12, 9.6, 5, 2, 0.5),   # -20% logo na 1a leitura a seguir
+  readingname  = "RPM"
+)
+curtl_c1 <- data.table(turbine = "TESTC1", track_id = "TC1", species = "Golden-Eagle",
+                       start = base_c1 + 0.3, end = base_c1 + 40.2)
+
+## TESTC2: reagiu devagar, mas parou ate ao fim ------------------------------
+base_c2 <- as.POSIXct("2026-02-01 00:10:00", tz = "UTC")
+scada_c2 <- data.table(
+  turbinelabel = "TESTC2",
+  datetime     = base_c2 + c(0, 10, 20, 30, 40),
+  value        = c(12, 11.8, 10, 5, 0.5),  # so -1.7% na 1a leitura -> devagar
+  readingname  = "RPM"
+)
+curtl_c2 <- data.table(turbine = "TESTC2", track_id = "TC2", species = "Steppe-Eagle",
+                       start = base_c2 + 0.5, end = base_c2 + 40.3)
+
+## TESTC3: reagiu devagar E nunca parou (falha grave) ------------------------
+base_c3 <- as.POSIXct("2026-02-01 00:20:00", tz = "UTC")
+scada_c3 <- data.table(
+  turbinelabel = "TESTC3",
+  datetime     = base_c3 + c(0, 10, 20, 30),
+  value        = c(13, 12.9, 12.5, 13),   # nunca cai
+  readingname  = "RPM"
+)
+curtl_c3 <- data.table(turbine = "TESTC3", track_id = "TC3", species = "Egyptian-Vulture",
+                       start = base_c3 + 0, end = base_c3 + 30.5)
+
+## TESTC4: already_stopped ---------------------------------------------------
+base_c4 <- as.POSIXct("2026-02-01 00:30:00", tz = "UTC")
+scada_c4 <- data.table(
+  turbinelabel = "TESTC4",
+  datetime     = base_c4 + c(0, 10, 20),
+  value        = c(0.4, 0.35, 0.3),
+  readingname  = "RPM"
+)
+curtl_c4 <- data.table(turbine = "TESTC4", track_id = "TC4", species = "Saker-Falcon",
+                       start = base_c4 + 0, end = base_c4 + 20.2)
+
+## TESTC5: match do start a 4s -- tolerancia antiga (15s) aceitaria, a nova
+##         (2s) rejeita; o match do end continua valido e independente -------
+base_c5 <- as.POSIXct("2026-02-01 00:40:00", tz = "UTC")
+scada_c5 <- data.table(
+  turbinelabel = "TESTC5",
+  datetime     = base_c5 + c(0, 10, 20, 30),
+  value        = c(12, 9, 4, 0.5),
+  readingname  = "RPM"
+)
+curtl_c5 <- data.table(turbine = "TESTC5", track_id = "TC5", species = "Golden-Eagle",
+                       start = base_c5 + 4, end = base_c5 + 30.3)
+
+## TESTC6: leitura seguinte so aparece 35s depois (buraco logo a seguir) -----
+base_c6 <- as.POSIXct("2026-02-01 00:50:00", tz = "UTC")
+scada_c6 <- data.table(
+  turbinelabel = "TESTC6",
+  datetime     = base_c6 + c(0, 35, 45),
+  value        = c(12, 3, 0.5),
+  readingname  = "RPM"
+)
+curtl_c6 <- data.table(turbine = "TESTC6", track_id = "TC6", species = "Steppe-Eagle",
+                       start = base_c6 + 0.2, end = base_c6 + 45.3)
+
+## TESTC7: no_data ------------------------------------------------------------
+base_c7 <- as.POSIXct("2026-02-01 01:00:00", tz = "UTC")
+scada_c7 <- data.table(
+  turbinelabel = character(), datetime = as.POSIXct(character(), tz = "UTC"),
+  value = numeric(), readingname = character()
+)
+curtl_c7 <- data.table(turbine = "TESTC7", track_id = "TC7", species = "Saker-Falcon",
+                       start = base_c7, end = base_c7 + 60)
+
+scada_c_all <- rbindlist(list(scada_c1, scada_c2, scada_c3, scada_c4, scada_c5, scada_c6, scada_c7))
+curtl_c_all <- rbindlist(list(curtl_c1, curtl_c2, curtl_c3, curtl_c4, curtl_c5, curtl_c6, curtl_c7))
+
+assess_dt <- assess_curtailment_response(
+  curtl_c_all, scada_c_all,
+  start_end_gap_sec = 2, max_next_gap_sec = 20, drop_pct_threshold = 0.10, rpm_threshold = 1
+)
+
+expected_c <- data.table(
+  turbine = c("TESTC1", "TESTC2", "TESTC3", "TESTC4", "TESTC5", "TESTC6", "TESTC7"),
+  expected_no_immediate  = c(FALSE, TRUE, TRUE, FALSE, NA, NA, NA),
+  expected_final_status  = c("full_stop_by_end", "full_stop_by_end", "partial_or_no_stop",
+                             "already_stopped", "full_stop_by_end", "full_stop_by_end", "no_data")
+)
+
+check_c <- merge(assess_dt, expected_c, by = "turbine")
+check_c[, `:=`(
+  immediate_ok = (is.na(no_immediate_response) & is.na(expected_no_immediate)) |
+                 (!is.na(no_immediate_response) & !is.na(expected_no_immediate) &
+                    no_immediate_response == expected_no_immediate),
+  status_ok    = final_status == expected_final_status
+)]
+
+cat("\n===== PARTE C: assess_curtailment_response() =====\n")
+print(check_c[, .(turbine, no_immediate_response, expected_no_immediate, immediate_ok,
+                  final_status, expected_final_status, status_ok,
+                  start_rpm, start_match_valid, next_rpm, next_gap_sec,
+                  end_rpm, end_match_valid, rpm_delta_pct)])
+cat(sprintf(
+  "\nResultado: %d/%d cenarios corretos.\n",
+  sum(check_c$immediate_ok & check_c$status_ok), nrow(check_c)
+))
+cat(paste(
+  "Nota sobre TESTC5: o sinal de start fica a 4s da leitura mais proxima.",
+  "Com a tolerancia antiga (15s) teria sido aceite; com a nova (2s,",
+  "start_end_gap_sec) e corretamente rejeitado -- start_rpm e",
+  "no_immediate_response ficam NA, porque nao temos um baseline fiavel.",
+  "Mas o match do 'end' e completamente independente e continua valido,",
+  "por isso final_status ainda sai 'full_stop_by_end'.\n\n",
+  "Nota sobre TESTC6: a leitura seguinte ao sinal de start so aparece 35s",
+  "depois (> max_next_gap_sec=20s) -- e tratada como buraco de dados, nao",
+  "como 'nao respondeu'. no_immediate_response fica NA em vez de TRUE, que",
+  "seria uma conclusao errada.\n"
+))
