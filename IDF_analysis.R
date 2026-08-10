@@ -507,6 +507,31 @@ options(error = function() message("Skipping failed step"))
           file.path(folder_output, paste0("curtailment_response_window_", date(scada_ini), "to", date(scada_end), ".xlsx"))
         )
 
+        ### 3.6. Tempo ate atingir limiares de RPM (2, 1, 0), por curtailment ----
+
+        source("R/curtailment_shutdown_time.R")
+
+        tt_dt <- time_to_rpm_thresholds(
+          curtl_scada_dt, scada_dt, thresholds = c(2, 1, 0), start_end_gap_sec = 2
+        )
+        summary_tt_by_turbine <- summarise_time_to_threshold(tt_dt)
+        summary_tt_bands      <- summarise_time_to_threshold_bands(tt_dt, low_cut = 40, high_cut = 50)
+
+        writexl::write_xlsx(
+          list(
+            Time_to_threshold = tt_dt,
+            By_turbine        = summary_tt_by_turbine,
+            Bands_40_50s      = summary_tt_bands
+          ),
+          file.path(folder_output, paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+        )
+
+        p_shutdown_time <- plot_time_to_threshold(tt_dt)
+        ggsave(
+          file.path(folder_output, paste0("curtailment_shutdown_time_hist_", date(scada_ini), "to", date(scada_end), ".png")),
+          plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
+        )
+
       } else {print("SCADA data not available - Curtailment response assessment was skipped")}
 
 ##
