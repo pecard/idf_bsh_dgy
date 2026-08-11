@@ -29,7 +29,7 @@ read_scada_data <- function(databases_dirs, pattern) {
   setkey(dt, datetime)
 
   dt[, `:=`(
-    difft    = as.numeric(difftime(datetime, shift(datetime), units = 'secs')),
+    difft    = as.numeric(difftime(datetime, data.table::shift(datetime), units = 'secs')),
     monthy_y = format(as.Date(datetime), "%Y-%m")
   )]
 

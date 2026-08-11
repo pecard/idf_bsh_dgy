@@ -46,7 +46,7 @@ compute_offline_intervals <- function(heartb_dt, offline_gap_min = 60, online_gr
   hb <- copy(heartb_dt)
   setkeyv(hb, c("idf", "timestamp"))
 
-  hb[, ts_prev := shift(timestamp, type = "lag"), by = idf]
+  hb[, ts_prev := data.table::shift(timestamp, type = "lag"), by = idf]
 
   # 1º heartbeat de cada unidade: assume-se online nos `online_grace_min` min anteriores
   hb[is.na(ts_prev), ts_prev := timestamp - minutes(online_grace_min)]
