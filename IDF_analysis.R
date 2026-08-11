@@ -148,7 +148,6 @@ options(error = function() message("Skipping failed step"))
   scada_dt_unfilt  <- read_scada_data(databases_dir_alt, scada_pattern)          # SCADA data
   heartb_dt_unfilt <- read_heartbeats_data(databases_dir, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
   
-  unique(heartb_dt_unfilt$idf)
   
   #Project-specific corrections --> handle_script.R
   #if(file.exists('handle_script.R')) {source('handle_script.R')}
@@ -271,7 +270,9 @@ options(error = function() message("Skipping failed step"))
     } else {print("Heartbeat data not available - IDF data coverage check was skipped")}
 
 
-
+## Printed Summaries for all 4 main datasets ---
+  unique(heartb_dt_unfilt$idf)
+  
 
 ##
 ## 0. Filter data ----
