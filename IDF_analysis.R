@@ -368,7 +368,7 @@ options(error = function() message("Skipping failed step"))
 
         # Unidades com mais tempo offline - usado nos 2 graficos abaixo, para
         # manterem as mesmas unidades e ficarem legiveis
-        idf_availability_top_n <- 12L
+        #idf_availability_top_n --> definido no userSettings_BSH.R
         idf_sel <- idf_availability_summary$by_idf[
           order(-offline_mins_total)][seq_len(min(idf_availability_top_n, .N)), idf]
 
@@ -447,6 +447,8 @@ options(error = function() message("Skipping failed step"))
       #scada_end  --> definido no userSettings_BSH.R
       #turbinas_scada --> definido no userSettings_BSH.R
       #safe_shutdown_rpm --> definido no userSettings_BSH.R
+      #curtailment_start_end_gap_sec, curtailment_max_next_gap_sec, curtailment_drop_pct_threshold --> definidos no userSettings_BSH.R
+      #curtailment_window_sec, curtailment_window_max_gap_sec --> definidos no userSettings_BSH.R
     
     # os três sub-resumos em summary_assess cobrem exatamente o mesmo universo, 
     # só que cada um agrega por um critério diferente. Vale a pena somar para confirmar:
@@ -478,8 +480,8 @@ options(error = function() message("Skipping failed step"))
         ###... B.1 Avaliacao principal: baseline apertado + resposta imediata + delta start->end ----
         assess_dt <- assess_curtailment_response(
           curtl_scada_dt, scada_dt,
-          start_end_gap_sec = 2, max_next_gap_sec = 20,
-          drop_pct_threshold = 0.10, rpm_threshold = safe_shutdown_rpm
+          start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
+          drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm
         )
         summary_assess <- summarise_curtailment_assessment(assess_dt)
 
@@ -496,7 +498,8 @@ options(error = function() message("Skipping failed step"))
         ###... B.2 Vista complementar: janela larga de 90s, tolerancia mais permissiva (15s) ----
         response_dt <- classify_curtailment_response(
           curtl_scada_dt, scada_dt,
-          monitor_window_sec = 90, rpm_threshold = safe_shutdown_rpm, max_gap_sec = 15
+          monitor_window_sec = curtailment_window_sec, rpm_threshold = safe_shutdown_rpm,
+          max_gap_sec = curtailment_window_max_gap_sec
         )
         summary_response <- summarise_curtailment_response(response_dt)
 
@@ -511,13 +514,18 @@ options(error = function() message("Skipping failed step"))
 
         ### 3.6. Tempo ate atingir limiares de RPM (2, 1, 0), por curtailment ----
 
+        #shutdown_time_thresholds, shutdown_time_low_cut, shutdown_time_high_cut --> definidos no userSettings_BSH.R
+
         source("R/curtailment_shutdown_time.R")
 
         tt_dt <- time_to_rpm_thresholds(
-          curtl_scada_dt, scada_dt, thresholds = c(2, 1, 0), start_end_gap_sec = 2
+          curtl_scada_dt, scada_dt, thresholds = shutdown_time_thresholds,
+          start_end_gap_sec = curtailment_start_end_gap_sec
         )
         summary_tt_by_turbine <- summarise_time_to_threshold(tt_dt)
-        summary_tt_bands      <- summarise_time_to_threshold_bands(tt_dt, low_cut = 40, high_cut = 50)
+        summary_tt_bands      <- summarise_time_to_threshold_bands(
+          tt_dt, low_cut = shutdown_time_low_cut, high_cut = shutdown_time_high_cut
+        )
 
         writexl::write_xlsx(
           list(
