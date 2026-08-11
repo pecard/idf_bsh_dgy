@@ -46,7 +46,7 @@ heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11", "BSH64-04", "BSH62-
 ## Timeframe for analysis/reporting period
 ##
 
-ini <- as.POSIXct('2025-10-15 00:00:00', tz = 'UTC')
+ini <- as.POSIXct('2025-10-01 00:00:00', tz = 'UTC')
 end <- as.POSIXct('2026-06-30 23:59:59', tz = 'UTC')
 
 
@@ -153,7 +153,7 @@ shutdown_time_high_cut   <- 50 # segundos
 idf_op_detection_range <- 1000 # em metros; distancia de deteção operational do IDF a considerar na análise
 
 coverage_cylinder_height       <- 1000 # em metros; 3D coverage cylinder - height
-coverage_cylinder_wider_radius <- 1000 # em metros; 3D coverage cylinder - wider radius
+coverage_cylinder_wider_radius <- 1100 # em metros; 3D coverage cylinder - wider radius
 coverage_cylinder_inner_radius <- 600  # em metros; 3D coverage cylinder - inner radius
 
 ## -- 4.2. WTG coverage 3D com topografia (DEM) --
