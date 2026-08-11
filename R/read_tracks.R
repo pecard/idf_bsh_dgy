@@ -75,8 +75,8 @@ read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv") {
 
   # Distancia/tempo/velocidade entre pontos consecutivos do mesmo track
   dt[, `:=`(
-    dist_m = sqrt((utm_x - shift(utm_x))^2 + (utm_y - shift(utm_y))^2),
-    time_s = as.numeric(difftime(timestamp, shift(timestamp), units = 'secs'))
+    dist_m = sqrt((utm_x - data.table::shift(utm_x))^2 + (utm_y - data.table::shift(utm_y))^2),
+    time_s = as.numeric(difftime(timestamp, data.table::shift(timestamp), units = 'secs'))
   ), by = track_id]
 
   dt[, speed_ms := dist_m / time_s]
