@@ -139,15 +139,21 @@ options(error = function() message("Skipping failed step"))
   
   
   #Databases
+  source("R/read_utils.R")
   source("R/read_tracks.R")
   source("R/read_curtailments.R")
   source("R/read_scada.R")
   source("R/read_heartbeats.R")
 
-  track_dt_unfilt  <- read_tracks_data(databases_dir, trackreport_pattern)   # Tracks data
-  curtl_dt_unfilt  <- read_curtailments_data(databases_dir_alt, curtailments_pattern) # Curtailments data
-  scada_dt_unfilt  <- read_scada_data(databases_dir_alt, scada_pattern)          # SCADA data
-  heartb_dt_unfilt <- read_heartbeats_data(databases_dir, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
+  # databases_dir (local) + databases_dir_alt (servidor), quando definido --
+  # procura ficheiros em ambos, sem duplicar; ordem = precedencia quando o
+  # mesmo nome de ficheiro existe nos dois (ver R/read_utils.R)
+  databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
+
+  track_dt_unfilt  <- read_tracks_data(databases_dirs, trackreport_pattern)   # Tracks data
+  curtl_dt_unfilt  <- read_curtailments_data(databases_dirs, curtailments_pattern) # Curtailments data
+  scada_dt_unfilt  <- read_scada_data(databases_dirs, scada_pattern)          # SCADA data
+  heartb_dt_unfilt <- read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
   
   
   #Project-specific corrections --> handle_script.R

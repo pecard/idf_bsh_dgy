@@ -1,12 +1,12 @@
 ##
 ## Read SCADA data (RPM/estado das turbinas)
 ##
-## Depende de: data.table
+## Depende de: data.table, R/read_utils.R
 ##
 
-read_scada_data <- function(databases_dir, pattern) { # alternative folder 
+read_scada_data <- function(databases_dirs, pattern) {
 
-  files <- list.files(databases_dir, pattern = pattern, full.names = TRUE)
+  files <- list_files_multi_dir(databases_dirs, pattern)
 
   if (length(files) == 0) return(NULL)
 
@@ -19,6 +19,10 @@ read_scada_data <- function(databases_dir, pattern) { # alternative folder
     stringsAsFactors = FALSE,
     blank.lines.skip = TRUE
   ))
+
+  # Remover linhas duplicadas -- ex: mesmo ficheiro/periodo repetido entre
+  # diretorios diferentes -- antes de qualquer calculo dependente da ordem
+  dt <- unique(dt)
 
   setnames(dt, tolower(names(dt)))
   setnames(dt, "logtimestamp", "datetime")
