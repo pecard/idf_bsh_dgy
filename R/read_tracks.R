@@ -1,12 +1,12 @@
 ##
 ## Read Track Report data (IDF track/flight detections)
 ##
-## Depende de: data.table, janitor
+## Depende de: data.table, janitor, R/read_utils.R
 ##
 
-read_tracks_data <- function(databases_dir, pattern = "TrackReport.+csv") {
+read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv") {
 
-  files <- list.files(databases_dir, pattern = pattern, full.names = TRUE)
+  files <- list_files_multi_dir(databases_dirs, pattern)
 
   vars <- c(
     'TrackId',
@@ -32,6 +32,10 @@ read_tracks_data <- function(databases_dir, pattern = "TrackReport.+csv") {
     stringsAsFactors = FALSE,
     blank.lines.skip = TRUE
   ))
+
+  # Remover linhas duplicadas -- ex: mesmo ficheiro/periodo repetido entre
+  # diretorios diferentes -- antes de qualquer calculo dependente da ordem
+  dt <- unique(dt)
 
   setnames(dt, names(clean_names(dt)))
 

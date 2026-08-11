@@ -1,12 +1,12 @@
 ##
 ## Read Curtailments data (ordens de paragem/curtailment)
 ##
-## Depende de: readxl, janitor, lubridate, dplyr
+## Depende de: readxl, janitor, lubridate, dplyr, R/read_utils.R
 ##
 
-read_curtailments_data <- function(databases_dir, pattern) { # alternative folder 
+read_curtailments_data <- function(databases_dirs, pattern) {
 
-  files <- list.files(databases_dir, pattern = pattern, full.names = TRUE)
+  files <- list_files_multi_dir(databases_dirs, pattern)
 
   read_one_file <- function(f) {
     read_xlsx(f, sheet = 1, skip = 1) %>%
@@ -20,6 +20,7 @@ read_curtailments_data <- function(databases_dir, pattern) { # alternative folde
   dt <-
     lapply(files, read_one_file) %>%
     bind_rows() %>%
+    distinct() %>% # remover linhas duplicadas -- ex: mesmo ficheiro/periodo repetido entre diretorios diferentes
     mutate(monthy_y = format(as.Date(start), "%Y-%m"))
 
   dt

@@ -1,13 +1,13 @@
 ##
 ## Read Heartbeats data (sinal de vida das unidades IDF)
 ##
-## Depende de: data.table, janitor, lubridate
+## Depende de: data.table, janitor, lubridate, R/read_utils.R
 ##
 
-read_heartbeats_data <- function(databases_dir, pattern = "Bash_Heartbeats.+csv",
+read_heartbeats_data <- function(databases_dirs, pattern = "Bash_Heartbeats.+csv",
                                   tz = "UTC", exclude_idf = c("TIE-ZAR-119", "")) {
 
-  files <- list.files(databases_dir, pattern = pattern, full.names = TRUE)
+  files <- list_files_multi_dir(databases_dirs, pattern)
 
   if (length(files) == 0) return(NULL)
 
@@ -20,6 +20,10 @@ read_heartbeats_data <- function(databases_dir, pattern = "Bash_Heartbeats.+csv"
     stringsAsFactors = FALSE,
     blank.lines.skip = TRUE
   ))
+
+  # Remover linhas duplicadas -- ex: mesmo ficheiro/periodo repetido entre
+  # diretorios diferentes -- antes de qualquer calculo dependente da ordem
+  dt <- unique(dt)
 
   setnames(dt, names(clean_names(dt)))
 
