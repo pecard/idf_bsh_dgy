@@ -35,11 +35,12 @@ options(error = function() message("Skipping failed step"))
 
   ##Needed packages
   packages <- c('purrr','rstudioapi', #purrr needed for citation; rstudioapi needed for dynamic atribution of working directory with getActiveDocumentContext()
-                'tidyverse', 'lubridate', 'hms', 'ggplot2', 
+                'tidyverse', 'lubridate', 'hms', 'ggplot2',
                 'scales', 'readxl', 'janitor', 'sf', 'geosphere',
                 'gt', 'skimr', 'vtable', 'data.table', 'htmlwidgets',
                 'ggTimeSeries', 'suncalc', #,'patchwork','arrow'
-                'openxlsx','writexl','rmarkdown','flextable','systemfonts') 
+                'openxlsx','writexl','rmarkdown','flextable','systemfonts',
+                'terra', 'RANN', 'plotly') #terra/RANN/plotly: coverage 3D com topografia (DEM)
 
   ##Check and install packages that are missing + call library()
   for (p in packages) {

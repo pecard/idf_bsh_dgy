@@ -156,8 +156,24 @@ coverage_cylinder_height       <- 1000 # em metros; 3D coverage cylinder - heigh
 coverage_cylinder_wider_radius <- 1000 # em metros; 3D coverage cylinder - wider radius
 coverage_cylinder_inner_radius <- 600  # em metros; 3D coverage cylinder - inner radius
 
-# Falta mais parametros - estão diretamente no script:
-# wtg_cylind_radius, wtg_cylind_inner_radius, mesh_cell_size, cell_prox_thresh_m
+## -- 4.2. WTG coverage 3D com topografia (DEM) --
+
+# GeoTIFF cobrindo toda a area do parque (ex: Copernicus GLO-30), descarregado
+# manualmente e colocado em databases_dir -- o script faz o crop/mask ao raio
+# de cada turbina automaticamente, nao e preciso pre-recortar o ficheiro.
+dem_filename <- "Bash_DEM_copernicus30m.tif"
+
+coverage_mesh_step_xy   <- 50 # em metros; resolucao horizontal da malha 3D
+coverage_mesh_step_z    <- 50 # em metros; resolucao vertical da malha 3D
+coverage_prox_thresh_m  <- 50 # em metros; distancia 3D maxima ave-no da malha para considerar "covered"
+
+# Bandas de risco (altura relativa a turbina, em metros) para a malha 3D com
+# topografia -- AINDA POR DECIDIR: por agora usa os breaks/labels por omissao
+# da funcao (c(200), c("at risk","above")), a rever depois para alinhar (ou
+# nao) com riskHeight_lower/upper acima (usado no coverage_3D.R antigo, sem
+# topografia).
+# coverage_3d_risk_band_breaks <- c(200)
+# coverage_3d_risk_band_labels <- c("at risk", "above")
 
 
 ## -- 5.3. Risk per species --
