@@ -15,11 +15,11 @@ project_ref <- "Bash WPP"
 
 wtg_filename                <- "Bash_Turbines_UTM.shp"  # in .shp
 
-idf_filename                <- "Bash_IDF_coord.shp"                           # in .shp
+idf_filename                <- "Bash_IDF_coord.shp"                         # in .shp
 tier_start_scheme_filename  <- "Bash_tier_scheme_20260215.xlsx"             # em .xlsx
 tier3_start_scheme_filename <- "Bash_tier_3_commissioning_20260215.xlsx"    # em .xlsx
 
-proj_lat      <- 40.65 # 40.656620,64.672409
+proj_lat      <- 40.65
 proj_lon      <- 64.67
 proj_timezone <- "Asia/Samarkand"
 
@@ -40,7 +40,7 @@ trackreport_pattern  <- "_Track_" #"TrackReport.+csv"          # ex: TrackReport
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
 scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_20260201_....csv
 heartbeats_pattern   <- "Bash_Heartbeats.+csv"          # ex: Heartbeats_20260201_....csv
-heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11")
+heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11", "BSH64-04", "BSH62-05", "BSH61-06")
 
 ##
 ## Timeframe for analysis/reporting period
