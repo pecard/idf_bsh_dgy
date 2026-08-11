@@ -300,3 +300,69 @@ plot_daily_overlap_by_turbine <- function(overlap_dt, label_a, label_b, turbine_
       strip.text = element_text(face = "bold")
     )
 }
+
+
+## 13. Presenca diaria de UM dataset, por unidade IDF ----
+##     As unidades IDF (`idf`) nao correspondem 1:1 as turbinas (`turbine`)
+##     -- cada turbina pode ser protegida por varias unidades IDF -- por
+##     isso a cobertura de heartbeats e avaliada em separado, por unidade
+##     IDF, e nao fundida no eixo das turbinas usado nas funcoes acima.
+##     Reaproveita daily_presence_by_turbine() (funcao 9), so troca o nome
+##     da coluna de saida para "idf" (mais claro nos outputs/exports).
+
+daily_presence_by_idf <- function(dt, datetime_col, idf_col, label) {
+  daily <- daily_presence_by_turbine(dt, datetime_col, idf_col, label)
+  setnames(daily, "turbine", "idf")
+  daily[]
+}
+
+
+## 14. Resumo de cobertura diaria por unidade IDF (dias com dados, dias em falta) ----
+##     Cada unidade usa o seu proprio periodo (1o ao ultimo dia com dados),
+##     tal como data_date_range() (funcao 1) faz para os datasets globais.
+
+presence_summary_by_idf <- function(presence_dt) {
+
+  summary_dt <- presence_dt[, .(
+    start          = min(date),
+    end            = max(date),
+    days_with_data = uniqueN(date)
+  ), by = idf]
+
+  summary_dt[, total_days   := as.integer(end - start) + 1L]
+  summary_dt[, days_missing := total_days - days_with_data]
+  summary_dt[, pct_missing  := round(100 * days_missing / total_days, 1)]
+
+  setorder(summary_dt, -pct_missing)
+  summary_dt[]
+}
+
+
+## 15. Plot "calendario" de cobertura diaria por unidade IDF ----
+##     idf_sel: vetor de unidades a mostrar (NULL = todas)
+
+plot_daily_presence_by_idf <- function(presence_dt, idf_sel = NULL, label = "Heartbeats") {
+
+  dt <- copy(presence_dt)
+  if (!is.null(idf_sel)) dt <- dt[idf %in% idf_sel]
+
+  full_range <- seq(min(dt$date), max(dt$date), by = "day")
+  grid <- CJ(idf = sort(unique(dt$idf)), date = full_range)
+  grid[dt, has_data := TRUE, on = .(idf, date)]
+  grid[is.na(has_data), has_data := FALSE]
+
+  ggplot(grid, aes(x = date, y = idf, fill = has_data)) +
+    geom_tile(colour = "white", linewidth = 0.1) +
+    scale_fill_manual(
+      values = c(`TRUE` = "steelblue", `FALSE` = "grey85"),
+      labels = c(`TRUE` = "Data available", `FALSE` = "No data"),
+      name = NULL
+    ) +
+    scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m") +
+    labs(title = paste("Data coverage:", label), x = NULL, y = NULL) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid = element_blank()
+    )
+}

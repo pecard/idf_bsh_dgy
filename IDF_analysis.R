@@ -200,12 +200,9 @@ options(error = function() message("Skipping failed step"))
 ##
 ## 0. Data Quality/Data Control (DQ/DC) ----
 ##
-  ## DESATIVADO por agora - depende de scripts_IDF/, ainda nao migrado para R/
-  ## Reativar (remover #) quando estes modulos forem migrados
-
 
     ###
-    ### Check data gaps
+    ### Check data gaps - legado, ainda nao migrado para R/
     ###
 
     #Check for data gaps - Graphs
@@ -213,6 +210,64 @@ options(error = function() message("Skipping failed step"))
 
     #Check for data gaps - excel file with data gaps and range
     #source(file.path(folder_script_IDF, 'DQ_check_data_gaps_excel.R'))
+
+
+    ###
+    ### Data coverage: Curtailments vs SCADA (por turbina) e Heartbeats (por unidade IDF)
+    ###
+    ### NOTA: usa dados NAO filtrados (_unfilt) para ver o historico completo
+    ### descarregado, antes de recortarmos ao periodo de reporte [ini, end].
+    ### Turbinas e unidades IDF sao entidades diferentes (uma turbina pode
+    ### ser protegida por varias unidades IDF) -- por isso sao duas tabelas
+    ### e dois plots independentes, sem tentar cruzar os dois eixos.
+    ###
+
+    source("R/data_coverage.R")
+
+    ## Turbinas: sobreposicao Curtailments vs SCADA
+    if (!is.null(scada_dt_unfilt) && nrow(curtl_dt_unfilt) > 0) {
+
+      coverage_turbine_dt <- daily_overlap_by_turbine(
+        curtl_dt_unfilt, "start", "turbine", "Curtailments",
+        scada_dt_unfilt, "datetime", "turbinelabel", "SCADA"
+      )
+      coverage_turbine_summary <- overlap_summary_by_turbine(coverage_turbine_dt, "Curtailments", "SCADA")
+
+      p_coverage_turbine <- plot_daily_overlap_by_turbine(
+        coverage_turbine_dt, "Curtailments", "SCADA", turbine_sel = turbinas_scada
+      )
+      ggsave(
+        file.path(folder_output, "data_coverage_turbine_curtailments_scada.png"),
+        plot = p_coverage_turbine, width = 250, height = max(60, length(turbinas_scada) * 40),
+        units = "mm", dpi = 300, bg = "white", limitsize = FALSE
+      )
+
+      writexl::write_xlsx(
+        list(Overlap = coverage_turbine_dt, Summary = coverage_turbine_summary),
+        file.path(folder_output, "data_coverage_turbine_curtailments_scada.xlsx")
+      )
+
+    } else {print("SCADA or Curtailments data not available - Turbine data coverage check was skipped")}
+
+    ## Unidades IDF: cobertura de Heartbeats (entidade diferente de turbina, tratada em separado)
+    if (!is.null(heartb_dt_unfilt) && nrow(heartb_dt_unfilt) > 0) {
+
+      coverage_idf_dt      <- daily_presence_by_idf(heartb_dt_unfilt, "timestamp", "idf", "Heartbeats")
+      coverage_idf_summary <- presence_summary_by_idf(coverage_idf_dt)
+
+      p_coverage_idf <- plot_daily_presence_by_idf(coverage_idf_dt)
+      ggsave(
+        file.path(folder_output, "data_coverage_idf_heartbeats.png"),
+        plot = p_coverage_idf, width = 250, height = max(60, uniqueN(coverage_idf_dt$idf) * 6),
+        units = "mm", dpi = 300, bg = "white", limitsize = FALSE
+      )
+
+      writexl::write_xlsx(
+        list(Presence = coverage_idf_dt, Summary = coverage_idf_summary),
+        file.path(folder_output, "data_coverage_idf_heartbeats.xlsx")
+      )
+
+    } else {print("Heartbeat data not available - IDF data coverage check was skipped")}
 
 
 
