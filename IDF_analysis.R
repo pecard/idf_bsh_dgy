@@ -672,7 +672,7 @@ if (file.exists(dem_file)) {
 
 } else {print("DEM file not available - 3D coverage analysis was skipped")}
 
-
+plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height)
 
 
 ##

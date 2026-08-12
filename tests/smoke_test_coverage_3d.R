@@ -81,6 +81,93 @@ print(coverage_test$by_risk_band)
 
 
 ## 4. Plot 3D -- abre no Viewer do RStudio -----------------------------------
+source("R/coverage_3d_topography.R")
+p_test <- plot_mesh_coverage_3d(
+  terrain_mesh_test, coverage_test,
+  radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height
+)
+p_test
+
+
+# Teste 2 Plot 3D
+source("R/coverage_3d_topography.R")
+
+## reconstruir tudo de fresco (assume que ja correste a importacao do IDF_analysis.R
+## e o resto do smoke test ate ao coverage_test)
+
+surf <- .build_plot_surfaces(
+  terrain_mesh_test, coverage_test$mesh_air[covered == TRUE]$z_rel_turbine,
+  radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
+  step_z = coverage_mesh_step_z, z_pad_lower = 50, z_pad_upper = 50
+)
+
+mesh_cov <- coverage_test$mesh_air[covered == TRUE]
+mesh_cov[, z_plot := z_rel_turbine]
+
+radius <- coverage_cylinder_wider_radius
+cyl_height <- coverage_cylinder_height
+z_min <- surf$z_min_cyl
+z_max <- surf$z_max_cyl
+
+bearing_line <- .make_bearing_line(bearing_from_deg = 135, radius = radius, z = cyl_height + 30)
+bearing_labels <- data.table::copy(bearing_line)
+bearing_labels[, `:=`(x = x * 0.90, y = y * 0.90, z = z - 15)]
+
+cat(sprintf("z_min=%.1f z_max=%.1f | bearing_line z range: %.1f a %.1f\n",
+            z_min, z_max, min(bearing_line$z), max(bearing_line$z)))
+
+plot_ly() %>%
+  add_surface(x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.85, showscale = FALSE) %>%
+  add_markers(data = mesh_cov, x = ~x, y = ~y, z = ~z_plot, type = "scatter3d", mode = "markers",
+              color = ~risk_band, marker = list(size = 1.2, opacity = 0.75)) %>%
+  add_trace(x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
+            i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
+            type = "mesh3d", opacity = 0.08, color = I("lightblue"), hoverinfo = "skip") %>%
+  add_trace(data = bearing_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
+            line = list(color = "black", width = 4)) %>%
+  add_trace(data = bearing_labels, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "text",
+            text = ~label, textposition = "middle center", textfont = list(size = 16, color = "black"),
+            showlegend = FALSE, hoverinfo = "skip") %>%
+  layout(
+    scene = list(
+      xaxis = list(range = c(-radius, radius), autorange = FALSE),
+      yaxis = list(range = c(-radius, radius), autorange = FALSE),
+      zaxis = list(range = c(z_min, z_max), autorange = FALSE),
+      aspectmode = "manual",
+      aspectratio = list(x = 1, y = 1, z = (z_max - z_min) / (2 * radius)),
+      camera = .camera_from_bearing(bearing_deg = 135, distance = 2.5, z = 0.7)
+    )
+  )
+
+teste_fn <- function() {
+  plot_ly() %>%
+    add_surface(x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.85, showscale = FALSE) %>%
+    add_markers(data = mesh_cov, x = ~x, y = ~y, z = ~z_plot, type = "scatter3d", mode = "markers",
+                color = ~risk_band, marker = list(size = 1.2, opacity = 0.75)) %>%
+    add_trace(x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
+              i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
+              type = "mesh3d", opacity = 0.08, color = I("lightblue"), hoverinfo = "skip") %>%
+    add_trace(data = bearing_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
+              line = list(color = "black", width = 4)) %>%
+    add_trace(data = bearing_labels, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "text",
+              text = ~label, textposition = "middle center", textfont = list(size = 16, color = "black"),
+              showlegend = FALSE, hoverinfo = "skip") %>%
+    layout(
+      scene = list(
+        xaxis = list(range = c(-radius, radius), autorange = FALSE),
+        yaxis = list(range = c(-radius, radius), autorange = FALSE),
+        zaxis = list(range = c(z_min, z_max), autorange = FALSE),
+        aspectmode = "manual",
+        aspectratio = list(x = 1, y = 1, z = (z_max - z_min) / (2 * radius)),
+        camera = .camera_from_bearing(bearing_deg = 135, distance = 2.5, z = 0.7)
+      )
+    )
+}
+
+teste_fn()
+
+
+options(error = NULL)  # temporario, so para diagnostico
 
 p_test <- plot_mesh_coverage_3d(
   terrain_mesh_test, coverage_test,
@@ -88,3 +175,65 @@ p_test <- plot_mesh_coverage_3d(
 )
 p_test
 
+## 1. Confirma o commit exato
+system("git log -1 --oneline")
+
+## 2. Mostra a funcao REAL que tens carregada em memoria, tal como R a interpretou
+print(plot_mesh_coverage_3d)
+
+plot_ly() %>%
+  add_surface(x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.85, showscale = FALSE,
+              colorscale = "Viridis", name = "Terrain") %>%
+  add_markers(data = mesh_cov, x = ~x, y = ~y, z = ~z_plot, type = "scatter3d", mode = "markers",
+              color = ~risk_band, marker = list(size = 1.2, opacity = 0.75)) %>%
+  add_trace(x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
+            i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
+            type = "mesh3d", opacity = 0.08,
+            facecolor = rep("grey70", length(surf$cyl_mesh$i)),
+            hoverinfo = "skip") %>%
+  layout(
+    scene = list(
+      xaxis = list(range = c(-radius, radius), autorange = FALSE),
+      yaxis = list(range = c(-radius, radius), autorange = FALSE),
+      zaxis = list(range = c(z_min, z_max), autorange = FALSE),
+      aspectmode = "manual",
+      aspectratio = list(x = 1, y = 1, z = (z_max - z_min) / (2 * radius)),
+      camera = .camera_from_bearing(bearing_deg = 135, distance = 2.5, z = 0.7)
+    )
+  )
+
+bearing_line <- .make_bearing_line(bearing_from_deg = 135, radius = radius, z = cyl_height + 30)
+bearing_labels <- data.table::copy(bearing_line)
+bearing_labels[, `:=`(x = x * 0.90, y = y * 0.90, z = z - 15)]
+
+plot_ly() %>%
+  add_surface(x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.85, showscale = FALSE,
+              colorscale = "Viridis", name = "Terrain") %>%
+  add_markers(data = mesh_cov, x = ~x, y = ~y, z = ~z_plot, type = "scatter3d", mode = "markers",
+              color = ~risk_band, marker = list(size = 1.2, opacity = 0.75)) %>%
+  add_trace(x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
+            i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
+            type = "mesh3d", opacity = 0.38, color = I("grey"), hoverinfo = "skip") %>%
+  add_trace(data = bearing_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
+            line = list(color = "black", width = 4)) %>%
+  add_trace(data = bearing_labels, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "text",
+            text = ~label, textposition = "middle center", textfont = list(size = 16, color = "black"),
+            showlegend = FALSE, hoverinfo = "skip") %>%
+  layout(
+    scene = list(
+      xaxis = list(range = c(-radius, radius), autorange = FALSE),
+      yaxis = list(range = c(-radius, radius), autorange = FALSE),
+      zaxis = list(range = c(z_min, z_max), autorange = FALSE),
+      aspectmode = "manual",
+      aspectratio = list(x = 1, y = 1, z = (z_max - z_min) / (2 * radius)),
+      camera = .camera_from_bearing(bearing_deg = 135, distance = 2.5, z = 0.7)
+    )
+  )
+
+source("R/coverage_3d_topography.R")
+
+p_test <- plot_mesh_coverage_3d(
+  terrain_mesh_test, coverage_test,
+  radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height
+)
+p_test
