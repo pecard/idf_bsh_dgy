@@ -363,8 +363,12 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
     wtg_id, metrics$n_records, metrics$n_covered, metrics$n_air_mesh, metrics$pct_covered
   )
 
-  z_min <- min(surf$Zterrain_rel, na.rm = TRUE)
-  z_max <- cyl_height
+  # usar o range do proprio cilindro (nao so do terreno) -- o cilindro
+  # (agora wireframe) estende-se ate surf$z_min_cyl, que pode ser mais baixo
+  # que o terreno; com autorange=FALSE, um range mais estreito do que os
+  # dados de alguma trace pode fazer a cena 3D nao renderizar nada
+  z_min <- surf$z_min_cyl
+  z_max <- surf$z_max_cyl
 
   plotly::plot_ly() %>%
     plotly::add_surface(
