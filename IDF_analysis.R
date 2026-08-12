@@ -628,8 +628,37 @@ if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
 #source(file.path(folder_script_IDF, 'coverage_analysis_WF.R'))
 
 
-### 4.2. WTG coverage ----
-#source(file.path(folder_script_IDF, 'coverage_analysis_WTG.R'))
+### 4.2. WTG coverage 3D (topografia + deteções de aves) ----
+
+# dem_filename --> definido no userSettings_BSH.R (coloca o .tif em databases_dir)
+dem_file <- file.path(databases_dir, dem_filename)
+
+if (file.exists(dem_file)) {
+
+  source("R/coverage_3d_topography.R")
+
+  cov_all <- run_coverage_3d_all_turbines(
+    wtg, track_dt, dem_file,
+    radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
+    step_xy = coverage_mesh_step_xy, step_z = coverage_mesh_step_z,
+    prox_thresh_m = coverage_prox_thresh_m
+  )
+
+  summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))
+
+  writexl::write_xlsx(
+    list(By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band),
+    file.path(folder_output, "coverage_3d_summary.xlsx")
+  )
+
+  # Plots individuais por turbina, em HTML (cobertura + o inverso: pontos
+  # da malha "air" SEM deteções de aves dentro de prox_thresh_m)
+  save_coverage_3d_plots(
+    cov_all, file.path(folder_output, "coverage_3d"),
+    radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height
+  )
+
+} else {print("DEM file not available - 3D coverage analysis was skipped")}
 
 
 

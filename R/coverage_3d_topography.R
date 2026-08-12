@@ -481,3 +481,30 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
       )
     )
 }
+
+
+## 7. Guarda os plots 3D (cobertura + inverso) de cada turbina, em HTML autonomo ----
+##    cov_all: resultado de run_coverage_3d_all_turbines()
+
+save_coverage_3d_plots <- function(cov_all, folder_out, radius, cyl_height) {
+
+  dir.create(folder_out, showWarnings = FALSE, recursive = TRUE)
+
+  for (wtg_id in names(cov_all)) {
+
+    terrain_mesh_i <- cov_all[[wtg_id]]$terrain_mesh
+    coverage_i     <- cov_all[[wtg_id]]$coverage
+
+    p_cov <- plot_mesh_coverage_3d(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height)
+    htmlwidgets::saveWidget(
+      p_cov, file.path(folder_out, paste0("coverage_3d_", wtg_id, ".html")), selfcontained = TRUE
+    )
+
+    p_notcov <- plot_mesh_coverage_debug(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height)
+    htmlwidgets::saveWidget(
+      p_notcov, file.path(folder_out, paste0("coverage_3d_not_covered_", wtg_id, ".html")), selfcontained = TRUE
+    )
+  }
+
+  invisible(NULL)
+}
