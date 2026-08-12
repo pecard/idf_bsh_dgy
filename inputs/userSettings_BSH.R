@@ -122,8 +122,8 @@ shorttrack_eval_range <- 300 # em metros; distancia ate qual se considera releva
 ## -- 3.5. Curtailment response assessment (roll join com SCADA) --
 
 # Incluir time range e turbinas para o qual temos dados de SCADA, mesmo que no intervalo tenham "buracos" sem info
-scada_ini <- as.POSIXct('2025-10-15 00:00:00', tz = 'UTC')
-scada_end <- as.POSIXct('2026-06-30 23:59:59', tz = 'UTC')
+scada_ini <- as.POSIXct('2025-10-15 00:00:00', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-06-30 23:59:59', tz = proj_timezone)
 
 turbinas_scada <- c('BSH54')
 

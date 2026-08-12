@@ -40,8 +40,8 @@ heartbeats_pattern   <- "Heartbeats_.+csv"          # ex: Heartbeats_20260201_..
 ## Timeframe for analysis/reporting period
 ##
 
-ini <- as.POSIXct('2025-10-15 00:00:00', tz = 'UTC')
-end <- as.POSIXct('2025-06-30 23:59:59', tz = 'UTC')
+ini <- as.POSIXct('2025-10-15 00:00:00', tz = proj_timezone)
+end <- as.POSIXct('2025-06-30 23:59:59', tz = proj_timezone)
 
 
 ##
@@ -49,8 +49,8 @@ end <- as.POSIXct('2025-06-30 23:59:59', tz = 'UTC')
 ##
 
 # Incluir time range e turbinas para o qual temos dados de SCADA, mesmo que no intervalo tenham "buracos" sem info
-scada_ini <- as.POSIXct('2025-10-15 00:00:00', tz = 'UTC')
-scada_end <- as.POSIXct('2026-06-30 23:59:59', tz = 'UTC')
+scada_ini <- as.POSIXct('2025-10-15 00:00:00', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-06-30 23:59:59', tz = proj_timezone)
 
 turbinas_scada <- c('BSH54')
 

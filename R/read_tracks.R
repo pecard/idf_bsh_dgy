@@ -4,7 +4,7 @@
 ## Depende de: data.table, janitor, R/read_utils.R
 ##
 
-read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv") {
+read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv", tz = "UTC") {
 
   files <- list_files_multi_dir(databases_dirs, pattern)
 
@@ -70,6 +70,10 @@ read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv") {
       "turbine"
     )
   )
+
+  # source em UTC -- converte para tz local (ex: proj_timezone), so muda a
+  # exibicao/agrupamento por dia, nao o instante (nao afeta calculos de distancia/tempo)
+  dt[, timestamp := lubridate::with_tz(timestamp, tz)]
 
   setorder(dt, track_id, timestamp)
 
