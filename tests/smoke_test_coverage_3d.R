@@ -58,8 +58,15 @@ print(terrain_mesh_test$mesh_air[, .N, by = risk_band])
 
 ## 3. Cobertura com os tracks reais desta turbina ----------------------------
 
-track_wtg_test <- track_dt[turbine == wtg_id_test]
-cat(sprintf("\nRegistos de track para %s: %d\n", wtg_id_test, nrow(track_wtg_test)))
+## Candidatos por distancia real (UTM) a turbina, nao pela classificacao
+## "NearestTurbine3d" do IdentiFlight (coluna `turbine`) -- ver nota em
+## run_coverage_3d_all_turbines() no R/coverage_3d_topography.R
+wtg_utm_test <- sf::st_coordinates(wtg[wtg$InternalNa == wtg_id_test, ])
+dist_to_wtg_test <- sqrt(
+  (track_dt$utm_x - wtg_utm_test[1, "X"])^2 + (track_dt$utm_y - wtg_utm_test[1, "Y"])^2
+)
+track_wtg_test <- track_dt[dist_to_wtg_test <= coverage_cylinder_wider_radius + 200]
+cat(sprintf("\nRegistos de track para %s (por distancia): %d\n", wtg_id_test, nrow(track_wtg_test)))
 
 coverage_test <- compute_mesh_coverage(
   terrain_mesh_test, track_wtg_test,
@@ -80,14 +87,4 @@ p_test <- plot_mesh_coverage_3d(
   radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height
 )
 p_test
-
-## Plot terrain and cilynder only
-plot_ly() %>%
-  add_surface(x = surf_test$xs_surf, y = surf_test$ys_surf, z = surf_test$Zterrain_rel,
-              opacity = 0.85, showscale = FALSE) %>%
-  add_markers(data = mesh_cov, x = ~x, y = ~y, z = ~z_rel_turbine, type = "scatter3d", mode = "markers", color = ~risk_band) %>%
-  add_surface(x = surf_test$Xc, y = surf_test$Yc, z = surf_test$Zc,
-              opacity = 0.08, showscale = FALSE,
-              surfacecolor = matrix("lightgrey", nrow = nrow(surf_test$Zc), ncol = ncol(surf_test$Zc)),
-              showlegend = FALSE)
 
