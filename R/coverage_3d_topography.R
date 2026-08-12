@@ -323,7 +323,7 @@ summarise_mesh_coverage <- function(coverage_list) {
 ## Superficies/linhas partilhadas pelos 2 plots (terreno + cilindro fronteira) --
 ## mesh_z_values: valores de z (m, relativos a turbina) a considerar no
 ## calculo do limite inferior do cilindro (ex: mesh_cov$z_rel_turbine)
-.build_plot_surfaces <- function(terrain_mesh, mesh_z_values, radius, cyl_height, step_z, z_pad_lower) {
+.build_plot_surfaces <- function(terrain_mesh, mesh_z_values, radius, cyl_height, step_z, z_pad_lower, z_pad_upper = 50) {
 
   mesh_xy  <- terrain_mesh$mesh_xy
   wtg_elev <- terrain_mesh$wtg_elev
@@ -335,8 +335,12 @@ summarise_mesh_coverage <- function(coverage_list) {
   Zterrain_abs <- as.matrix(terrain_surface[, -1, with = FALSE])
   Zterrain_rel <- Zterrain_abs - wtg_elev
 
+  # z_pad_upper: margem acima de cyl_height para a bearing_line/labels ficarem
+  # visiveis sem se misturarem com os pontos da malha -- tem de ficar dentro
+  # do range do eixo (zaxis usa este z_max_cyl), senao volta o problema do
+  # plotly a nao renderizar nada quando ha dados fora do range com autorange=FALSE
   z_min_cyl <- floor(min(Zterrain_rel, mesh_z_values, na.rm = TRUE) / step_z) * step_z - z_pad_lower
-  z_max_cyl <- cyl_height
+  z_max_cyl <- cyl_height + z_pad_upper
 
   list(
     xs_surf = xs_surf, ys_surf = ys_surf, Zterrain_rel = Zterrain_rel,
@@ -359,19 +363,22 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
 
   surf <- .build_plot_surfaces(terrain_mesh, mesh_cov$z_rel_turbine, radius, cyl_height, step_z, z_pad_lower)
 
-  bearing_line <- .make_bearing_line(bearing_from_deg = bearing_deg, radius = radius, z = cyl_height * 0.98)
+  # bearing_line/labels ficam ACIMA de cyl_height (dentro da margem
+  # z_pad_upper de .build_plot_surfaces()) para nao se misturarem com os
+  # pontos da malha coberta, que vao no maximo ate cyl_height
+  bearing_line <- .make_bearing_line(bearing_from_deg = bearing_deg, radius = radius, z = cyl_height + 30)
   bearing_labels <- data.table::copy(bearing_line)
-  bearing_labels[, `:=`(x = x * 0.90, y = y * 0.90, z = z - 30)]
+  bearing_labels[, `:=`(x = x * 0.90, y = y * 0.90, z = z - 15)]
 
   plot_title <- sprintf(
     "Terrain-corrected WTG mesh coverage<br>WTG: %s<br>Bird records: %d<br>Covered air mesh: %d / %d (%.1f%%)",
     wtg_id, metrics$n_records, metrics$n_covered, metrics$n_air_mesh, metrics$pct_covered
   )
 
-  # usar o range do proprio cilindro (nao so do terreno) -- o cilindro
-  # (agora wireframe) estende-se ate surf$z_min_cyl, que pode ser mais baixo
-  # que o terreno; com autorange=FALSE, um range mais estreito do que os
-  # dados de alguma trace pode fazer a cena 3D nao renderizar nada
+  # usar o range do proprio cilindro (nao so do terreno) -- o cilindro e a
+  # bearing_line estendem-se para alem do que so o terreno cobre; com
+  # autorange=FALSE, dados fora do range declarado podem fazer a cena 3D
+  # nao renderizar nada
   z_min <- surf$z_min_cyl
   z_max <- surf$z_max_cyl
 
@@ -383,7 +390,7 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
     ) %>%
     plotly::add_markers(
       data = mesh_cov, x = ~x, y = ~y, z = ~z_plot, type = "scatter3d", mode = "markers",
-      color = ~risk_band, marker = list(size = 2, opacity = 0.75), name = ~risk_band
+      color = ~risk_band, marker = list(size = 1.2, opacity = 0.75), name = ~risk_band
     ) %>%
     plotly::add_trace(
       x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
