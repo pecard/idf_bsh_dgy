@@ -385,7 +385,7 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
   plotly::plot_ly() %>%
     plotly::add_surface(
       x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.85, showscale = FALSE,
-      surfacecolor = matrix("black", nrow = nrow(surf$Zterrain_rel), ncol = ncol(surf$Zterrain_rel)),
+      colorscale = list(c(0, "rgb(20,20,20)"), c(1, "rgb(20,20,20)")),
       name = "Terrain"
     ) %>%
     plotly::add_markers(
@@ -444,7 +444,7 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
   plotly::plot_ly() %>%
     plotly::add_surface(
       x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.7, showscale = FALSE,
-      surfacecolor = matrix("black", nrow = nrow(surf$Zterrain_rel), ncol = ncol(surf$Zterrain_rel)),
+      colorscale = list(c(0, "rgb(20,20,20)"), c(1, "rgb(20,20,20)")),
       name = "Terrain"
     ) %>%
     plotly::add_markers(
