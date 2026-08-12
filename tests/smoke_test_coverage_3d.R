@@ -25,7 +25,7 @@ stopifnot("DEM file nao encontrado -- confirma o nome/pasta" = file.exists(dem_f
 
 ## 1. Coordenadas da turbina, extraidas do shapefile (nao a mao) -----------
 
-wtg_wgs84_test <- sf::st_transform(wtg[wtg$ID == wtg_id_test, ], 4326)
+wtg_wgs84_test <- sf::st_transform(wtg[wtg$InternalNa == wtg_id_test, ], 4326)
 stopifnot("Turbina nao encontrada no shapefile wtg" = nrow(wtg_wgs84_test) == 1L)
 
 coords_test <- sf::st_coordinates(wtg_wgs84_test)
@@ -80,3 +80,14 @@ p_test <- plot_mesh_coverage_3d(
   radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height
 )
 p_test
+
+## Plot terrain and cilynder only
+plot_ly() %>%
+  add_surface(x = surf_test$xs_surf, y = surf_test$ys_surf, z = surf_test$Zterrain_rel,
+              opacity = 0.85, showscale = FALSE) %>%
+  add_markers(data = mesh_cov, x = ~x, y = ~y, z = ~z_rel_turbine, type = "scatter3d", mode = "markers", color = ~risk_band) %>%
+  add_surface(x = surf_test$Xc, y = surf_test$Yc, z = surf_test$Zc,
+              opacity = 0.08, showscale = FALSE,
+              surfacecolor = matrix("lightgrey", nrow = nrow(surf_test$Zc), ncol = ncol(surf_test$Zc)),
+              showlegend = FALSE)
+
