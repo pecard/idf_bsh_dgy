@@ -123,86 +123,86 @@ sink()
 ## 0. Import data ----
 ##
 
-  #WTG
-  wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
+#WTG
+wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
 
-  #IDF
-  idf <- sf::read_sf(file.path(folder_input, idf_filename))
+#IDF
+idf <- sf::read_sf(file.path(folder_input, idf_filename))
 
-  #Tier scheme
-  tier <- read_xlsx(file.path(folder_input, tier_start_scheme_filename))
-
-
-  #Tier3 scheme - Starting date
-  tier3 <- read_xlsx(file.path(folder_input, tier3_start_scheme_filename),
-                     sheet = 'tier3')
+#Tier scheme
+tier <- read_xlsx(file.path(folder_input, tier_start_scheme_filename))
 
 
-  #Databases
-  source("R/read_utils.R")
-  source("R/read_tracks.R")
-  source("R/read_curtailments.R")
-  source("R/read_scada.R")
-  source("R/read_heartbeats.R")
-
-  # databases_dir (local) + databases_dir_alt (servidor), quando definido --
-  # procura ficheiros em ambos, sem duplicar; ordem = precedencia quando o
-  # mesmo nome de ficheiro existe nos dois (ver R/read_utils.R)
-  databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
-
-  track_dt_unfilt  <- read_tracks_data(databases_dirs, trackreport_pattern)   # Tracks data
-  curtl_dt_unfilt  <- read_curtailments_data(databases_dirs, curtailments_pattern) # Curtailments data
-  scada_dt_unfilt  <- read_scada_data(databases_dirs, scada_pattern)          # SCADA data
-  heartb_dt_unfilt <- read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
+#Tier3 scheme - Starting date
+tier3 <- read_xlsx(file.path(folder_input, tier3_start_scheme_filename),
+                   sheet = 'tier3')
 
 
-  #Project-specific corrections --> handle_script.R
-  #if(file.exists('handle_script.R')) {source('handle_script.R')}
+#Databases
+source("R/read_utils.R")
+source("R/read_tracks.R")
+source("R/read_curtailments.R")
+source("R/read_scada.R")
+source("R/read_heartbeats.R")
+
+# databases_dir (local) + databases_dir_alt (servidor), quando definido --
+# procura ficheiros em ambos, sem duplicar; ordem = precedencia quando o
+# mesmo nome de ficheiro existe nos dois (ver R/read_utils.R)
+databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
+
+track_dt_unfilt  <- read_tracks_data(databases_dirs, trackreport_pattern)   # Tracks data
+curtl_dt_unfilt  <- read_curtailments_data(databases_dirs, curtailments_pattern) # Curtailments data
+scada_dt_unfilt  <- read_scada_data(databases_dirs, scada_pattern)          # SCADA data
+heartb_dt_unfilt <- read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
 
 
-  tier_dt <- setDT(tier)
-  tier3_dt <- setDT(tier3)
-  tier3_dt[, idate := as.IDate(timestamp)]
-  set_tier3_dt <- tier3_dt[idate < date(end)]
-
-  #check if turbines labels match across all datasets
-  Reduce(setdiff, list(
-    unique(wtg$ID),
-    unique(scada_dt_unfilt$turbinelabel),
-    unique(curtl_dt_unfilt$turbine),
-    unique(track_dt_unfilt$turbine)
-  ))
-  #verificar qual falta
-  # collect all turbine labels
-  turbines <- sort(unique(c(
-    wtg$ID,
-    scada_dt_unfilt$turbinelabel,
-    curtl_dt_unfilt$turbine,
-    track_dt_unfilt$turbine
-  )))
-
-  # build presence table
-  labels_table <- data.frame(
-    turbine = turbines,
-    wtg   = as.integer(turbines %in% wtg$ID),
-    curtl = as.integer(turbines %in% curtl_dt_unfilt$turbine),
-    track = as.integer(turbines %in% track_dt_unfilt$turbine),
-    scada = as.integer(turbines %in% scada_dt_unfilt$turbinelabel)
-  )
-  View(labels_table) #ver se nomes turbinas estao corretos entre todas as bases de dados
+#Project-specific corrections --> handle_script.R
+#if(file.exists('handle_script.R')) {source('handle_script.R')}
 
 
-  safe_date <- function(x) {
-    if (inherits(x, c("Date", "POSIXct", "POSIXlt"))) return(as.Date(x))
-    x <- trimws(as.character(x))
-    x[x %in% c("", "NA", "N/A", "-", "NULL")] <- NA
-    suppressWarnings(as.Date(x))
-  }
+tier_dt <- setDT(tier)
+tier3_dt <- setDT(tier3)
+tier3_dt[, idate := as.IDate(timestamp)]
+set_tier3_dt <- tier3_dt[idate < date(end)]
+
+#check if turbines labels match across all datasets
+Reduce(setdiff, list(
+  unique(wtg$ID),
+  unique(scada_dt_unfilt$turbinelabel),
+  unique(curtl_dt_unfilt$turbine),
+  unique(track_dt_unfilt$turbine)
+))
+#verificar qual falta
+# collect all turbine labels
+turbines <- sort(unique(c(
+  wtg$ID,
+  scada_dt_unfilt$turbinelabel,
+  curtl_dt_unfilt$turbine,
+  track_dt_unfilt$turbine
+)))
+
+# build presence table
+labels_table <- data.frame(
+  turbine = turbines,
+  wtg   = as.integer(turbines %in% wtg$ID),
+  curtl = as.integer(turbines %in% curtl_dt_unfilt$turbine),
+  track = as.integer(turbines %in% track_dt_unfilt$turbine),
+  scada = as.integer(turbines %in% scada_dt_unfilt$turbinelabel)
+)
+View(labels_table) #ver se nomes turbinas estao corretos entre todas as bases de dados
 
 
-  #Colocar em projecao planar
-  idf <- st_transform(idf, crs_projection_plannar)
-  wtg <- st_transform(wtg, crs_projection_plannar)
+safe_date <- function(x) {
+  if (inherits(x, c("Date", "POSIXct", "POSIXlt"))) return(as.Date(x))
+  x <- trimws(as.character(x))
+  x[x %in% c("", "NA", "N/A", "-", "NULL")] <- NA
+  suppressWarnings(as.Date(x))
+}
+
+
+#Colocar em projecao planar
+idf <- st_transform(idf, crs_projection_plannar)
+wtg <- st_transform(wtg, crs_projection_plannar)
 
 ##
 ## 0. Data Quality/Data Control (DQ/DC) ----
@@ -230,13 +230,6 @@ sink()
 ###
 
 source("R/data_coverage.R")
-
-coverage_turbine_dt[turbine == "BSH54", .(
-  n_days      = .N,
-  n_curtl     = sum(Curtailments),
-  n_scada     = sum(SCADA),
-  n_overlap   = sum(overlap)
-), by = .(ym = format(date, "%Y-%m"))]
 
 ## Turbinas: sobreposicao Curtailments vs SCADA
 if (!is.null(scada_dt_unfilt) && nrow(curtl_dt_unfilt) > 0) {
@@ -283,10 +276,19 @@ if (!is.null(heartb_dt_unfilt) && nrow(heartb_dt_unfilt) > 0) {
   
 } else {print("Heartbeat data not available - IDF data coverage check was skipped")}
 
+## Plots
+p_coverage_turbine
+p_coverage_idf
 
 ## Printed Summaries for all 4 main datasets ---
 unique(heartb_dt_unfilt$idf)
 
+coverage_turbine_dt[turbine == "BSH54", .(
+  n_days      = .N,
+  n_curtl     = sum(Curtailments),
+  n_scada     = sum(SCADA),
+  n_overlap   = sum(overlap)
+), by = .(ym = format(date, "%Y-%m"))]
 
 ##
 ## 0. Filter data ----
