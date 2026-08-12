@@ -723,10 +723,39 @@ if (file.exists(dem_file)) {
 
 ##
 ## Export report  ----
-## DESATIVADO - depende de scripts_IDF/report.R e dos outputs das seccoes acima
 ##
 
-#source(file.path(folder_script_IDF, 'report.R'))
+source("R/report.R")
+
+report_params <- list(
+  title         = paste("IDF Analysis Report -", project_ref),
+  project_ref   = project_ref,
+  report_start  = as.character(report_start),
+  report_end    = as.character(report_end),
+  analysis_date = format(Sys.time(), "%Y-%m-%d"),
+  username      = username,
+
+  availability_by_idf    = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
+  availability_plot_cal  = if (exists("p_availability_cal")) p_availability_cal else NULL,
+  availability_plot_freq = if (exists("p_availability_freq")) p_availability_freq else NULL,
+
+  coverage_turbine_summary = if (exists("coverage_turbine_summary")) coverage_turbine_summary else NULL,
+  coverage_idf_summary     = if (exists("coverage_idf_summary")) coverage_idf_summary else NULL,
+
+  assess_by_status  = if (exists("summary_assess")) summary_assess$by_status else NULL,
+  assess_by_turbine = if (exists("summary_assess")) summary_assess$by_turbine else NULL,
+
+  shutdown_by_turbine = if (exists("summary_tt_by_turbine")) summary_tt_by_turbine else NULL,
+  shutdown_bands      = if (exists("summary_tt_bands")) summary_tt_bands else NULL,
+  shutdown_plot       = if (exists("p_shutdown_time")) p_shutdown_time else NULL,
+
+  coverage3d_by_turbine = if (exists("summary_cov")) summary_cov$by_turbine else NULL
+)
+
+build_idf_report(
+  output_file   = file.path(folder_output, paste0("IDF_report_", report_start, "to", report_end, ".docx")),
+  report_params = report_params
+)
 
 
 
