@@ -665,6 +665,11 @@ if (file.exists(dem_file)) {
     radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height
   )
 
+  # Para ver o plot interativo de UMA turbina no Viewer do RStudio, mesmo que
+  # cov_all tenha varias -- correr manualmente, ex:
+  # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height)
+  # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height, not_covered = TRUE)
+
 } else {print("DEM file not available - 3D coverage analysis was skipped")}
 
 

@@ -524,3 +524,28 @@ save_coverage_3d_plots <- function(cov_all, folder_out, radius, cyl_height) {
 
   invisible(NULL)
 }
+
+
+## 8. Atalho para visualizar o plot de UMA turbina a partir de cov_all ----
+##    Util quando a analise correu para varias turbinas (run_coverage_3d_all_turbines())
+##    mas so queremos ver/inspecionar interativamente uma de cada vez no Viewer.
+##    not_covered = TRUE mostra o inverso (pontos da malha "air" sem deteções).
+
+plot_coverage_3d_for_turbine <- function(cov_all, wtg_id, radius, cyl_height, not_covered = FALSE) {
+
+  if (!wtg_id %in% names(cov_all)) {
+    stop(sprintf(
+      "Turbina '%s' nao encontrada em cov_all. Disponiveis: %s",
+      wtg_id, paste(names(cov_all), collapse = ", ")
+    ))
+  }
+
+  terrain_mesh_i <- cov_all[[wtg_id]]$terrain_mesh
+  coverage_i     <- cov_all[[wtg_id]]$coverage
+
+  if (not_covered) {
+    plot_mesh_coverage_debug(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height)
+  } else {
+    plot_mesh_coverage_3d(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height)
+  }
+}
