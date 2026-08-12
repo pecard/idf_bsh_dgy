@@ -274,7 +274,48 @@ summarise_mesh_coverage <- function(coverage_list) {
   )
 }
 
-## Superficies partilhadas pelos 2 plots (terreno + cilindro fronteira) --
+## Contorno do cilindro fronteira, como WIREFRAME (linhas), nao superficie
+## preenchida -- uma superficie semitransparente que ENVOLVE outras traces
+## (terreno, marcadores) pode continuar a escrever no depth-buffer do WebGL
+## e escondê-las por completo, mesmo com opacidade baixa (bug conhecido do
+## plotly.js). Linhas nao tem esse problema.
+## Devolve n_ribs varais verticais + 2 aneis horizontais (base e topo),
+## como um unico trace (segmentos separados por linhas de NA).
+.build_cylinder_wireframe <- function(radius, z_min, z_max, n_ribs = 24) {
+
+  theta <- seq(0, 2 * pi, length.out = n_ribs + 1)[-(n_ribs + 1)]
+
+  na_row <- function(id) data.table::data.table(seg_id = id, x = NA_real_, y = NA_real_, z = NA_real_)
+
+  ## varais verticais
+  ribs <- data.table::rbindlist(lapply(seq_along(theta), function(i) {
+    th <- theta[i]
+    rbind(
+      data.table::data.table(
+        seg_id = i,
+        x = radius * cos(th), y = radius * sin(th), z = c(z_min, z_max)
+      ),
+      na_row(i)
+    )
+  }))
+
+  ## aneis horizontais (base e topo)
+  ring_theta <- seq(0, 2 * pi, length.out = 73) # fecha o circulo (73 = 72 segmentos + repete o 1o ponto)
+  rings <- data.table::rbindlist(lapply(c(z_min, z_max), function(zz) {
+    rbind(
+      data.table::data.table(
+        seg_id = paste0("ring_", zz),
+        x = radius * cos(ring_theta), y = radius * sin(ring_theta), z = zz
+      ),
+      na_row(paste0("ring_", zz))
+    )
+  }))
+
+  rbind(ribs, rings)[, .(x, y, z)]
+}
+
+
+## Superficies/linhas partilhadas pelos 2 plots (terreno + cilindro fronteira) --
 ## mesh_z_values: valores de z (m, relativos a turbina) a considerar no
 ## calculo do limite inferior do cilindro (ex: mesh_cov$z_rel_turbine)
 .build_plot_surfaces <- function(terrain_mesh, mesh_z_values, radius, cyl_height, step_z, z_pad_lower) {
@@ -292,14 +333,9 @@ summarise_mesh_coverage <- function(coverage_list) {
   z_min_cyl <- floor(min(Zterrain_rel, mesh_z_values, na.rm = TRUE) / step_z) * step_z - z_pad_lower
   z_max_cyl <- cyl_height
 
-  theta <- seq(0, 2 * pi, length.out = 180)
-  zv    <- seq(z_min_cyl, z_max_cyl, length.out = 80)
-  Theta <- matrix(rep(theta, each = length(zv)), nrow = length(zv))
-  Zc    <- matrix(rep(zv, times = length(theta)), nrow = length(zv))
-
   list(
     xs_surf = xs_surf, ys_surf = ys_surf, Zterrain_rel = Zterrain_rel,
-    Xc = radius * cos(Theta), Yc = radius * sin(Theta), Zc = Zc,
+    cyl_wire = .build_cylinder_wireframe(radius, z_min_cyl, z_max_cyl),
     z_min_cyl = z_min_cyl, z_max_cyl = z_max_cyl
   )
 }
@@ -340,10 +376,10 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
       data = mesh_cov, x = ~x, y = ~y, z = ~z_plot, type = "scatter3d", mode = "markers",
       color = ~risk_band, marker = list(size = 2, opacity = 0.75), name = ~risk_band
     ) %>%
-    plotly::add_surface(
-      x = surf$Xc, y = surf$Yc, z = surf$Zc, opacity = 0.08, showscale = FALSE,
-      surfacecolor = matrix("lightgrey", nrow = nrow(surf$Zc), ncol = ncol(surf$Zc)),
-      name = paste0(radius, " m cylinder boundary"), showlegend = FALSE
+    plotly::add_trace(
+      data = surf$cyl_wire, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
+      line = list(color = "grey60", width = 1),
+      name = paste0(radius, " m cylinder boundary"), showlegend = FALSE, hoverinfo = "skip"
     ) %>%
     plotly::add_trace(
       data = bearing_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
@@ -407,9 +443,9 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
       data = wtg_nacelle, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "markers",
       marker = list(size = 5, color = "darkred"), name = "WTG nacelle"
     ) %>%
-    plotly::add_surface(
-      x = surf$Xc, y = surf$Yc, z = surf$Zc, opacity = 0.06, showscale = FALSE,
-      surfacecolor = matrix("lightgrey", nrow = nrow(surf$Zc), ncol = ncol(surf$Zc)),
+    plotly::add_trace(
+      data = surf$cyl_wire, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
+      line = list(color = "grey60", width = 1), hoverinfo = "skip",
       name = "Cylinder boundary", showlegend = FALSE
     ) %>%
     plotly::layout(
