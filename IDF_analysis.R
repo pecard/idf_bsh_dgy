@@ -150,9 +150,12 @@ options(error = function() message("Skipping failed step"))
   # mesmo nome de ficheiro existe nos dois (ver R/read_utils.R)
   databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
 
-  track_dt_unfilt  <- read_tracks_data(databases_dirs, trackreport_pattern)   # Tracks data
-  curtl_dt_unfilt  <- read_curtailments_data(databases_dirs, curtailments_pattern) # Curtailments data
-  scada_dt_unfilt  <- read_scada_data(databases_dirs, scada_pattern)          # SCADA data
+  # As 4 bases de dados sao lidas em UTC na origem e convertidas aqui para a
+  # hora local do projeto (proj_timezone) -- so muda a exibicao/agrupamento
+  # por dia calendario, nao os instantes usados nos roll joins (curtailment_response.R)
+  track_dt_unfilt  <- read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone)   # Tracks data
+  curtl_dt_unfilt  <- read_curtailments_data(databases_dirs, curtailments_pattern, tz = proj_timezone) # Curtailments data
+  scada_dt_unfilt  <- read_scada_data(databases_dirs, scada_pattern, tz = proj_timezone)          # SCADA data
   heartb_dt_unfilt <- read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
   
   

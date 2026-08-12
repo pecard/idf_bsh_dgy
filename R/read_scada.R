@@ -4,7 +4,7 @@
 ## Depende de: data.table, R/read_utils.R
 ##
 
-read_scada_data <- function(databases_dirs, pattern) {
+read_scada_data <- function(databases_dirs, pattern, tz = "UTC") {
 
   files <- list_files_multi_dir(databases_dirs, pattern)
 
@@ -26,6 +26,11 @@ read_scada_data <- function(databases_dirs, pattern) {
 
   setnames(dt, tolower(names(dt)))
   setnames(dt, "logtimestamp", "datetime")
+
+  # source em UTC -- converte para tz local (ex: proj_timezone), so muda a
+  # exibicao/agrupamento por dia, nao o instante (nao afeta roll joins)
+  dt[, datetime := lubridate::with_tz(datetime, tz)]
+
   setkey(dt, datetime)
 
   dt[, `:=`(
