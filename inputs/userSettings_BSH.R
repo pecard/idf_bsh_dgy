@@ -46,8 +46,8 @@ heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11", "BSH64-04", "BSH62-
 ## Timeframe for analysis/reporting period
 ##
 
-ini <- as.POSIXct('2025-10-01 00:00:00', tz = 'UTC')
-end <- as.POSIXct('2026-06-30 23:59:59', tz = 'UTC')
+ini <- as.POSIXct('2025-10-01 00:00:00', tz = proj_timezone)
+end <- as.POSIXct('2026-06-30 23:59:59', tz = proj_timezone)
 
 
 ##
