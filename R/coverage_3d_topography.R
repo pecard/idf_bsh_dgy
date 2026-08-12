@@ -194,21 +194,37 @@ run_coverage_3d_all_turbines <- function(wtg_sf, track_dt, dem_file,
                                          radius, cyl_height, step_xy, step_z,
                                          prox_thresh_m,
                                          risk_band_breaks = c(200),
-                                         risk_band_labels = c("at risk", "above")) {
+                                         risk_band_labels = c("at risk", "above"),
+                                         wtg_id_col = "InternalNa",
+                                         track_dist_buffer_m = 200) {
 
   wtg_wgs84 <- sf::st_transform(wtg_sf, 4326)
   coords    <- sf::st_coordinates(wtg_wgs84)
+  coords_utm <- sf::st_coordinates(wtg_sf) # assume-se wtg_sf ja na mesma projecao planar que track_dt$utm_x/utm_y
 
   wtg_list <- data.table::data.table(
-    wtg_id  = wtg_wgs84$ID,
-    wtg_lon = coords[, "X"],
-    wtg_lat = coords[, "Y"]
+    wtg_id    = wtg_sf[[wtg_id_col]],
+    wtg_lon   = coords[, "X"],
+    wtg_lat   = coords[, "Y"],
+    wtg_utm_x = coords_utm[, "X"],
+    wtg_utm_y = coords_utm[, "Y"]
   )
 
   results <- lapply(seq_len(nrow(wtg_list)), function(i) {
 
-    wtg_id    <- wtg_list$wtg_id[i]
-    track_wtg <- track_dt[turbine == wtg_id]
+    wtg_id <- wtg_list$wtg_id[i]
+
+    # candidatos por distancia real (UTM) a esta turbina -- NAO usa a
+    # classificacao "NearestTurbine3d" do IdentiFlight (coluna `turbine`),
+    # que pode excluir pontos geometricamente dentro do raio de analise se
+    # o IdentiFlight considerou outra turbina vizinha mais proxima. O corte
+    # exato final continua a ser feito dentro de compute_mesh_coverage()
+    # (projecao local centrada na turbina, x^2+y^2 <= radius^2).
+    dist_to_wtg <- sqrt(
+      (track_dt$utm_x - wtg_list$wtg_utm_x[i])^2 +
+        (track_dt$utm_y - wtg_list$wtg_utm_y[i])^2
+    )
+    track_wtg <- track_dt[dist_to_wtg <= radius + track_dist_buffer_m]
 
     terrain_mesh <- build_terrain_mesh(
       wtg_id, wtg_list$wtg_lat[i], wtg_list$wtg_lon[i], dem_file,
@@ -274,44 +290,33 @@ summarise_mesh_coverage <- function(coverage_list) {
   )
 }
 
-## Contorno do cilindro fronteira, como WIREFRAME (linhas), nao superficie
-## preenchida -- uma superficie semitransparente que ENVOLVE outras traces
-## (terreno, marcadores) pode continuar a escrever no depth-buffer do WebGL
-## e escondê-las por completo, mesmo com opacidade baixa (bug conhecido do
-## plotly.js). Linhas nao tem esse problema.
-## Devolve n_ribs varais verticais + 2 aneis horizontais (base e topo),
-## como um unico trace (segmentos separados por linhas de NA).
-.build_cylinder_wireframe <- function(radius, z_min, z_max, n_ribs = 24) {
+## Malha triangulada (mesh3d) do cilindro fronteira -- em vez de superficie
+## preenchida (add_surface): uma superficie semitransparente que ENVOLVE
+## outras traces (terreno, marcadores) pode continuar a escrever no
+## depth-buffer do WebGL e escondê-las por completo, mesmo com opacidade
+## baixa (bug conhecido do plotly.js com add_surface). mesh3d nao tem esse
+## problema, e mantem o aspeto de parede solida semitransparente.
+.build_cylinder_mesh3d <- function(radius, z_min, z_max, n_theta = 48) {
 
-  theta <- seq(0, 2 * pi, length.out = n_ribs + 1)[-(n_ribs + 1)]
+  theta <- seq(0, 2 * pi, length.out = n_theta + 1)[-(n_theta + 1)]
 
-  na_row <- function(id) data.table::data.table(seg_id = id, x = NA_real_, y = NA_real_, z = NA_real_)
+  x_bottom <- radius * cos(theta); y_bottom <- radius * sin(theta); z_bottom <- rep(z_min, n_theta)
+  x_top    <- radius * cos(theta); y_top    <- radius * sin(theta); z_top    <- rep(z_max, n_theta)
 
-  ## varais verticais
-  ribs <- data.table::rbindlist(lapply(seq_along(theta), function(i) {
-    th <- theta[i]
-    rbind(
-      data.table::data.table(
-        seg_id = i,
-        x = radius * cos(th), y = radius * sin(th), z = c(z_min, z_max)
-      ),
-      na_row(i)
-    )
-  }))
+  i_idx <- integer(2 * n_theta); j_idx <- integer(2 * n_theta); k_idx <- integer(2 * n_theta)
+  for (idx in 0:(n_theta - 1)) {
+    nxt <- (idx + 1) %% n_theta
+    b_i <- idx; b_nxt <- nxt
+    t_i <- idx + n_theta; t_nxt <- nxt + n_theta
+    slot <- 2 * idx
+    i_idx[slot + 1] <- b_i; j_idx[slot + 1] <- b_nxt; k_idx[slot + 1] <- t_i
+    i_idx[slot + 2] <- t_i; j_idx[slot + 2] <- b_nxt; k_idx[slot + 2] <- t_nxt
+  }
 
-  ## aneis horizontais (base e topo)
-  ring_theta <- seq(0, 2 * pi, length.out = 73) # fecha o circulo (73 = 72 segmentos + repete o 1o ponto)
-  rings <- data.table::rbindlist(lapply(c(z_min, z_max), function(zz) {
-    rbind(
-      data.table::data.table(
-        seg_id = paste0("ring_", zz),
-        x = radius * cos(ring_theta), y = radius * sin(ring_theta), z = zz
-      ),
-      na_row(paste0("ring_", zz))
-    )
-  }))
-
-  rbind(ribs, rings)[, .(x, y, z)]
+  list(
+    x = c(x_bottom, x_top), y = c(y_bottom, y_top), z = c(z_bottom, z_top),
+    i = i_idx, j = j_idx, k = k_idx
+  )
 }
 
 
@@ -335,7 +340,7 @@ summarise_mesh_coverage <- function(coverage_list) {
 
   list(
     xs_surf = xs_surf, ys_surf = ys_surf, Zterrain_rel = Zterrain_rel,
-    cyl_wire = .build_cylinder_wireframe(radius, z_min_cyl, z_max_cyl),
+    cyl_mesh = .build_cylinder_mesh3d(radius, z_min_cyl, z_max_cyl),
     z_min_cyl = z_min_cyl, z_max_cyl = z_max_cyl
   )
 }
@@ -381,8 +386,9 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
       color = ~risk_band, marker = list(size = 2, opacity = 0.75), name = ~risk_band
     ) %>%
     plotly::add_trace(
-      data = surf$cyl_wire, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
-      line = list(color = "grey60", width = 1),
+      x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
+      i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
+      type = "mesh3d", opacity = 0.08, color = I("lightblue"),
       name = paste0(radius, " m cylinder boundary"), showlegend = FALSE, hoverinfo = "skip"
     ) %>%
     plotly::add_trace(
@@ -448,8 +454,9 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
       marker = list(size = 5, color = "darkred"), name = "WTG nacelle"
     ) %>%
     plotly::add_trace(
-      data = surf$cyl_wire, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
-      line = list(color = "grey60", width = 1), hoverinfo = "skip",
+      x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
+      i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
+      type = "mesh3d", opacity = 0.06, color = I("lightblue"), hoverinfo = "skip",
       name = "Cylinder boundary", showlegend = FALSE
     ) %>%
     plotly::layout(
