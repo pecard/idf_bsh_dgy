@@ -630,8 +630,14 @@ if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
 
 ### 4.2. WTG coverage 3D (topografia + deteções de aves) ----
 
-# dem_filename --> definido no userSettings_BSH.R (coloca o .tif em databases_dir)
+# dem_filename, wtg_3d_coverage --> definidos no userSettings_BSH.R (coloca o .tif em databases_dir)
 dem_file <- file.path(databases_dir, dem_filename)
+
+# confirmar que os nomes de wtg_3d_coverage existem mesmo no shapefile wtg
+# (coluna InternalNa) antes de correr a analise -- nomes trocados ficam
+# silenciosamente de fora do cov_all se nao verificarmos isto
+cat("Turbinas em wtg_3d_coverage NAO encontradas no shapefile wtg:\n")
+print(setdiff(wtg_3d_coverage, wtg$InternalNa))
 
 if (file.exists(dem_file)) {
 
@@ -641,7 +647,8 @@ if (file.exists(dem_file)) {
     wtg, track_dt, dem_file,
     radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
     step_xy = coverage_mesh_step_xy, step_z = coverage_mesh_step_z,
-    prox_thresh_m = coverage_prox_thresh_m
+    prox_thresh_m = coverage_prox_thresh_m,
+    wtg_sel = wtg_3d_coverage
   )
 
   summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))

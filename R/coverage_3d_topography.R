@@ -196,7 +196,23 @@ run_coverage_3d_all_turbines <- function(wtg_sf, track_dt, dem_file,
                                          risk_band_breaks = c(200),
                                          risk_band_labels = c("at risk", "above"),
                                          wtg_id_col = "InternalNa",
-                                         track_dist_buffer_m = 200) {
+                                         track_dist_buffer_m = 200,
+                                         wtg_sel = NULL) {
+
+  # wtg_sel: subconjunto de nomes de turbina (coluna wtg_id_col) a analisar --
+  # analise 3D completa (DEM + malha + KD-tree) e cara, por isso NULL = todas
+  # as turbinas do shapefile so deve ser usado deliberadamente. Nomes que nao
+  # existirem no shapefile sao avisados explicitamente, nao ignorados em silencio.
+  if (!is.null(wtg_sel)) {
+    missing_wtg <- setdiff(wtg_sel, wtg_sf[[wtg_id_col]])
+    if (length(missing_wtg) > 0) {
+      warning(sprintf(
+        "wtg_sel: %d nome(s) nao encontrados no shapefile (coluna '%s'): %s",
+        length(missing_wtg), wtg_id_col, paste(missing_wtg, collapse = ", ")
+      ))
+    }
+    wtg_sf <- wtg_sf[wtg_sf[[wtg_id_col]] %in% wtg_sel, ]
+  }
 
   wtg_wgs84 <- sf::st_transform(wtg_sf, 4326)
   coords    <- sf::st_coordinates(wtg_wgs84)
