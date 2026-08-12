@@ -385,7 +385,7 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
   plotly::plot_ly() %>%
     plotly::add_surface(
       x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.85, showscale = FALSE,
-      colorscale = list(c(0, "rgb(20,20,20)"), c(1, "rgb(20,20,20)")),
+      colorscale = "Viridis",
       name = "Terrain"
     ) %>%
     plotly::add_markers(
@@ -395,13 +395,14 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
     plotly::add_trace(
       x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
       i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
-      type = "mesh3d", opacity = 0.08, color = I("lightblue"),
+      type = "mesh3d", opacity = 0.08, color = I("grey"),
       name = paste0(radius, " m cylinder boundary"), showlegend = FALSE, hoverinfo = "skip"
     ) %>%
     plotly::add_trace(
       data = bearing_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
       line = list(color = "black", width = 4),
-      name = paste0("View axis ", bearing_line$label[1], "→", bearing_line$label[2])
+      name = paste0("View axis ", bearing_line$label[1], "→", bearing_line$label[2]),
+      showlegend = FALSE
     ) %>%
     plotly::add_trace(
       data = bearing_labels, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "text",
@@ -444,7 +445,7 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
   plotly::plot_ly() %>%
     plotly::add_surface(
       x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.7, showscale = FALSE,
-      colorscale = list(c(0, "rgb(20,20,20)"), c(1, "rgb(20,20,20)")),
+      colorscale = "Viridis",
       name = "Terrain"
     ) %>%
     plotly::add_markers(
@@ -463,7 +464,7 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
     plotly::add_trace(
       x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
       i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
-      type = "mesh3d", opacity = 0.06, color = I("lightblue"), hoverinfo = "skip",
+      type = "mesh3d", opacity = 0.06, color = I("grey"), hoverinfo = "skip",
       name = "Cylinder boundary", showlegend = FALSE
     ) %>%
     plotly::layout(
