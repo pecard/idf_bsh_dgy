@@ -163,6 +163,13 @@ coverage_cylinder_inner_radius <- 600  # em metros; 3D coverage cylinder - inner
 # de cada turbina automaticamente, nao e preciso pre-recortar o ficheiro.
 dem_filename <- "Bash_DEM_copernicus30m.tif"
 
+# Subconjunto de turbinas (nomes tal como aparecem na coluna InternalNa do
+# shapefile wtg) para a analise 3D completa -- e cara (DEM + malha + KD-tree
+# por turbina), por isso NAO corre para todas as turbinas por omissao.
+# Nomes que nao existirem no shapefile geram um aviso explicito, nao sao
+# ignorados em silencio (ver run_coverage_3d_all_turbines()).
+wtg_3d_coverage <- c('BSH54')
+
 coverage_mesh_step_xy   <- 50 # em metros; resolucao horizontal da malha 3D
 coverage_mesh_step_z    <- 50 # em metros; resolucao vertical da malha 3D
 coverage_prox_thresh_m  <- 50 # em metros; distancia 3D maxima ave-no da malha para considerar "covered"
