@@ -127,6 +127,7 @@ scada_end <- as.POSIXct('2026-06-30 23:59:59', tz = proj_timezone)
 
 turbinas_scada <- c('BSH54')
 
+
 safe_shutdown_rpm <- 1 # threshold de rpm a considerar para uma safe passage; curtailment considerado feito com sucesso quando rpm da turbina < safe_shutdown_rpm
 
 # tolerancia apertada (segundos) para considerar fiavel o RPM de baseline no
