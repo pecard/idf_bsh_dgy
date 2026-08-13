@@ -256,3 +256,19 @@ cat(paste(
 cat("\n===== summarise_safe_distance(safe_dist_dt[turbine_state == 'already_slowing'], test_prioritysp) =====\n")
 print(summary_already_slowing$overall)
 cat("\nEsperado: n=1 (TDG1), n_ok=1, n_crit=0, pct_ok=100, mean_min_safe_dist_m~32.2 (=32.175 arredondado), median idem.\n")
+
+# --Added Paulo 2026-08-13 --
+#source("tests/test_curtailment_safe_distance.R")
+
+summary(safe_dist_dt$time_to_threshold_sec)
+summary(safe_dist_dt$avg_speed_ms)
+summary(safe_dist_dt$min_safe_dist_m)
+
+## os 10 curtailments com MAIOR tempo ate 2rpm -- exatamente os casos que
+## esperarias dar distancias de 1000-2000m
+safe_dist_dt[order(-time_to_threshold_sec)][1:10,
+                                            .(track_id, species, time_to_threshold_sec, avg_speed_ms, min_safe_dist_m, x2d, dist_margin_m, status)]
+
+plot_safe_distance_hist(safe_dist_dt, species_sel = prioritysp, facet = FALSE)
+summary_tt_by_turbine  # se ainda tiveres em memoria da seccao 3.6, para comparar
+safe_dist_dt[time_to_threshold_sec < 10, .N]

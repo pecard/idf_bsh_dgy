@@ -125,8 +125,7 @@ shorttrack_eval_range <- 300 # em metros; distancia ate qual se considera releva
 scada_ini <- as.POSIXct('2025-10-15 00:00:00', tz = proj_timezone)
 scada_end <- as.POSIXct('2026-06-30 23:59:59', tz = proj_timezone)
 
-turbinas_scada <- c('BSH54')
-
+turbinas_scada <- c('BSH54', 'BSH62')
 
 safe_shutdown_rpm <- 1 # threshold de rpm a considerar para uma safe passage; curtailment considerado feito com sucesso quando rpm da turbina < safe_shutdown_rpm
 
@@ -183,7 +182,7 @@ dem_filename <- "Bash_DEM_copernicus30m.tif"
 # Nomes que nao existirem no shapefile geram um aviso explicito, nao sao
 # ignorados em silencio (ver run_coverage_3d_all_turbines()).
 # Usa wtg_3d_coverage <- "all" para correr a analise para todas as turbinas do shapefile.
-wtg_3d_coverage <- 'all' # c('BSH54')
+wtg_3d_coverage <- c('all') #all' # c('BSH54')
 
 coverage_mesh_step_xy   <- 50 # em metros; resolucao horizontal da malha 3D
 coverage_mesh_step_z    <- 50 # em metros; resolucao vertical da malha 3D

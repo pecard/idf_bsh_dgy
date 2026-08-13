@@ -469,18 +469,18 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
 
   plotly::plot_ly() %>%
     plotly::add_surface(
-      x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.85, showscale = FALSE,
+      x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.95, showscale = FALSE,
       colorscale = "Viridis",
       name = "Terrain"
     ) %>%
     plotly::add_markers(
       data = mesh_cov, x = ~x, y = ~y, z = ~z_plot, type = "scatter3d", mode = "markers",
-      color = ~risk_band, marker = list(size = 1.2, opacity = 0.75), name = ~risk_band
+      color = ~risk_band, marker = list(size = 1.2, opacity = 0.85), name = ~risk_band
     ) %>%
     plotly::add_trace(
       x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
       i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
-      type = "mesh3d", opacity = 0.08, color = I("grey"),
+      type = "mesh3d", opacity = 0.02, color = I("grey"),
       name = paste0(radius, " m cylinder boundary"), showlegend = FALSE, hoverinfo = "skip"
     ) %>%
     plotly::add_trace(
@@ -496,7 +496,7 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
     ) %>%
     plotly::layout(
       title = list(text = plot_title, x = 0.05, y = 0.95, font = list(size = 12)),
-      legend = list(x = 0.02, y = 0.95, xanchor = "left", yanchor = "top",
+      legend = list(x = 0.02, y = 0.85, xanchor = "left", yanchor = "top",
                     bgcolor = "rgba(255,255,255,0.65)", bordercolor = "rgba(0,0,0,0.2)", borderwidth = 1),
       margin = list(l = 20, r = 20, t = 70, b = 20),
       scene = list(
@@ -530,14 +530,14 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
 
   plotly::plot_ly() %>%
     plotly::add_surface(
-      x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.7, showscale = FALSE,
+      x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.95, showscale = FALSE,
       colorscale = "Viridis",
       name = "Terrain"
     ) %>%
     plotly::add_markers(
       data = mesh_not_cov, x = ~x, y = ~y, z = ~z_plot, type = "scatter3d", mode = "markers",
-      marker = list(size = 1.5, opacity = 0.51, color = "orange"),
-      name = "Air mesh - not covered"
+      marker = list(size = 1.5, opacity = 0.7, color = "orange"),
+      name = "Mesh not covered"
     ) %>%
     plotly::add_trace(
       data = wtg_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
@@ -550,7 +550,7 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
     plotly::add_trace(
       x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
       i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
-      type = "mesh3d", opacity = 0.06, color = I("grey"), hoverinfo = "skip",
+      type = "mesh3d", opacity = 0.03, color = I("grey"), hoverinfo = "skip",
       name = "Cylinder boundary", showlegend = FALSE
     ) %>%
     plotly::layout(
@@ -559,7 +559,7 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
                        .coverage_title_text(wtg_id, metrics, coverage$by_risk_band)),
         x = 0.05, y = 0.95, font = list(size = 12)
       ),
-      legend = list(x = 0.02, y = 0.95, xanchor = "left", yanchor = "top",
+      legend = list(x = 0.01, y = 0.85, xanchor = "left", yanchor = "top",
                     bgcolor = "rgba(255,255,255,0.65)", bordercolor = "rgba(0,0,0,0.2)", borderwidth = 1),
       scene = list(
         xaxis = list(title = "X to WTG (m)", range = c(-radius, radius), autorange = FALSE),

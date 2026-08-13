@@ -110,3 +110,4 @@ cat(sprintf("min(z_rel_turbine) na malha: %.0f | Esperado: 0 -- %s\n",
 cat("\n===== low_sample (so a formula -- compute_mesh_coverage() precisa de DEM real) =====\n")
 cat(sprintf("500000 registos, threshold 500000 -> low_sample = %s (esperado FALSE)\n", 500000 < 500000))
 cat(sprintf("499999 registos, threshold 500000 -> low_sample = %s (esperado TRUE)\n", 499999 < 500000))
+
