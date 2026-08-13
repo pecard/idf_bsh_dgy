@@ -21,10 +21,15 @@ source("R/curtailment_forensic_trace.R")
 
 
 ##
-## Cenarios sinteticos -- turbina TFOR1, dia 2026-05-01, com 3 curtailments:
+## Cenarios sinteticos -- turbina TFOR1, dia 2026-05-01, com 4 curtailments:
 ##   TFA1 (08:00) -- "OK", full_speed, nunca atinge 1rpm (testa NA no dcast)
 ##   TFB1 (14:00) -- "Crit", full_speed, atinge 2rpm E 1rpm
 ##   TFC1 (18:00) -- "OK", already_slowing (start_rpm=4 < 6)
+##   TFH1 (20:00) -- match de baseline INVALIDO (start a 4s da leitura SCADA
+##                   mais proxima, tolerancia e' 2s) -- caso central desta
+##                   correcao: fica de fora do tt_dt/safe_dist_dt, mas TEM de
+##                   continuar em forensic_dt (com metricas de RPM a NA),
+##                   nao pode desaparecer da tabela
 ## + TFD1 (turbina TFOR1, dia 2026-05-02) -- testa filtro de DIA
 ## + TFE1 (turbina TFOR2, dia 2026-05-01) -- testa filtro de TURBINA
 ##
@@ -77,6 +82,22 @@ track_c <- data.table(
 ## track_started = base_c - 3, x2d=150, avg_speed_ms=6.5, min_safe_dist_m=32.175,
 ## dist_margin_m=117.825, status="OK", start_rpm=4 -> turbine_state="already_slowing"
 
+## TFH1 -- match de baseline invalido (start a 4s da leitura mais proxima, > tolerancia 2s) --
+base_h <- as.POSIXct("2026-05-01 20:00:00", tz = "UTC")
+scada_h <- data.table(
+  turbinelabel = "TFOR1", datetime = base_h + c(0, 10),
+  value = c(10, 1), readingname = "RPM"
+)
+curtl_h <- data.table(turbine = "TFOR1", track_id = "TFH1", species = "Golden-Eagle",
+                      start = base_h + 4, end = base_h + 20)
+track_h <- data.table(
+  track_id = "TFH1", timestamp = base_h + c(-2, -1),
+  dist = rep(700, 2), speed_ms = c(9, 10)
+)
+## esperado: EXCLUIDO de tt_dt/safe_dist_dt (match invalido), mas presente em
+## forensic_dt com turbine/species/start/end/track_started preenchidos e
+## start_rpm/time_to_Xrpm_sec/x2d/avg_speed_ms/min_safe_dist_m/status/turbine_state = NA
+
 ## TFD1 -- mesma turbina TFOR1, mas OUTRO DIA (2026-05-02) -- testa filtro de dia --
 base_d <- as.POSIXct("2026-05-02 08:00:00", tz = "UTC")
 scada_d <- data.table(
@@ -103,9 +124,9 @@ track_e <- data.table(
   dist = rep(400, 3), speed_ms = c(5, 6, 7)
 )
 
-scada_all <- rbindlist(list(scada_a, scada_b, scada_c, scada_d, scada_e))
-curtl_all <- rbindlist(list(curtl_a, curtl_b, curtl_c, curtl_d, curtl_e))
-track_all <- rbindlist(list(track_a, track_b, track_c, track_d, track_e))
+scada_all <- rbindlist(list(scada_a, scada_b, scada_c, scada_h, scada_d, scada_e))
+curtl_all <- rbindlist(list(curtl_a, curtl_b, curtl_c, curtl_h, curtl_d, curtl_e))
+track_all <- rbindlist(list(track_a, track_b, track_c, track_h, track_d, track_e))
 
 tt_dt <- time_to_rpm_thresholds(curtl_all, scada_all, thresholds = c(2, 1), start_end_gap_sec = 2)
 safe_dist_dt <- compute_safe_distance(curtl_all, scada_all, track_all,
@@ -119,14 +140,14 @@ days_tfor1 <- find_high_curtailment_days(curtl_all, "TFOR1", min_curtailments = 
 cat("\n===== find_high_curtailment_days(curtl_all, 'TFOR1', min_curtailments = 3) =====\n")
 print(days_tfor1)
 cat(sprintf(
-  "\nEsperado: 1 linha, day=2026-05-01, n_curtailments=3 (2026-05-02 tem so 1, fica de fora) -- %s\n",
-  if (nrow(days_tfor1) == 1 && days_tfor1$day[1] == as.Date("2026-05-01") && days_tfor1$n_curtailments[1] == 3) "OK" else "FALHOU"
+  "\nEsperado: 1 linha, day=2026-05-01, n_curtailments=4 (TFA1,TFB1,TFC1,TFH1 -- 2026-05-02 tem so 1, fica de fora) -- %s\n",
+  if (nrow(days_tfor1) == 1 && days_tfor1$day[1] == as.Date("2026-05-01") && days_tfor1$n_curtailments[1] == 4) "OK" else "FALHOU"
 ))
 
 
 ## 2. build_forensic_trace() -------------------------------------------------
 
-forensic_dt <- build_forensic_trace("TFOR1", "2026-05-01", tt_dt, safe_dist_dt, track_all)
+forensic_dt <- build_forensic_trace("TFOR1", "2026-05-01", curtl_all, tt_dt, safe_dist_dt, track_all)
 
 cat("\n===== build_forensic_trace('TFOR1', '2026-05-01', ...) =====\n")
 print(forensic_dt[, .(track_id, species, start, track_started, time_to_2rpm_sec, time_to_1rpm_sec,
@@ -145,7 +166,8 @@ expected_f <- data.table(
   expected_state      = c("full_speed", "full_speed", "already_slowing")
 )
 
-check_f <- merge(forensic_dt, expected_f, by = "track_id")
+## TFH1 verificado a parte (abaixo) -- so estas 3 tem metricas de RPM completas
+check_f <- merge(forensic_dt[track_id != "TFH1"], expected_f, by = "track_id")
 close_or_na <- function(a, b, tol = 0.05) (is.na(a) & is.na(b)) | (!is.na(a) & !is.na(b) & abs(a - b) < tol)
 
 check_f[, `:=`(
@@ -168,9 +190,9 @@ n_ok <- sum(check_f$t2_ok & check_f$t1_ok & check_f$started_ok & check_f$x2d_ok 
 cat(sprintf("\nResultado: %d/%d casos corretos.\n", n_ok, nrow(check_f)))
 
 cat(sprintf(
-  "\nOrdem por 'start' (TFA1 08:00 < TFB1 14:00 < TFC1 18:00): %s -- %s\n",
+  "\nOrdem por 'start' (TFA1 08:00 < TFB1 14:00 < TFC1 18:00 < TFH1 20:00): %s -- %s\n",
   paste(forensic_dt$track_id, collapse = " < "),
-  if (identical(forensic_dt$track_id, c("TFA1", "TFB1", "TFC1"))) "OK" else "FALHOU"
+  if (identical(forensic_dt$track_id, c("TFA1", "TFB1", "TFC1", "TFH1"))) "OK" else "FALHOU"
 ))
 
 cat(sprintf(
@@ -180,8 +202,28 @@ cat(sprintf(
 ))
 
 
+## TFH1 -- o caso central desta correcao: match de baseline invalido (excluido
+## de tt_dt/safe_dist_dt), mas TEM de continuar em forensic_dt -----------------
+tfh1 <- forensic_dt[track_id == "TFH1"]
+cat("\n===== Verificacao TFH1 (match de baseline invalido, deve continuar na tabela) =====\n")
+print(tfh1[, .(track_id, turbine, species, start, end, track_started,
+               start_rpm, time_to_2rpm_sec, time_to_1rpm_sec,
+               x2d, avg_speed_ms, min_safe_dist_m, status, turbine_state)])
+tfh1_ok <- nrow(tfh1) == 1 &&
+  tfh1$turbine == "TFOR1" && tfh1$species == "Golden-Eagle" &&
+  tfh1$start == base_h + 4 && tfh1$end == base_h + 20 &&
+  tfh1$track_started == base_h - 2 &&
+  is.na(tfh1$start_rpm) && is.na(tfh1$time_to_2rpm_sec) && is.na(tfh1$time_to_1rpm_sec) &&
+  is.na(tfh1$x2d) && is.na(tfh1$avg_speed_ms) && is.na(tfh1$min_safe_dist_m) &&
+  is.na(tfh1$status) && is.na(tfh1$turbine_state)
+cat(sprintf(
+  "\nEsperado: 1 linha, turbine/species/start/end/track_started preenchidos, resto NA -- %s\n",
+  if (tfh1_ok) "OK" else "FALHOU"
+))
+
+
 ## Dia sem nenhum curtailment -- tem de devolver 0 linhas sem erro -----------
-forensic_empty <- build_forensic_trace("TFOR1", "2026-05-03", tt_dt, safe_dist_dt, track_all)
+forensic_empty <- build_forensic_trace("TFOR1", "2026-05-03", curtl_all, tt_dt, safe_dist_dt, track_all)
 cat(sprintf(
   "\nbuild_forensic_trace() num dia sem curtailments: %d linhas (esperado: 0) -- %s\n",
   nrow(forensic_empty), if (nrow(forensic_empty) == 0) "OK" else "FALHOU"
@@ -194,8 +236,9 @@ p <- plot_forensic_rpm(forensic_dt, scada_all, "TFOR1", "2026-05-01")
 
 cat("\n===== plot_forensic_rpm() smoke test =====\n")
 cat(sprintf("Devolve objeto ggplot: %s (esperado: TRUE)\n", inherits(p, "ggplot")))
-cat("Inspecionar visualmente no RStudio: 3 barras/linhas cinzentas (TFA1 08:00, TFB1 14:00, TFC1 18:00),\n")
-cat("cruzes azuis (2rpm) em TFA1/TFB1/TFC1, cruzes vermelhas (1rpm) so em TFB1/TFC1 (TFA1 nunca atinge 1rpm).\n")
-cat("Nota: os dados de RPM sinteticos sao 3 clusters muito esparsos (so 3-7 pontos cada) --\n")
+cat("Inspecionar visualmente no RStudio: 4 barras/linhas cinzentas (TFA1 08:00, TFB1 14:00, TFC1 18:00, TFH1 20:00),\n")
+cat("cruzes azuis (2rpm) em TFA1/TFB1/TFC1, cruzes vermelhas (1rpm) so em TFB1/TFC1 (TFA1 nunca atinge 1rpm,\n")
+cat("TFH1 nao tem cruzes -- match de baseline invalido, mas a barra/linha cinzenta tem de aparecer na mesma).\n")
+cat("Nota: os dados de RPM sinteticos sao clusters muito esparsos (so 2-7 pontos cada) --\n")
 cat("a linha vai parecer artificial entre clusters (liga em linha reta). Com scada_dt real (~10s\n")
 cat("de resolucao) a curva fica continua como no portal -- isto e so para confirmar que a funcao corre.\n")

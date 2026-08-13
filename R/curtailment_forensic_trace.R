@@ -25,7 +25,7 @@
 ##
 ##   tt_dt       <- time_to_rpm_thresholds(curtl_scada_dt, scada_dt, thresholds = c(2, 1, 0))
 ##   safe_dist_dt <- compute_safe_distance(curtl_scada_dt, scada_dt, track_dt)
-##   forensic_dt <- build_forensic_trace("BSH54", "2026-04-12", tt_dt, safe_dist_dt, track_dt)
+##   forensic_dt <- build_forensic_trace("BSH54", "2026-04-12", curtl_scada_dt, tt_dt, safe_dist_dt, track_dt)
 ##
 ##   plot_forensic_rpm(forensic_dt, scada_dt, "BSH54", "2026-04-12")
 ##
@@ -46,29 +46,53 @@ find_high_curtailment_days <- function(curtl_dt, turbine_id, min_curtailments = 
 
 
 ## 2. Tabela forense -- 1 linha por curtailment, turbina+dia ----
+##
+## Base/backbone = curtl_dt (TODOS os curtailments desse turbina+dia, sem
+## filtro de fiabilidade) -- tt_dt/safe_dist_dt sao feitos LEFT JOIN por cima,
+## por (track_id, start). tt_dt (time_to_rpm_thresholds()) exclui de proposito
+## curtailments sem leitura de SCADA fiavel perto do start (start_end_gap_sec,
+## por omissao 2s -- ver R/curtailment_shutdown_time.R); isso e' correto para
+## as metricas agregadas (3.6/3.7), mas para uma tabela forense TODOS os
+## curtailments desse dia tem de aparecer -- os sem match fiavel ficam com
+## start_rpm/time_to_Xrpm_sec (e por arrasto as colunas de safe_dist_dt) a NA,
+## em vez de a linha inteira desaparecer.
+##
+## Chave composta (track_id, start), nao so track_id: o mesmo track_id pode,
+## em teoria, disparar mais do que um curtailment nesse turbina+dia.
 
-build_forensic_trace <- function(turbine_id, date, tt_dt, safe_dist_dt, track_dt, tz = "UTC") {
+build_forensic_trace <- function(turbine_id, date, curtl_dt, tt_dt, safe_dist_dt, track_dt, tz = "UTC") {
 
   date <- as.Date(date)
 
-  tt_wide <- data.table::dcast(
-    tt_dt[turbine == turbine_id],
-    curtailment_id + turbine + track_id + species + start + end + start_rpm ~ threshold,
-    value.var = "time_to_threshold_sec"
-  )
-  id_cols  <- c("curtailment_id", "turbine", "track_id", "species", "start", "end", "start_rpm")
-  val_cols <- setdiff(names(tt_wide), id_cols)
-  data.table::setnames(tt_wide, val_cols, paste0("time_to_", val_cols, "rpm_sec"))
+  base_dt <- curtl_dt[
+    turbine == turbine_id & as.Date(start, tz = tz) == date,
+    .(turbine, track_id, species, start, end)
+  ]
 
-  tt_wide <- tt_wide[as.Date(start, tz = tz) == date]
+  if (nrow(base_dt) == 0L) return(base_dt)
 
-  if (nrow(tt_wide) == 0L) return(tt_wide)
+  tt_sub <- tt_dt[turbine == turbine_id & track_id %in% base_dt$track_id]
+
+  if (nrow(tt_sub) > 0L) {
+    tt_wide <- data.table::dcast(
+      tt_sub, track_id + start + start_rpm ~ threshold, value.var = "time_to_threshold_sec"
+    )
+    id_cols  <- c("track_id", "start", "start_rpm")
+    val_cols <- setdiff(names(tt_wide), id_cols)
+    data.table::setnames(tt_wide, val_cols, paste0("time_to_", val_cols, "rpm_sec"))
+  } else {
+    tt_wide <- data.table::data.table(track_id = character(), start = base_dt$start[0])
+  }
+
+  out <- merge(base_dt, tt_wide, by = c("track_id", "start"), all.x = TRUE)
 
   track_started_dt <- track_dt[, .(track_started = min(timestamp)), by = track_id]
-  out <- merge(tt_wide, track_started_dt, by = "track_id", all.x = TRUE)
+  out <- merge(out, track_started_dt, by = "track_id", all.x = TRUE)
 
-  sd_cols <- safe_dist_dt[, .(track_id, x2d, avg_speed_ms, min_safe_dist_m, dist_margin_m, status, turbine_state)]
-  out <- merge(out, sd_cols, by = "track_id", all.x = TRUE)
+  sd_cols <- safe_dist_dt[
+    , .(track_id, start, x2d, avg_speed_ms, min_safe_dist_m, dist_margin_m, status, turbine_state)
+  ]
+  out <- merge(out, sd_cols, by = c("track_id", "start"), all.x = TRUE)
 
   data.table::setorder(out, start)
   out[]
