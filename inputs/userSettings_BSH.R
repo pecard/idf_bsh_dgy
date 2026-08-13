@@ -148,6 +148,13 @@ shutdown_time_low_cut    <- 40 # segundos
 shutdown_time_high_cut   <- 50 # segundos
 
 
+## -- 3.7. Safe distance (metodologia KNE) --
+
+safe_dist_rpm_threshold  <- 2   # rpm; "tempo ate parar em seguranca" usado na formula do KNE (distinto de safe_shutdown_rpm)
+safe_dist_speed_trim_q   <- 0.95 # percentil de corte de outliers na velocidade de voo do track
+safe_dist_reference_line_m <- 600 # em metros; linha de referencia nos plots -- POR CONFIRMAR/AJUSTAR
+
+
 ## -- 4. Coverage --
 
 idf_op_detection_range <- 1000 # em metros; distancia de deteção operational do IDF a considerar na análise
