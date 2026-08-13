@@ -160,7 +160,7 @@ databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) datab
 ## quando force_reread_cache = TRUE (usar depois de descarregar dados novos).
 ##
 folder_cache <- "cache"
-force_reread_cache <- FALSE # -> TRUE depois de descarregar dados novos, so 1 corrida
+force_reread_cache <- TRUE # -> TRUE depois de descarregar dados novos, so 1 corrida
 
 # As 4 bases de dados vem do portal IdentiFlight ja em hora LOCAL do projeto
 # (confirmado -- nao UTC como se assumia antes); read_*_data() reinterpreta
@@ -706,6 +706,11 @@ if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
   )
 
 } else {print("SCADA data not available - Curtailment response assessment was skipped")}
+
+
+attr(curtl_scada_dt$start, "tzone")  # expected "Asia/Samarkand"
+curtl_scada_dt[track_id == "F96FD9F7-E742-4588-B495-DEA851EB5495", start]  # esperado: 06:44:52
+
 
 
 ##
