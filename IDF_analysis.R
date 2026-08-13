@@ -616,7 +616,46 @@ if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
     file.path(folder_output, paste0("curtailment_shutdown_time_hist_", date(scada_ini), "to", date(scada_end), ".png")),
     plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
   )
-  
+
+  ### 3.7. Safe distance (metodologia KNE) ----
+
+  #safe_dist_rpm_threshold, safe_dist_speed_trim_q, safe_dist_reference_line_m --> definidos no userSettings_BSH.R
+
+  source("R/curtailment_safe_distance.R")
+
+  safe_dist_dt <- compute_safe_distance(
+    curtl_scada_dt, scada_dt, track_dt,
+    start_end_gap_sec = curtailment_start_end_gap_sec,
+    rpm_threshold = safe_dist_rpm_threshold,
+    speed_trim_q = safe_dist_speed_trim_q
+  )
+  summary_safe_dist <- summarise_safe_distance(safe_dist_dt, prioritysp)
+
+  writexl::write_xlsx(
+    list(
+      Safe_distance = safe_dist_dt,
+      Overall       = summary_safe_dist$overall,
+      By_species    = summary_safe_dist$by_species
+    ),
+    file.path(folder_output, paste0("curtailment_safe_distance_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+  )
+
+  p_safe_dist_hist <- plot_safe_distance_hist(
+    safe_dist_dt, species_sel = prioritysp, ref_line_m = safe_dist_reference_line_m, facet = TRUE
+  )
+  ggsave(
+    file.path(folder_output, paste0("curtailment_safe_distance_hist_", date(scada_ini), "to", date(scada_end), ".png")),
+    plot = p_safe_dist_hist, width = 8, height = 8, dpi = 300, bg = "white"
+  )
+
+  p_trigger_dist_status <- plot_trigger_distance_status(
+    safe_dist_dt, species_sel = prioritysp, ref_line_m = safe_dist_reference_line_m, facet = TRUE
+  )
+  ggsave(
+    file.path(folder_output, paste0("curtailment_trigger_distance_", date(scada_ini), "to", date(scada_end), ".png")),
+    plot = p_trigger_dist_status, width = 8, height = 8, dpi = 300, bg = "white"
+  )
+
 } else {print("SCADA data not available - Curtailment response assessment was skipped")}
 
 
