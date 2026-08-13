@@ -70,3 +70,34 @@ cat(sprintf("dt4$value[1]: %d (esperado: 2, cache atualizada na 3a chamada) -- %
 
 file.remove(cache_file)
 cat("\n(ficheiro de teste removido)\n")
+
+
+## Timezone: fst NAO preserva o atributo tzone dos POSIXct no round-trip --
+## so o instante em si (sempre UTC internamente). load_or_read_cache(tz=...)
+## tem de reaplicar a tz depois de carregar da cache. Teste REAL (nao
+## simulado) -- passa mesmo pelo fst::write_fst()/read_fst() -----------------
+
+cache_file_tz <- file.path(tempdir(), "test_data_cache_tz.fst")
+if (file.exists(cache_file_tz)) file.remove(cache_file_tz)
+
+read_fn_tz <- function() {
+  data.table(
+    id = 1:2,
+    ts = as.POSIXct(c("2026-06-01 01:00:00", "2026-06-01 02:00:00"), tz = "Asia/Samarkand")
+  )
+}
+
+dt_tz_1 <- load_or_read_cache(cache_file_tz, read_fn_tz, force_reread = FALSE, tz = "Asia/Samarkand")
+dt_tz_2 <- load_or_read_cache(cache_file_tz, read_fn_tz, force_reread = FALSE, tz = "Asia/Samarkand") # vem da cache
+
+cat("\n===== load_or_read_cache(tz=...) preserva o timezone dos POSIXct =====\n")
+cat(sprintf("tzone na 1a leitura (read_fn direto): '%s'\n", attr(dt_tz_1$ts, "tzone")))
+cat(sprintf("tzone na 2a leitura (via cache fst):  '%s' (esperado: 'Asia/Samarkand') -- %s\n",
+           attr(dt_tz_2$ts, "tzone"),
+           if (identical(attr(dt_tz_2$ts, "tzone"), "Asia/Samarkand")) "OK" else "FALHOU"))
+cat(sprintf("Instante preservado (mesmo valor absoluto, so a etiqueta e' que se perdia): %s -- %s\n",
+           isTRUE(all.equal(as.numeric(dt_tz_1$ts), as.numeric(dt_tz_2$ts))),
+           if (isTRUE(all.equal(as.numeric(dt_tz_1$ts), as.numeric(dt_tz_2$ts)))) "OK" else "FALHOU"))
+
+file.remove(cache_file_tz)
+cat("\n(ficheiro de teste removido)\n")

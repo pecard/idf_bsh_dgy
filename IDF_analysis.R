@@ -168,22 +168,22 @@ force_reread_cache <- FALSE # -> TRUE depois de descarregar dados novos, so 1 co
 track_dt_unfilt <- load_or_read_cache(
   file.path(folder_cache, "track_dt_unfilt.fst"),
   function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone),
-  force_reread = force_reread_cache
+  force_reread = force_reread_cache, tz = proj_timezone
 )
 curtl_dt_unfilt <- load_or_read_cache(
   file.path(folder_cache, "curtl_dt_unfilt.fst"),
   function() read_curtailments_data(databases_dirs, curtailments_pattern, tz = proj_timezone),
-  force_reread = force_reread_cache
+  force_reread = force_reread_cache, tz = proj_timezone
 )
 scada_dt_unfilt <- load_or_read_cache(
   file.path(folder_cache, "scada_dt_unfilt.fst"),
   function() read_scada_data(databases_dirs, scada_pattern, tz = proj_timezone),
-  force_reread = force_reread_cache
+  force_reread = force_reread_cache, tz = proj_timezone
 )
 heartb_dt_unfilt <- load_or_read_cache(
   file.path(folder_cache, "heartb_dt_unfilt.fst"),
   function() read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone),
-  force_reread = force_reread_cache
+  force_reread = force_reread_cache, tz = proj_timezone
 )
 
 #Project-specific corrections --> handle_script.R
