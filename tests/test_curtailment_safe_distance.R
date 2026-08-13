@@ -23,6 +23,8 @@ source("R/curtailment_safe_distance.R")
 ##   TDC1 -- match do start invalido (4s de distancia, > tolerancia de 2s)
 ##           -- deve ficar de fora do resultado (excluido em time_to_rpm_thresholds)
 ##   TDD1 -- turbina nunca atinge 2rpm dentro da janela -- tempo/distancia/status = NA
+##   TDG1 -- turbine_state = "already_slowing": start_rpm = 4 (< already_slowing_rpm_threshold
+##           default 6) -- turbina ja estava a abrandar quando o curtailment disparou
 ##
 
 ## TDA1 -- "OK" -------------------------------------------------------------
@@ -122,11 +124,28 @@ track_f <- data.table(track_id = "TSF1", dist = 50, speed_ms = c(30, 32, 34))
 ## time_to_2rpm esperado: 1a leitura <=2rpm e +15 (1rpm) -> 15 - 0.1 = 14.9s
 ## min_safe_dist = 14.9 * 31 = 461.9 | margin = 50 - 461.9 = -411.9 -> "Crit"
 
+## TDG1 -- "OK", turbine_state = "already_slowing" (start_rpm = 4 < 6) -- testa
+## a classificacao por estado da turbina no momento do disparo -------------
+base_g <- as.POSIXct("2026-04-01 01:00:00", tz = "UTC")
+scada_g <- data.table(
+  turbinelabel = "TESTS7",
+  datetime     = base_g + c(0, 5),
+  value        = c(4, 1.5),
+  readingname  = "RPM"
+)
+curtl_g <- data.table(turbine = "TESTS7", track_id = "TSG1", species = "Golden-Eagle",
+                      start = base_g + 0.05, end = base_g + 15)
+track_g <- data.table(track_id = "TSG1", dist = 150, speed_ms = c(6, 7, 8))
+## start_rpm esperado: leitura mais proxima do start (t=0) = 4 -> "already_slowing" (< 6)
+## avg_speed esperado: quantile(c(6,7,8), .95) = 7.9 -> filtra <7.9 -> mean(6,7) = 6.5
+## time_to_2rpm esperado: 1a leitura <=2rpm e +5 (1.5rpm) -> 5 - 0.05 = 4.95s
+## min_safe_dist = 4.95 * 6.5 = 32.175 | margin = 150 - 32.175 = 117.825 -> "OK"
+
 test_prioritysp <- c("Golden-Eagle", "Steppe-Eagle") # subconjunto local, independente do userSettings_BSH.R
 
-scada_all <- rbindlist(list(scada_a, scada_b, scada_c, scada_d, scada_e, scada_f))
-curtl_all <- rbindlist(list(curtl_a, curtl_b, curtl_c, curtl_d, curtl_e, curtl_f))
-track_all <- rbindlist(list(track_a, track_b, track_c, track_d, track_e, track_f))
+scada_all <- rbindlist(list(scada_a, scada_b, scada_c, scada_d, scada_e, scada_f, scada_g))
+curtl_all <- rbindlist(list(curtl_a, curtl_b, curtl_c, curtl_d, curtl_e, curtl_f, curtl_g))
+track_all <- rbindlist(list(track_a, track_b, track_c, track_d, track_e, track_f, track_g))
 
 safe_dist_dt <- compute_safe_distance(curtl_all, scada_all, track_all,
                                       start_end_gap_sec = 2, rpm_threshold = 2, speed_trim_q = 0.95)
@@ -141,12 +160,13 @@ cat(sprintf("Linhas com track_id=='TSC1': %d (esperado: 0) -- %s\n",
 
 ## Comparar valores esperados vs obtidos, por track_id ----------------------
 expected_d <- data.table(
-  track_id             = c("TSA1", "TSB1", "TSD1", "TSE1", "TSF1"),
-  expected_time_sec    = c(29.8, 49.9, NA, 9.9, 14.9),
-  expected_avg_speed   = c(9.5, 21.5, 15.5, 5.5, 31),
-  expected_min_safe_m  = c(283.1, 1072.85, NA, 54.45, 461.9),
-  expected_margin_m    = c(716.9, -772.85, NA, 145.55, -411.9),
-  expected_status      = c("OK", "Crit", NA, "OK", "Crit")
+  track_id             = c("TSA1", "TSB1", "TSD1", "TSE1", "TSF1", "TSG1"),
+  expected_time_sec    = c(29.8, 49.9, NA, 9.9, 14.9, 4.95),
+  expected_avg_speed   = c(9.5, 21.5, 15.5, 5.5, 31, 6.5),
+  expected_min_safe_m  = c(283.1, 1072.85, NA, 54.45, 461.9, 32.175),
+  expected_margin_m    = c(716.9, -772.85, NA, 145.55, -411.9, 117.825),
+  expected_status      = c("OK", "Crit", NA, "OK", "Crit", "OK"),
+  expected_state       = c("full_speed", "full_speed", "full_speed", "full_speed", "full_speed", "already_slowing")
 )
 
 check_d <- merge(safe_dist_dt, expected_d, by = "track_id")
@@ -163,7 +183,8 @@ check_d[, `:=`(
   speed_ok  = close_or_na(avg_speed_ms, expected_avg_speed),
   dist_ok   = close_or_na(min_safe_dist_m, expected_min_safe_m),
   margin_ok = close_or_na(dist_margin_m, expected_margin_m),
-  status_ok = same_or_na_chr(status, expected_status)
+  status_ok = same_or_na_chr(status, expected_status),
+  state_ok  = same_or_na_chr(turbine_state, expected_state)
 )]
 
 cat("\n===== compute_safe_distance() =====\n")
@@ -171,25 +192,26 @@ print(check_d[, .(track_id, species, time_to_threshold_sec, expected_time_sec, t
                   avg_speed_ms, expected_avg_speed, speed_ok,
                   min_safe_dist_m, expected_min_safe_m, dist_ok,
                   dist_margin_m, expected_margin_m, margin_ok,
-                  status, expected_status, status_ok)])
+                  status, expected_status, status_ok,
+                  turbine_state, expected_state, state_ok)])
 
-n_ok <- sum(check_d$time_ok & check_d$speed_ok & check_d$dist_ok & check_d$margin_ok & check_d$status_ok)
+n_ok <- sum(check_d$time_ok & check_d$speed_ok & check_d$dist_ok & check_d$margin_ok & check_d$status_ok & check_d$state_ok)
 cat(sprintf("\nResultado: %d/%d casos corretos (mais a verificacao do TDC1 acima).\n", n_ok, nrow(check_d)))
 
 
 ## summarise_safe_distance() SEM filtro de especie -- TDD1 (status NA) fica
-## de fora; TDA1/TDB1/TDE1/TDF1 entram todos (incluindo o Kestrel) ----------
+## de fora; TDA1/TDB1/TDE1/TDF1/TDG1 entram todos (incluindo o Kestrel) -----
 summary_all <- summarise_safe_distance(safe_dist_dt)
 
 cat("\n===== summarise_safe_distance(safe_dist_dt) -- sem filtro =====\n")
 print(summary_all$overall)
 cat(paste(
-  "\nEsperado: n=4 (TDA1, TDB1, TDE1, TDF1 -- TDD1 tem status NA e fica de fora),",
-  "n_ok=2, n_crit=2, pct_ok=50, mean_min_safe_dist_m=468.1, median=372.5.\n"
+  "\nEsperado: n=5 (TDA1, TDB1, TDE1, TDF1, TDG1 -- TDD1 tem status NA e fica de fora),",
+  "n_ok=3, n_crit=2, pct_ok=60, mean_min_safe_dist_m=380.9, median=283.1.\n"
 ))
 print(summary_all$by_species)
 cat(paste(
-  "\nEsperado: Golden-Eagle n=2 (100% ok), Steppe-Eagle n=1 (0% ok),",
+  "\nEsperado: Golden-Eagle n=3 (100% ok, mean=123.2, median=54.45), Steppe-Eagle n=1 (0% ok),",
   "Kestrel n=1 (0% ok) -- Saker-Falcon (TSD1) fica de fora (status NA).\n"
 ))
 
@@ -202,8 +224,8 @@ summary_priority <- summarise_safe_distance(safe_dist_dt, test_prioritysp)
 cat("\n===== summarise_safe_distance(safe_dist_dt, test_prioritysp) -- so prioritarias =====\n")
 print(summary_priority$overall)
 cat(paste(
-  "\nEsperado: n=3 (TDA1, TDB1, TDE1 -- Kestrel/TDF1 excluido pelo filtro),",
-  "n_ok=2, n_crit=1, pct_ok=66.7, mean_min_safe_dist_m=470.1, median=283.1.\n"
+  "\nEsperado: n=4 (TDA1, TDB1, TDE1, TDG1 -- Kestrel/TDF1 excluido pelo filtro),",
+  "n_ok=3, n_crit=1, pct_ok=75, mean_min_safe_dist_m=360.6, median=168.8.\n"
 ))
 print(summary_priority$by_species)
 cat(sprintf(
@@ -211,3 +233,26 @@ cat(sprintf(
   nrow(summary_priority$by_species[species == "Kestrel"]),
   if (nrow(summary_priority$by_species[species == "Kestrel"]) == 0) "OK" else "FALHOU"
 ))
+
+
+## Split por turbine_state -- separa o cenario mais gravoso (full_speed) do
+## cenario de beneficio (already_slowing); summarise_safe_distance() nao muda,
+## filtra-se antes de chamar --------------------------------------------------
+cat("\n===== Verificacao: turbine_state (start_rpm < 6 => already_slowing) =====\n")
+state_tbl <- safe_dist_dt[!is.na(turbine_state), .(n = .N), by = turbine_state]
+print(state_tbl)
+cat("Esperado: full_speed n=5 (TSA1,TSB1,TSD1,TSE1,TSF1), already_slowing n=1 (TSG1).\n")
+
+summary_full_speed <- summarise_safe_distance(safe_dist_dt[turbine_state == "full_speed"], test_prioritysp)
+summary_already_slowing <- summarise_safe_distance(safe_dist_dt[turbine_state == "already_slowing"], test_prioritysp)
+
+cat("\n===== summarise_safe_distance(safe_dist_dt[turbine_state == 'full_speed'], test_prioritysp) =====\n")
+print(summary_full_speed$overall)
+cat(paste(
+  "\nEsperado: n=3 (TDA1, TDB1, TDE1 -- TDG1 e already_slowing, fica de fora),",
+  "n_ok=2, n_crit=1, pct_ok=66.7, mean_min_safe_dist_m=470.1, median=283.1.\n"
+))
+
+cat("\n===== summarise_safe_distance(safe_dist_dt[turbine_state == 'already_slowing'], test_prioritysp) =====\n")
+print(summary_already_slowing$overall)
+cat("\nEsperado: n=1 (TDG1), n_ok=1, n_crit=0, pct_ok=100, mean_min_safe_dist_m~32.2 (=32.175 arredondado), median idem.\n")

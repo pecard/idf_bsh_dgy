@@ -154,6 +154,12 @@ safe_dist_rpm_threshold  <- 2   # rpm; "tempo ate parar em seguranca" usado na f
 safe_dist_speed_trim_q   <- 0.95 # percentil de corte de outliers na velocidade de voo do track
 safe_dist_reference_line_m <- 600 # em metros; linha de referencia nos plots -- POR CONFIRMAR/AJUSTAR
 
+# rpm; abaixo deste valor no momento do disparo, considera-se que a turbina ja
+# estava a abrandar/recuperar de outro curtailment (turbine_state =
+# "already_slowing"), distinto do cenario mais gravoso de velocidade normal de
+# operacao ("full_speed") -- operacional normal ~10-12 rpm
+safe_dist_already_slowing_rpm <- 6
+
 
 ## -- 4. Coverage --
 
