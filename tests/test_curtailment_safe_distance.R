@@ -89,10 +89,44 @@ track_d <- data.table(track_id = "TSD1", dist = 500, speed_ms = c(15, 16, 17))
 ## avg_speed esperado (calculado independentemente do tempo/status, que ficam NA):
 ## quantile(c(15,16,17), .95) = 16.9 -> filtra <16.9 -> mean(15,16) = 15.5
 
+## TDE1 -- "OK", MESMA especie do TDA1 (Golden-Eagle) -- testa agregacao de
+## 2 curtailments para a mesma especie em summarise_safe_distance() --------
+base_e <- as.POSIXct("2026-04-01 00:40:00", tz = "UTC")
+scada_e <- data.table(
+  turbinelabel = "TESTS5",
+  datetime     = base_e + c(0, 10),
+  value        = c(10, 1.8),
+  readingname  = "RPM"
+)
+curtl_e <- data.table(turbine = "TESTS5", track_id = "TSE1", species = "Golden-Eagle",
+                      start = base_e + 0.1, end = base_e + 20)
+track_e <- data.table(track_id = "TSE1", dist = 200, speed_ms = c(5, 6, 7))
+## avg_speed esperado: quantile(c(5,6,7), .95) = 6.9 -> filtra <6.9 -> mean(5,6) = 5.5
+## time_to_2rpm esperado: 1a leitura <=2rpm e +10 (1.8rpm) -> 10 - 0.1 = 9.9s
+## min_safe_dist = 9.9 * 5.5 = 54.45 | margin = 200 - 54.45 = 145.55 -> "OK"
 
-scada_all <- rbindlist(list(scada_a, scada_b, scada_c, scada_d))
-curtl_all <- rbindlist(list(curtl_a, curtl_b, curtl_c, curtl_d))
-track_all <- rbindlist(list(track_a, track_b, track_c, track_d))
+## TDF1 -- "Crit", especie NAO prioritaria (Kestrel) -- testa que o filtro
+## species_sel = prioritysp em summarise_safe_distance() a exclui do resumo,
+## mas continua presente na tabela detalhada (compute_safe_distance) --------
+base_f <- as.POSIXct("2026-04-01 00:50:00", tz = "UTC")
+scada_f <- data.table(
+  turbinelabel = "TESTS6",
+  datetime     = base_f + c(0, 15),
+  value        = c(9, 1),
+  readingname  = "RPM"
+)
+curtl_f <- data.table(turbine = "TESTS6", track_id = "TSF1", species = "Kestrel",
+                      start = base_f + 0.1, end = base_f + 25)
+track_f <- data.table(track_id = "TSF1", dist = 50, speed_ms = c(30, 32, 34))
+## avg_speed esperado: quantile(c(30,32,34), .95) = 33.8 -> filtra <33.8 -> mean(30,32) = 31
+## time_to_2rpm esperado: 1a leitura <=2rpm e +15 (1rpm) -> 15 - 0.1 = 14.9s
+## min_safe_dist = 14.9 * 31 = 461.9 | margin = 50 - 461.9 = -411.9 -> "Crit"
+
+test_prioritysp <- c("Golden-Eagle", "Steppe-Eagle") # subconjunto local, independente do userSettings_BSH.R
+
+scada_all <- rbindlist(list(scada_a, scada_b, scada_c, scada_d, scada_e, scada_f))
+curtl_all <- rbindlist(list(curtl_a, curtl_b, curtl_c, curtl_d, curtl_e, curtl_f))
+track_all <- rbindlist(list(track_a, track_b, track_c, track_d, track_e, track_f))
 
 safe_dist_dt <- compute_safe_distance(curtl_all, scada_all, track_all,
                                       start_end_gap_sec = 2, rpm_threshold = 2, speed_trim_q = 0.95)
@@ -107,12 +141,12 @@ cat(sprintf("Linhas com track_id=='TSC1': %d (esperado: 0) -- %s\n",
 
 ## Comparar valores esperados vs obtidos, por track_id ----------------------
 expected_d <- data.table(
-  track_id             = c("TSA1", "TSB1", "TSD1"),
-  expected_time_sec    = c(29.8, 49.9, NA),
-  expected_avg_speed   = c(9.5, 21.5, 15.5),
-  expected_min_safe_m  = c(283.1, 1072.85, NA),
-  expected_margin_m    = c(716.9, -772.85, NA),
-  expected_status      = c("OK", "Crit", NA)
+  track_id             = c("TSA1", "TSB1", "TSD1", "TSE1", "TSF1"),
+  expected_time_sec    = c(29.8, 49.9, NA, 9.9, 14.9),
+  expected_avg_speed   = c(9.5, 21.5, 15.5, 5.5, 31),
+  expected_min_safe_m  = c(283.1, 1072.85, NA, 54.45, 461.9),
+  expected_margin_m    = c(716.9, -772.85, NA, 145.55, -411.9),
+  expected_status      = c("OK", "Crit", NA, "OK", "Crit")
 )
 
 check_d <- merge(safe_dist_dt, expected_d, by = "track_id")
@@ -143,14 +177,37 @@ n_ok <- sum(check_d$time_ok & check_d$speed_ok & check_d$dist_ok & check_d$margi
 cat(sprintf("\nResultado: %d/%d casos corretos (mais a verificacao do TDC1 acima).\n", n_ok, nrow(check_d)))
 
 
-## summarise_safe_distance() -- TDD1 (status NA) deve ficar de fora ----------
-summary_safe_dist <- summarise_safe_distance(safe_dist_dt)
+## summarise_safe_distance() SEM filtro de especie -- TDD1 (status NA) fica
+## de fora; TDA1/TDB1/TDE1/TDF1 entram todos (incluindo o Kestrel) ----------
+summary_all <- summarise_safe_distance(safe_dist_dt)
 
-cat("\n===== summarise_safe_distance()$overall =====\n")
-print(summary_safe_dist$overall)
-cat(sprintf(
-  "\nEsperado: n=2 (TDA1 e TDB1 -- TDD1 tem status NA e fica de fora), n_ok=1, n_crit=1, pct_ok=50.\n"
+cat("\n===== summarise_safe_distance(safe_dist_dt) -- sem filtro =====\n")
+print(summary_all$overall)
+cat(paste(
+  "\nEsperado: n=4 (TDA1, TDB1, TDE1, TDF1 -- TDD1 tem status NA e fica de fora),",
+  "n_ok=2, n_crit=2, pct_ok=50, mean_min_safe_dist_m=468.1, median=372.5.\n"
+))
+print(summary_all$by_species)
+cat(paste(
+  "\nEsperado: Golden-Eagle n=2 (100% ok), Steppe-Eagle n=1 (0% ok),",
+  "Kestrel n=1 (0% ok) -- Saker-Falcon (TSD1) fica de fora (status NA).\n"
 ))
 
-cat("\n===== summarise_safe_distance()$by_species =====\n")
-print(summary_safe_dist$by_species)
+
+## summarise_safe_distance() COM filtro de especies prioritarias -- deve
+## excluir o Kestrel (nao prioritario) do resumo, mesmo continuando presente
+## na tabela detalhada (safe_dist_dt) acima ---------------------------------
+summary_priority <- summarise_safe_distance(safe_dist_dt, test_prioritysp)
+
+cat("\n===== summarise_safe_distance(safe_dist_dt, test_prioritysp) -- so prioritarias =====\n")
+print(summary_priority$overall)
+cat(paste(
+  "\nEsperado: n=3 (TDA1, TDB1, TDE1 -- Kestrel/TDF1 excluido pelo filtro),",
+  "n_ok=2, n_crit=1, pct_ok=66.7, mean_min_safe_dist_m=470.1, median=283.1.\n"
+))
+print(summary_priority$by_species)
+cat(sprintf(
+  "\nLinhas com species=='Kestrel' no resumo filtrado: %d (esperado: 0) -- %s\n",
+  nrow(summary_priority$by_species[species == "Kestrel"]),
+  if (nrow(summary_priority$by_species[species == "Kestrel"]) == 0) "OK" else "FALHOU"
+))
