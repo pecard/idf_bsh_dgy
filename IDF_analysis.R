@@ -40,7 +40,8 @@ packages <- c('purrr','rstudioapi', #purrr needed for citation; rstudioapi neede
               'gt', 'skimr', 'vtable', 'data.table', 'htmlwidgets',
               'ggTimeSeries', 'suncalc', #,'patchwork','arrow'
               'openxlsx','writexl','rmarkdown','flextable','systemfonts',
-              'terra', 'RANN', 'plotly') #terra/RANN/plotly: coverage 3D com topografia (DEM)
+              'terra', 'RANN', 'plotly', #terra/RANN/plotly: coverage 3D com topografia (DEM)
+              'fst') #fst: cache dos datasets grandes (ver R/data_cache.R)
 
 ##Check and install packages that are missing + call library()
 for (p in packages) {
@@ -144,19 +145,46 @@ source("R/read_tracks.R")
 source("R/read_curtailments.R")
 source("R/read_scada.R")
 source("R/read_heartbeats.R")
+source("R/data_cache.R")
 
 # databases_dir (local) + databases_dir_alt (servidor), quando definido --
 # procura ficheiros em ambos, sem duplicar; ordem = precedencia quando o
 # mesmo nome de ficheiro existe nos dois (ver R/read_utils.R)
 databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
 
+##
+## Cache (fst) dos 4 datasets grandes -- evita reler os ficheiros brutos (pode
+## demorar muito, datasets na ordem dos milhoes de linhas, so crescem ao
+## longo do projeto). Por omissao usa a cache local (pasta cache/, fora do
+## repositorio) se existir; so relê os ficheiros brutos e regrava a cache
+## quando force_reread_cache = TRUE (usar depois de descarregar dados novos).
+##
+folder_cache <- "cache"
+force_reread_cache <- FALSE # -> TRUE depois de descarregar dados novos, so 1 corrida
+
 # As 4 bases de dados sao lidas em UTC na origem e convertidas aqui para a
 # hora local do projeto (proj_timezone) -- so muda a exibicao/agrupamento
 # por dia calendario, nao os instantes usados nos roll joins (curtailment_response.R)
-track_dt_unfilt  <- read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone)   # Tracks data
-curtl_dt_unfilt  <- read_curtailments_data(databases_dirs, curtailments_pattern, tz = proj_timezone) # Curtailments data
-scada_dt_unfilt  <- read_scada_data(databases_dirs, scada_pattern, tz = proj_timezone)          # SCADA data
-heartb_dt_unfilt <- read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone) # Heartbeat data
+track_dt_unfilt <- load_or_read_cache(
+  file.path(folder_cache, "track_dt_unfilt.fst"),
+  function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone),
+  force_reread = force_reread_cache
+)
+curtl_dt_unfilt <- load_or_read_cache(
+  file.path(folder_cache, "curtl_dt_unfilt.fst"),
+  function() read_curtailments_data(databases_dirs, curtailments_pattern, tz = proj_timezone),
+  force_reread = force_reread_cache
+)
+scada_dt_unfilt <- load_or_read_cache(
+  file.path(folder_cache, "scada_dt_unfilt.fst"),
+  function() read_scada_data(databases_dirs, scada_pattern, tz = proj_timezone),
+  force_reread = force_reread_cache
+)
+heartb_dt_unfilt <- load_or_read_cache(
+  file.path(folder_cache, "heartb_dt_unfilt.fst"),
+  function() read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone),
+  force_reread = force_reread_cache
+)
 
 #Project-specific corrections --> handle_script.R
 #if(file.exists('handle_script.R')) {source('handle_script.R')}
