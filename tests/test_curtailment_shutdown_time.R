@@ -82,7 +82,21 @@ curtl_d4b <- data.table(turbine = "TESTD4", track_id = "TD4B", species = "Saker-
 scada_d_all <- rbindlist(list(scada_d1, scada_d2, scada_d3, scada_d4a, scada_d4b))
 curtl_d_all <- rbindlist(list(curtl_d1, curtl_d2, curtl_d3, curtl_d4a, curtl_d4b))
 
-tt_dt <- time_to_rpm_thresholds(curtl_d_all, scada_d_all, thresholds = c(2, 1, 0), start_end_gap_sec = 2)
+## threshold=0 nunca e atingido em nenhum cenario acima -- confirma que isso
+## nao dispara o aviso "no non-missing arguments to min" do data.table
+## (filtro vazio antes do min() por-grupo, ver R/curtailment_shutdown_time.R)
+warnings_caught <- character()
+tt_dt <- withCallingHandlers(
+  time_to_rpm_thresholds(curtl_d_all, scada_d_all, thresholds = c(2, 1, 0), start_end_gap_sec = 2),
+  warning = function(w) {
+    warnings_caught <<- c(warnings_caught, conditionMessage(w))
+    invokeRestart("muffleWarning")
+  }
+)
+cat("\n===== Verificacao: sem warnings ao correr com threshold=0 nunca atingido =====\n")
+cat(sprintf("Warnings capturados: %d (esperado: 0) -- %s\n",
+           length(warnings_caught), if (length(warnings_caught) == 0) "OK" else "FALHOU"))
+if (length(warnings_caught) > 0) print(warnings_caught)
 
 ## TD3 nao deve aparecer em lado nenhum (start match invalido) -------------
 cat("\n===== Verificacao: TD3 excluido (start match invalido) =====\n")

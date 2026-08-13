@@ -5,13 +5,13 @@
 ## calculados a mao (mesma logica dos outros testes desta sessao); reaproveita
 ## time_to_rpm_thresholds() e compute_safe_distance(), ja validados nos seus
 ## proprios testes -- aqui o foco e a logica NOVA (dcast/merge/filtro por
-## turbina+dia). plot_forensic_rpm() so tem um smoke test (confirma que corre
-## sem erro e devolve um ggplot) -- o resultado visual tem de ser inspecionado
-## no RStudio.
+## turbina+dia, deteccao automatica de timezone). plot_forensic_rpm() so tem
+## um smoke test (confirma que corre sem erro e devolve um plotly) -- o
+## resultado visual/interativo tem de ser inspecionado no RStudio.
 ##
 ## Correr: source("tests/test_curtailment_forensic_trace.R")
 ##
-## Depende de: data.table, ggplot2
+## Depende de: data.table, plotly
 ##
 
 source("R/curtailment_response.R")
@@ -230,15 +230,53 @@ cat(sprintf(
 ))
 
 
-## 3. plot_forensic_rpm() -- smoke test (so confirma que corre e devolve ggplot) ----
+## 3. plot_forensic_rpm() -- smoke test (so confirma que corre e devolve plotly) ----
 
 p <- plot_forensic_rpm(forensic_dt, scada_all, "TFOR1", "2026-05-01")
 
 cat("\n===== plot_forensic_rpm() smoke test =====\n")
-cat(sprintf("Devolve objeto ggplot: %s (esperado: TRUE)\n", inherits(p, "ggplot")))
+cat(sprintf("Devolve objeto plotly: %s (esperado: TRUE)\n", inherits(p, "plotly")))
 cat("Inspecionar visualmente no RStudio: 4 barras/linhas cinzentas (TFA1 08:00, TFB1 14:00, TFC1 18:00, TFH1 20:00),\n")
 cat("cruzes azuis (2rpm) em TFA1/TFB1/TFC1, cruzes vermelhas (1rpm) so em TFB1/TFC1 (TFA1 nunca atinge 1rpm,\n")
 cat("TFH1 nao tem cruzes -- match de baseline invalido, mas a barra/linha cinzenta tem de aparecer na mesma).\n")
+cat("Passar o rato sobre a curva de RPM deve mostrar timestamp+RPM; sobre as barras/linhas cinzentas deve\n")
+cat("mostrar track_id/especie/start/end/status; sobre as cruzes deve mostrar o track_id e o tempo ate ao limiar.\n")
 cat("Nota: os dados de RPM sinteticos sao clusters muito esparsos (so 2-7 pontos cada) --\n")
 cat("a linha vai parecer artificial entre clusters (liga em linha reta). Com scada_dt real (~10s\n")
 cat("de resolucao) a curva fica continua como no portal -- isto e so para confirmar que a funcao corre.\n")
+
+
+## 4. Deteccao automatica de timezone -- turbina TFOR1, curtailment em Asia/Samarkand
+## (UTC+5), SEM passar tz= a nenhuma funcao -- tem de derivar da propria coluna
+## 'start'. Se as funcoes usassem "UTC" a martelo (bug real detetado com dados
+## reais de BSH54), este curtailment as 2026-06-01 01:00 local cairia em
+## 2026-05-31 (UTC), um dia a menos -- exatamente o sintoma reportado -----------
+
+base_i <- as.POSIXct("2026-06-01 01:00:00", tz = "Asia/Samarkand")
+scada_i <- data.table(
+  turbinelabel = "TFOR1", datetime = base_i + c(0, 10),
+  value = c(10, 1.5), readingname = "RPM"
+)
+curtl_i <- data.table(turbine = "TFOR1", track_id = "TFI1", species = "Golden-Eagle",
+                      start = base_i + 0.1, end = base_i + 20)
+track_i <- data.table(
+  track_id = "TFI1", timestamp = base_i + c(-5, -4, -3),
+  dist = rep(600, 3), speed_ms = c(5, 6, 7)
+)
+
+tt_dt_i       <- time_to_rpm_thresholds(curtl_i, scada_i, thresholds = c(2, 1))
+safe_dist_dt_i <- compute_safe_distance(curtl_i, scada_i, track_i)
+
+days_tz <- find_high_curtailment_days(curtl_i, "TFOR1", min_curtailments = 1)
+cat("\n===== Deteccao automatica de timezone (Asia/Samarkand, sem passar tz=) =====\n")
+print(days_tz)
+cat(sprintf(
+  "\nfind_high_curtailment_days(): esperado day=2026-06-01 (NAO 2026-05-31, que seria o\nresultado errado com \"UTC\" a martelo) -- %s\n",
+  if (nrow(days_tz) == 1 && days_tz$day[1] == as.Date("2026-06-01")) "OK" else "FALHOU"
+))
+
+forensic_tz <- build_forensic_trace("TFOR1", "2026-06-01", curtl_i, tt_dt_i, safe_dist_dt_i, track_i)
+cat(sprintf(
+  "build_forensic_trace('TFOR1', '2026-06-01', ...) sem passar tz=: %d linha(s) (esperado: 1) -- %s\n",
+  nrow(forensic_tz), if (nrow(forensic_tz) == 1) "OK" else "FALHOU"
+))

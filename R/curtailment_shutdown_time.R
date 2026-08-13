@@ -66,16 +66,16 @@ time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
   ]
 
   ## para cada limiar, o 1o instante em que rpm <= limiar
+  ## (0 rpm raramente e atingido -- filtra ANTES do min() por-grupo para evitar
+  ## o aviso inofensivo mas ruidoso do data.table "no non-missing arguments to
+  ## min" quando o filtro nao apanha nenhuma linha em nenhum curtailment)
   hits <- rbindlist(lapply(thresholds, function(th) {
-    hit <- rpm_window[
-      !is.na(rpm) & rpm <= th,
-      .(hit_time = min(datetime), window_start = first(window_start)),
-      by = curtailment_id
-    ]
-    if (nrow(hit) == 0L) {
+    rpm_hit_rows <- rpm_window[!is.na(rpm) & rpm <= th]
+    if (nrow(rpm_hit_rows) == 0L) {
       return(data.table(curtailment_id = integer(), threshold = numeric(),
                         hit_time = as.POSIXct(character()), time_to_threshold_sec = numeric()))
     }
+    hit <- rpm_hit_rows[, .(hit_time = min(datetime), window_start = first(window_start)), by = curtailment_id]
     hit[, time_to_threshold_sec := as.numeric(difftime(hit_time, window_start, units = "secs"))]
     hit[, threshold := th]
     hit[, .(curtailment_id, threshold, hit_time, time_to_threshold_sec)]

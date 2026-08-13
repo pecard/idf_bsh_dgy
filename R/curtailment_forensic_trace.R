@@ -11,9 +11,16 @@
 ## a colisao de uma especie prioritaria, para comparar visualmente com o
 ## portal do IdentiFlight (perfil de RPM com curtailments sobrepostos).
 ##
-## Depende de: data.table, ggplot2, R/curtailment_response.R,
+## Depende de: data.table, plotly, R/curtailment_response.R,
 ## R/curtailment_shutdown_time.R (usa time_to_rpm_thresholds()),
 ## R/curtailment_safe_distance.R (usa compute_safe_distance())
+##
+## Timezone: tz e' derivado automaticamente dos proprios dados (tzone da
+## coluna start/datetime), nao ha default "UTC" a martelo -- os 4 datasets
+## principais ja vem convertidos para proj_timezone (Asia/Samarkand) desde a
+## leitura (ver read_*_data()), por isso basta nao interferir. Um default
+## "UTC" aqui desalinhava a fronteira do dia em +5h (Asia/Samarkand = UTC+5),
+## fazendo um curtailment das 6:50 local aparecer a cair no dia/janela errados.
 ##
 ## Uso:
 ##   source("R/curtailment_response.R")
@@ -33,7 +40,9 @@
 
 ## 1. Dias candidatos -- turbinas/dias com muitos curtailments, para escolher o que investigar ----
 
-find_high_curtailment_days <- function(curtl_dt, turbine_id, min_curtailments = 5, tz = "UTC") {
+find_high_curtailment_days <- function(curtl_dt, turbine_id, min_curtailments = 5, tz = NULL) {
+
+  if (is.null(tz)) tz <- attr(curtl_dt$start, "tzone")
 
   dt <- curtl_dt[turbine == turbine_id]
   dt[, day := as.Date(start, tz = tz)]
@@ -60,8 +69,9 @@ find_high_curtailment_days <- function(curtl_dt, turbine_id, min_curtailments = 
 ## Chave composta (track_id, start), nao so track_id: o mesmo track_id pode,
 ## em teoria, disparar mais do que um curtailment nesse turbina+dia.
 
-build_forensic_trace <- function(turbine_id, date, curtl_dt, tt_dt, safe_dist_dt, track_dt, tz = "UTC") {
+build_forensic_trace <- function(turbine_id, date, curtl_dt, tt_dt, safe_dist_dt, track_dt, tz = NULL) {
 
+  if (is.null(tz)) tz <- attr(curtl_dt$start, "tzone")
   date <- as.Date(date)
 
   base_dt <- curtl_dt[
@@ -99,13 +109,17 @@ build_forensic_trace <- function(turbine_id, date, curtl_dt, tt_dt, safe_dist_dt
 }
 
 
-## 3. Plot RPM (estilo portal IdentiFlight) -- curva de RPM com curtailments sobrepostos ----
+## 3. Plot RPM (estilo portal IdentiFlight, interativo) -- curva de RPM com
+##    curtailments sobrepostos, em plotly para permitir consultar com o rato
+##    o timestamp/RPM da curva e o track_id/especie/start/end/status de cada
+##    curtailment ----
 ##    forensic_dt: resultado de build_forensic_trace() (pode ser de varios dias/turbinas,
 ##    a funcao filtra por turbine_id + [t_ini, t_end])
 
 plot_forensic_rpm <- function(forensic_dt, scada_dt, turbine_id, date,
-                              t_ini = NULL, t_end = NULL, tz = "UTC") {
+                              t_ini = NULL, t_end = NULL, tz = NULL) {
 
+  if (is.null(tz)) tz <- attr(scada_dt$datetime, "tzone")
   date <- as.Date(date)
   if (is.null(t_ini)) t_ini <- as.POSIXct(paste(date, "00:00:00"), tz = tz)
   if (is.null(t_end)) t_end <- as.POSIXct(paste(date, "23:59:59"), tz = tz)
@@ -115,40 +129,70 @@ plot_forensic_rpm <- function(forensic_dt, scada_dt, turbine_id, date,
   ]
   events <- forensic_dt[turbine == turbine_id & start >= t_ini & start <= t_end]
 
-  p <- ggplot2::ggplot() +
-    ggplot2::geom_rect(
-      data = events, ggplot2::aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
-      fill = "grey50", alpha = 0.25
-    ) +
-    ggplot2::geom_vline(
-      data = events, ggplot2::aes(xintercept = start), colour = "grey30", linewidth = 0.6
-    ) +
-    ggplot2::geom_line(
-      data = rpm_dt, ggplot2::aes(x = datetime, y = value), colour = "#e8792f", linewidth = 0.4
-    )
+  y_max <- max(c(rpm_dt$value, 2, 1, 0), na.rm = TRUE) * 1.1
+  y_min <- -0.5
+
+  p <- plotly::plot_ly()
+
+  # barra translucida (duracao do curtailment) + linha vertical no start, cada
+  # uma com hover mostrando track_id/especie/start/end/status -- um par de
+  # traces por curtailment (poucos por dia, sem problema de desempenho)
+  if (nrow(events) > 0L) {
+    for (i in seq_len(nrow(events))) {
+      ev <- events[i]
+      hover_label <- sprintf(
+        "%s (%s)<br>start: %s<br>end: %s<br>status: %s",
+        ev$track_id, ev$species, format(ev$start, "%H:%M:%S"), format(ev$end, "%H:%M:%S"),
+        if (is.na(ev$status)) "sem match RPM fiavel" else ev$status
+      )
+      p <- p %>% plotly::add_trace(
+        x = c(ev$start, ev$end, ev$end, ev$start), y = c(y_min, y_min, y_max, y_max),
+        type = "scatter", mode = "none", fill = "toself",
+        fillcolor = "rgba(90,90,90,0.22)", hoverinfo = "text", text = hover_label,
+        showlegend = FALSE
+      )
+      p <- p %>% plotly::add_trace(
+        x = c(ev$start, ev$start), y = c(y_min, y_max),
+        type = "scatter", mode = "lines", line = list(color = "grey30", width = 1.5),
+        hoverinfo = "text", text = hover_label, showlegend = FALSE
+      )
+    }
+  }
+
+  # curva de RPM -- hover com timestamp exato e valor de RPM
+  p <- p %>% plotly::add_trace(
+    data = rpm_dt, x = ~datetime, y = ~value, type = "scatter", mode = "lines",
+    line = list(color = "#e8792f", width = 1.5), name = "RPM",
+    hovertemplate = "%{x|%Y-%m-%d %H:%M:%S}<br>RPM: %{y:.2f}<extra></extra>"
+  )
 
   # marcadores dos momentos em que a turbina atingiu 2rpm/1rpm (cruzamento
   # visual direto com os numeros de shutdown_time que estamos a validar contra o portal)
   if ("time_to_2rpm_sec" %in% names(events)) {
     ev2 <- events[!is.na(time_to_2rpm_sec)]
     if (nrow(ev2) > 0L) {
-      p <- p + ggplot2::geom_point(
-        data = ev2, ggplot2::aes(x = start + time_to_2rpm_sec, y = 2),
-        shape = 4, size = 2.2, stroke = 1, colour = "steelblue"
+      p <- p %>% plotly::add_trace(
+        data = ev2, x = ~(start + time_to_2rpm_sec), y = 2, type = "scatter", mode = "markers",
+        marker = list(symbol = "x", size = 9, color = "steelblue"), name = "2 rpm",
+        text = ~sprintf("%s<br>2rpm em +%.1fs", track_id, time_to_2rpm_sec), hoverinfo = "text"
       )
     }
   }
   if ("time_to_1rpm_sec" %in% names(events)) {
     ev1 <- events[!is.na(time_to_1rpm_sec)]
     if (nrow(ev1) > 0L) {
-      p <- p + ggplot2::geom_point(
-        data = ev1, ggplot2::aes(x = start + time_to_1rpm_sec, y = 1),
-        shape = 4, size = 2.2, stroke = 1, colour = "darkred"
+      p <- p %>% plotly::add_trace(
+        data = ev1, x = ~(start + time_to_1rpm_sec), y = 1, type = "scatter", mode = "markers",
+        marker = list(symbol = "x", size = 9, color = "darkred"), name = "1 rpm",
+        text = ~sprintf("%s<br>1rpm em +%.1fs", track_id, time_to_1rpm_sec), hoverinfo = "text"
       )
     }
   }
 
-  p +
-    ggplot2::labs(x = NULL, y = "RPM", title = sprintf("%s -- %s", turbine_id, format(date))) +
-    ggplot2::theme_minimal()
+  p %>% plotly::layout(
+    title = sprintf("%s -- RPM (%s)", turbine_id, format(date)),
+    xaxis = list(title = ""),
+    yaxis = list(title = "RPM", range = c(y_min, y_max)),
+    showlegend = TRUE
+  )
 }
