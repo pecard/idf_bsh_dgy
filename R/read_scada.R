@@ -27,9 +27,11 @@ read_scada_data <- function(databases_dirs, pattern, tz = "UTC") {
   setnames(dt, tolower(names(dt)))
   setnames(dt, "logtimestamp", "datetime")
 
-  # source em UTC -- converte para tz local (ex: proj_timezone), so muda a
-  # exibicao/agrupamento por dia, nao o instante (nao afeta roll joins)
-  dt[, datetime := lubridate::with_tz(datetime, tz)]
+  # fonte (portal IdentiFlight) ja vem em hora LOCAL (confirmado), nao UTC --
+  # force_tz() reinterpreta os mesmos numeros do relogio como sendo tz local,
+  # SEM deslocar o instante (with_tz() deslocaria +/- o offset, dando horas
+  # absolutas erradas -- foi o bug que motivou esta correcao)
+  dt[, datetime := lubridate::force_tz(datetime, tz)]
 
   setkey(dt, datetime)
 

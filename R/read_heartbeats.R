@@ -35,7 +35,12 @@ read_heartbeats_data <- function(databases_dirs, pattern = "Bash_Heartbeats.+csv
 
   dt[, c("timestamp_utc", "previous_timestamp_utc") := NULL]
 
-  dt[, timestamp := with_tz(timestamp, tz)]
+  # fonte (portal IdentiFlight) ja vem em hora LOCAL (confirmado), nao UTC --
+  # daí a coluna timestamp_utc/previous_timestamp_utc serem descartadas acima
+  # e usarmos "timestamp" -- force_tz() reinterpreta os mesmos numeros do
+  # relogio como tz local, SEM deslocar o instante (with_tz() deslocaria
+  # +/- o offset, dando horas absolutas erradas -- foi o bug que motivou esta correcao)
+  dt[, timestamp := force_tz(timestamp, tz)]
 
   # remover labels de IDF invalidos/nao relevantes para o projeto
   dt <- dt[!idf %in% exclude_idf]

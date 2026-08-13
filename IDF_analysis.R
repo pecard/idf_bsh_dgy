@@ -162,9 +162,14 @@ databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) datab
 folder_cache <- "cache"
 force_reread_cache <- FALSE # -> TRUE depois de descarregar dados novos, so 1 corrida
 
-# As 4 bases de dados sao lidas em UTC na origem e convertidas aqui para a
-# hora local do projeto (proj_timezone) -- so muda a exibicao/agrupamento
-# por dia calendario, nao os instantes usados nos roll joins (curtailment_response.R)
+# As 4 bases de dados vem do portal IdentiFlight ja em hora LOCAL do projeto
+# (confirmado -- nao UTC como se assumia antes); read_*_data() reinterpreta
+# (force_tz(), nao with_tz()) os timestamps brutos diretamente como
+# proj_timezone, sem deslocar o instante. Os roll joins (curtailment_response.R)
+# usam sempre diferencas relativas entre os nossos proprios timestamps, por
+# isso nao foram afetados mesmo enquanto este bug existiu -- so as horas
+# absolutas (comparacao com o portal, agrupamento por dia calendario) e' que
+# estavam erradas antes desta correcao.
 track_dt_unfilt <- load_or_read_cache(
   file.path(folder_cache, "track_dt_unfilt.fst"),
   function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone),

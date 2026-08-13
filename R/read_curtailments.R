@@ -22,10 +22,12 @@ read_curtailments_data <- function(databases_dirs, pattern, tz = "UTC") {
     bind_rows() %>%
     distinct() %>% # remover linhas duplicadas -- ex: mesmo ficheiro/periodo repetido entre diretorios diferentes
     mutate(
-      # source em UTC -- converte para tz local (ex: proj_timezone), so muda a
-      # exibicao/agrupamento por dia, nao o instante (nao afeta roll joins)
-      start = lubridate::with_tz(start, tz),
-      end   = lubridate::with_tz(end, tz),
+      # fonte (portal IdentiFlight) ja vem em hora LOCAL (confirmado), nao UTC --
+      # force_tz() reinterpreta os mesmos numeros do relogio como sendo tz local,
+      # SEM deslocar o instante (with_tz() deslocaria +/- o offset, dando horas
+      # absolutas erradas -- foi o bug que motivou esta correcao)
+      start = lubridate::force_tz(start, tz),
+      end   = lubridate::force_tz(end, tz),
       monthy_y = format(as.Date(start), "%Y-%m")
     )
 

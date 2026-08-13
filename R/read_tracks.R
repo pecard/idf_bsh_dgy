@@ -71,9 +71,12 @@ read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv", tz = 
     )
   )
 
-  # source em UTC -- converte para tz local (ex: proj_timezone), so muda a
-  # exibicao/agrupamento por dia, nao o instante (nao afeta calculos de distancia/tempo)
-  dt[, timestamp := lubridate::with_tz(timestamp, tz)]
+  # fonte (portal IdentiFlight) ja vem em hora LOCAL (confirmado), nao UTC --
+  # force_tz() reinterpreta os mesmos numeros do relogio como sendo tz local,
+  # SEM deslocar o instante (with_tz() deslocaria +/- o offset, dando horas
+  # absolutas erradas -- foi o bug que motivou esta correcao). Nao afeta
+  # calculos de distancia/tempo DENTRO do mesmo track (diferencas relativas).
+  dt[, timestamp := lubridate::force_tz(timestamp, tz)]
 
   setorder(dt, track_id, timestamp)
 
