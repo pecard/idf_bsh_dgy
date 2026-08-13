@@ -15,6 +15,23 @@
 ## userSettings_BSH.R. O crop/mask ao raio da turbina e feito aqui, nao e
 ## preciso pre-recortar o ficheiro.
 ##
+## z_floor -- a malha ja NAO fica limitada a comecar na cota da propria
+## turbina (z relativo = 0): estende-se para baixo ate a cota mais baixa do
+## relevo dentro do raio de analise (arredondada ao multiplo de step_z mais
+## proximo, para baixo). Sem isto, deteções de aves a voar perto do solo em
+## zonas de relevo mais baixo que a base da turbina (ex: um vale) ficavam de
+## fora da analise (mesh e tracks), porque a malha simplesmente nao tinha nos
+## nessa gama de altura. A logica de classificacao "terrain"/"air" por coluna
+## (x,y) e a mesma de sempre, so a gama de z_rel_turbine testada e que cresce.
+## A banda de risco "at risk" (risk_band_breaks[1], 200m por omissao) passa a
+## cobrir tambem toda a gama abaixo de 0 ate z_floor.
+##
+## low_sample -- coluna em metrics/by_turbine (compute_mesh_coverage() /
+## summarise_mesh_coverage()) a assinalar turbinas com menos de
+## min_sample_records (500 mil por omissao) registos de track candidatos --
+## o % de coverage dessas turbinas deve ser interpretado com cautela (amostra
+## pode ser demasiado pequena para uma estimativa fiavel).
+##
 ## Depende de: data.table, sf, terra, RANN, plotly
 ##
 ## Uso:
@@ -35,6 +52,41 @@
 
 
 ## 1. Malha 3D corrigida ao terreno, para UMA turbina ----
+
+## 1.a Logica pura (sem DEM/CRS) de construcao da malha z, dado mesh_xy (x, y,
+## terrain_elev) ja calculado -- separada de build_terrain_mesh() para poder
+## ser testada com dados sinteticos, sem precisar de um DEM real.
+##
+## z_floor: estende a malha para baixo da cota da turbina (z relativo = 0) ate
+## a cota mais baixa do terreno em mesh_xy, arredondada para baixo ao
+## multiplo de step_z mais proximo -- nunca sobe acima de 0 (min(0, ...)),
+## turbinas em zonas planas/elevadas mantêm o comportamento antigo (zs comeca em 0).
+.build_mesh_from_terrain <- function(mesh_xy, wtg_elev, cyl_height, step_z,
+                                     risk_band_breaks = c(200),
+                                     risk_band_labels = c("at risk", "above")) {
+
+  z_floor <- min(0, floor((min(mesh_xy$terrain_elev, na.rm = TRUE) - wtg_elev) / step_z) * step_z)
+  zs <- seq(z_floor, cyl_height, by = step_z)
+
+  mesh <- mesh_xy[, .(x, y)][, .(z_rel_turbine = zs), by = .(x, y)]
+  mesh[, z_abs := wtg_elev + z_rel_turbine]
+  mesh <- merge(mesh, mesh_xy, by = c("x", "y"), all.x = TRUE)
+
+  mesh[, vertical_clearance := z_abs - terrain_elev]
+  mesh[, medium := data.table::fifelse(
+    is.na(terrain_elev), NA_character_,
+    data.table::fifelse(vertical_clearance <= 0, "terrain", "air")
+  )]
+
+  mesh[, risk_band := cut(
+    z_rel_turbine,
+    breaks = c(z_floor, risk_band_breaks, cyl_height),
+    labels = risk_band_labels,
+    include.lowest = TRUE, right = FALSE
+  )]
+
+  list(z_floor = z_floor, mesh = mesh)
+}
 
 build_terrain_mesh <- function(wtg_id, wtg_lat, wtg_lon, dem_file,
                                radius, cyl_height, step_xy, step_z,
@@ -62,10 +114,9 @@ build_terrain_mesh <- function(wtg_id, wtg_lat, wtg_lon, dem_file,
 
   wtg_elev <- as.numeric(terra::extract(dem_local, terra::vect(wtg_local))[[2]])
 
-  ## Malha x/y dentro do raio, z de 0 a cyl_height
+  ## Malha x/y dentro do raio (z: ver .build_mesh_from_terrain())
   xs <- seq(-radius, radius, by = step_xy)
   ys <- seq(-radius, radius, by = step_xy)
-  zs <- seq(0, cyl_height, by = step_z)
 
   grid_xy <- data.table::CJ(x = xs, y = ys)
   grid_xy <- grid_xy[(x^2 + y^2) <= radius^2]
@@ -77,27 +128,14 @@ build_terrain_mesh <- function(wtg_id, wtg_lat, wtg_lon, dem_file,
   terrain_vals <- terra::extract(dem_local, terra::vect(mesh_xy_sf))
   mesh_xy[, terrain_elev := as.numeric(terrain_vals[[2]])]
 
-  mesh <- grid_xy[, .(z_rel_turbine = zs), by = .(x, y)]
-  mesh[, z_abs := wtg_elev + z_rel_turbine]
-  mesh <- merge(mesh, mesh_xy, by = c("x", "y"), all.x = TRUE)
-
-  mesh[, vertical_clearance := z_abs - terrain_elev]
-  mesh[, medium := data.table::fifelse(
-    is.na(terrain_elev), NA_character_,
-    data.table::fifelse(vertical_clearance <= 0, "terrain", "air")
-  )]
-
-  mesh[, risk_band := cut(
-    z_rel_turbine,
-    breaks = c(0, risk_band_breaks, cyl_height),
-    labels = risk_band_labels,
-    include.lowest = TRUE, right = FALSE
-  )]
+  built <- .build_mesh_from_terrain(mesh_xy, wtg_elev, cyl_height, step_z, risk_band_breaks, risk_band_labels)
+  mesh <- built$mesh
 
   list(
     wtg_id       = wtg_id,
     crs_local    = crs_local,
     wtg_elev     = wtg_elev,
+    z_floor      = built$z_floor,
     dem_local    = dem_local,
     mesh_air     = mesh[medium == "air" & !is.na(risk_band)],
     mesh_terrain = mesh[medium == "terrain"],
@@ -109,13 +147,15 @@ build_terrain_mesh <- function(wtg_id, wtg_lat, wtg_lon, dem_file,
 ## 2. Cobertura da malha "air" pelas deteções de aves, para UMA turbina ----
 ##    track_wtg: subconjunto de track_dt para esta turbina (colunas lat, lon, height)
 
-compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, prox_thresh_m) {
+compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, prox_thresh_m,
+                                  min_sample_records = 500000) {
 
   wtg_id    <- terrain_mesh$wtg_id
   mesh_air  <- data.table::copy(terrain_mesh$mesh_air)
   crs_local <- terrain_mesh$crs_local
   wtg_elev  <- terrain_mesh$wtg_elev
   dem_local <- terrain_mesh$dem_local
+  z_floor   <- terrain_mesh$z_floor
 
   empty_result <- function(n_records, track_wtg_valid) {
     mesh_air[, `:=`(hits = 0L, covered = FALSE)]
@@ -123,7 +163,8 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
       wtg_id = wtg_id, mesh_air = mesh_air, track_wtg = track_wtg_valid,
       metrics = data.table::data.table(
         wtg_id = wtg_id, n_records = n_records, n_valid = nrow(track_wtg_valid),
-        n_air_mesh = nrow(mesh_air), n_covered = 0L, pct_covered = NA_real_
+        n_air_mesh = nrow(mesh_air), n_covered = 0L, pct_covered = NA_real_,
+        low_sample = n_records < min_sample_records
       ),
       by_risk_band = mesh_air[, .(n_mesh = .N, n_covered = 0L, pct_covered = 0), by = risk_band][, wtg_id := wtg_id][]
     )
@@ -147,7 +188,7 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
   track_wtg_valid <- track_wtg[
     !is.na(x) & !is.na(y) & !is.na(z_rel_turbine) &
       (x^2 + y^2) <= radius^2 &
-      z_rel_turbine >= 0 & z_rel_turbine <= cyl_height
+      z_rel_turbine >= z_floor & z_rel_turbine <= cyl_height
   ]
 
   if (nrow(track_wtg_valid) == 0L) return(empty_result(nrow(track_wtg), track_wtg_valid))
@@ -178,7 +219,8 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
     n_valid     = nrow(track_wtg_valid),
     n_air_mesh  = n_total,
     n_covered   = n_cov,
-    pct_covered = round(100 * n_cov / n_total, 1)
+    pct_covered = round(100 * n_cov / n_total, 1),
+    low_sample  = nrow(track_wtg) < min_sample_records
   )
 
   list(wtg_id = wtg_id, mesh_air = mesh_air, track_wtg = track_wtg_valid,
@@ -198,7 +240,8 @@ run_coverage_3d_all_turbines <- function(wtg_sf, track_dt, dem_file,
                                          risk_band_labels = c("at risk", "above"),
                                          wtg_id_col = "InternalNa",
                                          track_dist_buffer_m = 200,
-                                         wtg_sel = NULL) {
+                                         wtg_sel = NULL,
+                                         min_sample_records = 500000) {
 
   # wtg_sel: subconjunto de nomes de turbina (coluna wtg_id_col) a analisar --
   # analise 3D completa (DEM + malha + KD-tree) e cara, por isso NULL = todas
@@ -251,7 +294,7 @@ run_coverage_3d_all_turbines <- function(wtg_sf, track_dt, dem_file,
       wtg_id, wtg_list$wtg_lat[i], wtg_list$wtg_lon[i], dem_file,
       radius, cyl_height, step_xy, step_z, risk_band_breaks, risk_band_labels
     )
-    coverage <- compute_mesh_coverage(terrain_mesh, track_wtg, radius, cyl_height, prox_thresh_m)
+    coverage <- compute_mesh_coverage(terrain_mesh, track_wtg, radius, cyl_height, prox_thresh_m, min_sample_records)
 
     list(terrain_mesh = terrain_mesh, coverage = coverage)
   })
@@ -371,6 +414,27 @@ summarise_mesh_coverage <- function(coverage_list) {
 }
 
 
+## Caixa de texto (dentro do titulo) com tamanho de amostra e % de cobertura
+## por banda de risco -- usada nos 2 plots 3D (coverage + debug) para nao
+## depender so da % agregada do titulo antigo.
+.coverage_title_text <- function(wtg_id, metrics, by_risk_band) {
+
+  sample_note <- if (isTRUE(metrics$low_sample)) " -- AMOSTRA BAIXA, interpretar com cautela" else ""
+
+  risk_lines <- paste(
+    sprintf("%s: %.1f%%", by_risk_band$risk_band, by_risk_band$pct_covered),
+    collapse = "<br>"
+  )
+
+  sprintf(
+    "WTG: %s<br>Sample size: %d track records (%d valid)%s<br>Covered air mesh: %d / %d (%.1f%%)<br>%s",
+    wtg_id, metrics$n_records, metrics$n_valid, sample_note,
+    metrics$n_covered, metrics$n_air_mesh, metrics$pct_covered,
+    risk_lines
+  )
+}
+
+
 ## 5. Plot 3D (Plotly) da malha "air" coberta, terreno e cilindro, para UMA turbina ----
 
 plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
@@ -392,8 +456,8 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
   bearing_labels[, `:=`(x = x * 0.90, y = y * 0.90, z = z - 15)]
 
   plot_title <- sprintf(
-    "Terrain-corrected WTG mesh coverage<br>WTG: %s<br>Bird records: %d<br>Covered air mesh: %d / %d (%.1f%%)",
-    wtg_id, metrics$n_records, metrics$n_covered, metrics$n_air_mesh, metrics$pct_covered
+    "Terrain-corrected WTG mesh coverage<br>%s",
+    .coverage_title_text(wtg_id, metrics, coverage$by_risk_band)
   )
 
   # usar o range do proprio cilindro (nao so do terreno) -- o cilindro e a
@@ -453,7 +517,8 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
                                      step_z = 50, bearing_deg = 135, z_pad_lower = 50,
                                      wtg_tower_height = 90) {
 
-  wtg_id <- terrain_mesh$wtg_id
+  wtg_id  <- terrain_mesh$wtg_id
+  metrics <- coverage$metrics
 
   mesh_not_cov <- coverage$mesh_air[covered == FALSE]
   mesh_not_cov[, z_plot := z_rel_turbine]
@@ -489,7 +554,11 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
       name = "Cylinder boundary", showlegend = FALSE
     ) %>%
     plotly::layout(
-      title = sprintf("Debug view - full air mesh and covered points<br>WTG: %s", wtg_id),
+      title = list(
+        text = sprintf("Debug view - full air mesh and covered points<br>%s",
+                       .coverage_title_text(wtg_id, metrics, coverage$by_risk_band)),
+        x = 0.05, y = 0.95, font = list(size = 12)
+      ),
       legend = list(x = 0.02, y = 0.95, xanchor = "left", yanchor = "top",
                     bgcolor = "rgba(255,255,255,0.65)", bordercolor = "rgba(0,0,0,0.2)", borderwidth = 1),
       scene = list(
