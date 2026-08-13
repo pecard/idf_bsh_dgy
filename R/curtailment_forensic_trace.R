@@ -32,6 +32,10 @@
 ##
 ##   tt_dt       <- time_to_rpm_thresholds(curtl_scada_dt, scada_dt, thresholds = c(2, 1, 0))
 ##   safe_dist_dt <- compute_safe_distance(curtl_scada_dt, scada_dt, track_dt)
+##
+##   ## dias com resposta tardia (risco mais elevado) -- ver find_slow_response_days()
+##   find_slow_response_days(safe_dist_dt, min_time_sec = 90)
+##
 ##   forensic_dt <- build_forensic_trace("BSH54", "2026-04-12", curtl_scada_dt, tt_dt, safe_dist_dt, track_dt)
 ##
 ##   plot_forensic_rpm(forensic_dt, scada_dt, "BSH54", "2026-04-12")
@@ -50,6 +54,39 @@ find_high_curtailment_days <- function(curtl_dt, turbine_id, min_curtailments = 
   out <- dt[, .(n_curtailments = .N), by = day]
   out <- out[n_curtailments >= min_curtailments]
   data.table::setorder(out, -n_curtailments)
+  out[]
+}
+
+
+## 1.b Dias candidatos -- turbinas/dias com pelo menos 1 curtailment de
+##     resposta tardia (mais arriscados: a ave pode atingir a zona do rotor
+##     ainda a girar demasiado depressa). Usa time_to_threshold_sec de
+##     safe_dist_dt (o limiar KNE, 2rpm por omissao -- ver
+##     R/curtailment_safe_distance.R) -- nao precisa de tt_dt.
+##     turbine_id = NULL (omissao) procura em todas as turbinas de safe_dist_dt.
+
+find_slow_response_days <- function(safe_dist_dt, min_time_sec = 90, turbine_id = NULL, tz = NULL) {
+
+  if (is.null(tz)) tz <- attr(safe_dist_dt$start, "tzone")
+
+  dt <- safe_dist_dt[!is.na(time_to_threshold_sec) & time_to_threshold_sec > min_time_sec]
+  if (!is.null(turbine_id)) dt <- dt[turbine == turbine_id]
+
+  if (nrow(dt) == 0L) {
+    return(data.table::data.table(
+      turbine = character(), day = as.Date(character()), n_slow = integer(),
+      max_time_to_threshold_sec = numeric(), track_ids = character()
+    ))
+  }
+
+  dt[, day := as.Date(start, tz = tz)]
+
+  out <- dt[, .(
+    n_slow = .N,
+    max_time_to_threshold_sec = max(time_to_threshold_sec),
+    track_ids = paste(track_id, collapse = ", ")
+  ), by = .(turbine, day)]
+  data.table::setorder(out, -max_time_to_threshold_sec)
   out[]
 }
 

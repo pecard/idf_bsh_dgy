@@ -280,3 +280,80 @@ cat(sprintf(
   "build_forensic_trace('TFOR1', '2026-06-01', ...) sem passar tz=: %d linha(s) (esperado: 1) -- %s\n",
   nrow(forensic_tz), if (nrow(forensic_tz) == 1) "OK" else "FALHOU"
 ))
+
+
+## 5. find_slow_response_days() -- dias com curtailments de resposta tardia
+## (mais arriscados: a ave pode atingir a zona do rotor ainda a girar
+## demasiado depressa). Dataset isolado, dedicado a este teste ------------------
+##   TFJ1 (TFOR1, 2026-05-10 09:00) -- lento, 119.9s ate 2rpm
+##   TFJ2 (TFOR1, 2026-05-10 09:05) -- lento, 99.9s ate 2rpm (mesma turbina+dia que TFJ1)
+##   TFK1 (TFOR2, 2026-05-12 15:00) -- lento, 94.95s ate 2rpm (turbina+dia diferentes)
+##   TFL1 (TFOR1, 2026-05-10 09:10) -- rapido, 19.9s -- NAO deve entrar (< min_time_sec)
+
+base_j <- as.POSIXct("2026-05-10 09:00:00", tz = "UTC")
+scada_j <- data.table(turbinelabel = "TFOR1", datetime = base_j + c(0, 60, 120),
+                      value = c(12, 5, 1.8), readingname = "RPM")
+curtl_j <- data.table(turbine = "TFOR1", track_id = "TFJ1", species = "Golden-Eagle",
+                      start = base_j + 0.1, end = base_j + 150)
+track_j <- data.table(track_id = "TFJ1", timestamp = base_j + c(-5, -4, -3),
+                      dist = rep(800, 3), speed_ms = c(10, 11, 12))
+## esperado: time_to_2rpm_sec = 120 - 0.1 = 119.9
+
+base_j2 <- base_j + 300
+scada_j2 <- data.table(turbinelabel = "TFOR1", datetime = base_j2 + c(0, 50, 100),
+                       value = c(11, 6, 1.9), readingname = "RPM")
+curtl_j2 <- data.table(turbine = "TFOR1", track_id = "TFJ2", species = "Golden-Eagle",
+                       start = base_j2 + 0.1, end = base_j2 + 120)
+track_j2 <- data.table(track_id = "TFJ2", timestamp = base_j2 + c(-5, -4, -3),
+                       dist = rep(700, 3), speed_ms = c(9, 10, 11))
+## esperado: time_to_2rpm_sec = 100 - 0.1 = 99.9
+
+base_k <- as.POSIXct("2026-05-12 15:00:00", tz = "UTC")
+scada_k <- data.table(turbinelabel = "TFOR2", datetime = base_k + c(0, 50, 95, 100),
+                      value = c(11, 6, 1.9, 1.5), readingname = "RPM")
+curtl_k <- data.table(turbine = "TFOR2", track_id = "TFK1", species = "Steppe-Eagle",
+                      start = base_k + 0.05, end = base_k + 120)
+track_k <- data.table(track_id = "TFK1", timestamp = base_k + c(-5, -4, -3),
+                      dist = rep(900, 3), speed_ms = c(8, 9, 10))
+## esperado: time_to_2rpm_sec = 95 - 0.05 = 94.95
+
+base_l <- base_j + 600
+scada_l <- data.table(turbinelabel = "TFOR1", datetime = base_l + c(0, 10, 20),
+                      value = c(12, 3, 1.5), readingname = "RPM")
+curtl_l <- data.table(turbine = "TFOR1", track_id = "TFL1", species = "Golden-Eagle",
+                      start = base_l + 0.1, end = base_l + 30)
+track_l <- data.table(track_id = "TFL1", timestamp = base_l + c(-5, -4, -3),
+                      dist = rep(500, 3), speed_ms = c(7, 8, 9))
+## esperado: time_to_2rpm_sec = 20 - 0.1 = 19.9 -- rapido, fica de fora
+
+curtl_slow_all  <- rbindlist(list(curtl_j, curtl_j2, curtl_k, curtl_l))
+scada_slow_all  <- rbindlist(list(scada_j, scada_j2, scada_k, scada_l))
+track_slow_all  <- rbindlist(list(track_j, track_j2, track_k, track_l))
+
+safe_dist_dt_slow <- compute_safe_distance(curtl_slow_all, scada_slow_all, track_slow_all,
+                                           start_end_gap_sec = 2, rpm_threshold = 2, speed_trim_q = 0.95)
+
+slow_days <- find_slow_response_days(safe_dist_dt_slow, min_time_sec = 90)
+cat("\n===== find_slow_response_days(safe_dist_dt_slow, min_time_sec = 90) =====\n")
+print(slow_days)
+slow_days_ok <- nrow(slow_days) == 2 &&
+  slow_days$turbine[1] == "TFOR1" && slow_days$day[1] == as.Date("2026-05-10") &&
+  slow_days$n_slow[1] == 2 && abs(slow_days$max_time_to_threshold_sec[1] - 119.9) < 0.05 &&
+  slow_days$turbine[2] == "TFOR2" && slow_days$day[2] == as.Date("2026-05-12") &&
+  slow_days$n_slow[2] == 1 && abs(slow_days$max_time_to_threshold_sec[2] - 94.95) < 0.05
+cat(sprintf(
+  "\nEsperado: 2 linhas -- TFOR1/2026-05-10 (n_slow=2, max=119.9, TFJ1+TFJ2) primeiro,\nTFOR2/2026-05-12 (n_slow=1, max=94.95, TFK1) segundo. TFL1 (19.9s) fica de fora -- %s\n",
+  if (slow_days_ok) "OK" else "FALHOU"
+))
+
+slow_days_tfor2 <- find_slow_response_days(safe_dist_dt_slow, min_time_sec = 90, turbine_id = "TFOR2")
+cat(sprintf(
+  "\nfind_slow_response_days(..., turbine_id = 'TFOR2'): %d linha(s) (esperado: 1, so TFOR2) -- %s\n",
+  nrow(slow_days_tfor2), if (nrow(slow_days_tfor2) == 1 && slow_days_tfor2$turbine[1] == "TFOR2") "OK" else "FALHOU"
+))
+
+slow_days_none <- find_slow_response_days(safe_dist_dt_slow, min_time_sec = 200)
+cat(sprintf(
+  "\nfind_slow_response_days(..., min_time_sec = 200): %d linha(s) (esperado: 0, nenhum chega aos 200s) -- %s\n",
+  nrow(slow_days_none), if (nrow(slow_days_none) == 0) "OK" else "FALHOU"
+))
