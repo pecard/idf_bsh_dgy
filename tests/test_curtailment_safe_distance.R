@@ -86,6 +86,8 @@ scada_d <- data.table(
 curtl_d <- data.table(turbine = "TESTS4", track_id = "TSD1", species = "Saker-Falcon",
                       start = base_d + 0.15, end = base_d + 20.2)
 track_d <- data.table(track_id = "TSD1", dist = 500, speed_ms = c(15, 16, 17))
+## avg_speed esperado (calculado independentemente do tempo/status, que ficam NA):
+## quantile(c(15,16,17), .95) = 16.9 -> filtra <16.9 -> mean(15,16) = 15.5
 
 
 scada_all <- rbindlist(list(scada_a, scada_b, scada_c, scada_d))
@@ -107,7 +109,7 @@ cat(sprintf("Linhas com track_id=='TSC1': %d (esperado: 0) -- %s\n",
 expected_d <- data.table(
   track_id             = c("TSA1", "TSB1", "TSD1"),
   expected_time_sec    = c(29.8, 49.9, NA),
-  expected_avg_speed   = c(9.5, 21.5, NA),
+  expected_avg_speed   = c(9.5, 21.5, 15.5),
   expected_min_safe_m  = c(283.1, 1072.85, NA),
   expected_margin_m    = c(716.9, -772.85, NA),
   expected_status      = c("OK", "Crit", NA)
