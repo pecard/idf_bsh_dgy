@@ -206,3 +206,4 @@ coverage_min_sample_records <- 500000
 
 riskHeight_lower <- 50  # in meters
 riskHeight_upper <- 250 # in meters
+
