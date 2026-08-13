@@ -619,7 +619,8 @@ if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
 
   ### 3.7. Safe distance (metodologia KNE) ----
 
-  #safe_dist_rpm_threshold, safe_dist_speed_trim_q, safe_dist_reference_line_m --> definidos no userSettings_BSH.R
+  #safe_dist_rpm_threshold, safe_dist_speed_trim_q, safe_dist_reference_line_m,
+  #safe_dist_already_slowing_rpm --> definidos no userSettings_BSH.R
 
   source("R/curtailment_safe_distance.R")
 
@@ -627,15 +628,30 @@ if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
     curtl_scada_dt, scada_dt, track_dt,
     start_end_gap_sec = curtailment_start_end_gap_sec,
     rpm_threshold = safe_dist_rpm_threshold,
-    speed_trim_q = safe_dist_speed_trim_q
+    speed_trim_q = safe_dist_speed_trim_q,
+    already_slowing_rpm_threshold = safe_dist_already_slowing_rpm
   )
   summary_safe_dist <- summarise_safe_distance(safe_dist_dt, prioritysp)
 
+  # cenario mais gravoso (turbina a velocidade normal no disparo) vs cenario
+  # de beneficio (turbina ja a abrandar de outro curtailment) -- ver
+  # documentacao de turbine_state em R/curtailment_safe_distance.R
+  summary_safe_dist_full_speed <- summarise_safe_distance(
+    safe_dist_dt[turbine_state == "full_speed"], prioritysp
+  )
+  summary_safe_dist_already_slowing <- summarise_safe_distance(
+    safe_dist_dt[turbine_state == "already_slowing"], prioritysp
+  )
+
   writexl::write_xlsx(
     list(
-      Safe_distance = safe_dist_dt,
-      Overall       = summary_safe_dist$overall,
-      By_species    = summary_safe_dist$by_species
+      Safe_distance                = safe_dist_dt,
+      Overall                      = summary_safe_dist$overall,
+      By_species                   = summary_safe_dist$by_species,
+      Overall_full_speed           = summary_safe_dist_full_speed$overall,
+      By_species_full_speed        = summary_safe_dist_full_speed$by_species,
+      Overall_already_slowing      = summary_safe_dist_already_slowing$overall,
+      By_species_already_slowing   = summary_safe_dist_already_slowing$by_species
     ),
     file.path(folder_output, paste0("curtailment_safe_distance_", date(scada_ini), "to", date(scada_end), ".xlsx"))
   )

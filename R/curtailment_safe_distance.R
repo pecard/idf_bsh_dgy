@@ -21,6 +21,15 @@
 ##     minimo necessario); "Crit" se <= 0 (curtailment atrasado -- a ave
 ##     podia chegar ao rotor antes deste atingir uma velocidade segura)
 ##
+## turbine_state -- baseado no start_rpm (rpm da turbina no momento do
+##   disparo, ja calculado por time_to_rpm_thresholds()):
+##   "already_slowing" se start_rpm < already_slowing_rpm_threshold -- a
+##     turbina ja estava a abrandar/recuperar de outro curtailment (cenario
+##     "beneficio": esta ave aproveitou uma paragem ja em curso, disparada
+##     por outra deteção)
+##   "full_speed" caso contrario -- cenario mais gravoso, turbina a
+##     velocidade normal de operacao no momento do disparo
+##
 ## Depende de: data.table, ggplot2, R/curtailment_response.R,
 ## R/curtailment_shutdown_time.R (usa time_to_rpm_thresholds())
 ##
@@ -33,13 +42,18 @@
 ##   plot_safe_distance_hist(safe_dist_dt, species_sel = prioritysp, facet = TRUE)
 ##   plot_trigger_distance_status(safe_dist_dt, species_sel = prioritysp, facet = TRUE)
 ##
+##   ## separar cenario mais gravoso (full_speed) do cenario de beneficio
+##   ## (already_slowing) -- summarise_safe_distance() nao muda, filtra-se antes:
+##   summary_full_speed      <- summarise_safe_distance(safe_dist_dt[turbine_state == "full_speed"], prioritysp)
+##   summary_already_slowing <- summarise_safe_distance(safe_dist_dt[turbine_state == "already_slowing"], prioritysp)
+##
 
 
 ## 1. Distancia de seguranca teorica, por curtailment ----
 
 compute_safe_distance <- function(curtl_dt, scada_dt, track_dt,
                                   start_end_gap_sec = 2, rpm_threshold = 2,
-                                  speed_trim_q = 0.95) {
+                                  speed_trim_q = 0.95, already_slowing_rpm_threshold = 6) {
 
   tt_dt <- time_to_rpm_thresholds(
     curtl_dt, scada_dt, thresholds = rpm_threshold, start_end_gap_sec = start_end_gap_sec
@@ -62,6 +76,10 @@ compute_safe_distance <- function(curtl_dt, scada_dt, track_dt,
   out[, status := fifelse(
     is.na(dist_margin_m), NA_character_,
     fifelse(dist_margin_m > 0, "OK", "Crit")
+  )]
+  out[, turbine_state := fifelse(
+    is.na(start_rpm), NA_character_,
+    fifelse(start_rpm < already_slowing_rpm_threshold, "already_slowing", "full_speed")
   )]
 
   out[]
