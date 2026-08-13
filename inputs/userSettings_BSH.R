@@ -183,16 +183,11 @@ dem_filename <- "Bash_DEM_copernicus30m.tif"
 # Nomes que nao existirem no shapefile geram um aviso explicito, nao sao
 # ignorados em silencio (ver run_coverage_3d_all_turbines()).
 # Usa wtg_3d_coverage <- "all" para correr a analise para todas as turbinas do shapefile.
-wtg_3d_coverage <- c('BSH54')
+wtg_3d_coverage <- 'all' # c('BSH54')
 
 coverage_mesh_step_xy   <- 50 # em metros; resolucao horizontal da malha 3D
 coverage_mesh_step_z    <- 50 # em metros; resolucao vertical da malha 3D
 coverage_prox_thresh_m  <- 50 # em metros; distancia 3D maxima ave-no da malha para considerar "covered"
-
-# nº minimo de registos de track candidatos (por turbina) para considerar a
-# amostra suficiente -- turbinas abaixo disto ficam assinaladas (low_sample)
-# nos resumos de summarise_mesh_coverage(), a interpretar com cautela
-coverage_min_sample_records <- 500000
 
 # Bandas de risco (altura relativa a turbina, em metros) para a malha 3D com
 # topografia -- AINDA POR DECIDIR: por agora usa os breaks/labels por omissao
