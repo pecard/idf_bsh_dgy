@@ -692,8 +692,13 @@ dem_file <- file.path(databases_dir, dem_filename)
 # confirmar que os nomes de wtg_3d_coverage existem mesmo no shapefile wtg
 # (coluna InternalNa) antes de correr a analise -- nomes trocados ficam
 # silenciosamente de fora do cov_all se nao verificarmos isto
-cat("Turbinas em wtg_3d_coverage NAO encontradas no shapefile wtg:\n")
-print(setdiff(wtg_3d_coverage, wtg$InternalNa))
+# (wtg_3d_coverage = "all" corre para todas as turbinas do shapefile, sem check de nomes)
+if (identical(wtg_3d_coverage, "all")) {
+  cat(sprintf("wtg_3d_coverage = \"all\" -- vao ser analisadas todas as %d turbinas do shapefile wtg.\n", nrow(wtg)))
+} else {
+  cat("Turbinas em wtg_3d_coverage NAO encontradas no shapefile wtg:\n")
+  print(setdiff(wtg_3d_coverage, wtg$InternalNa))
+}
 
 if (file.exists(dem_file)) {
 

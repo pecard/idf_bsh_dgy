@@ -182,6 +182,7 @@ dem_filename <- "Bash_DEM_copernicus30m.tif"
 # por turbina), por isso NAO corre para todas as turbinas por omissao.
 # Nomes que nao existirem no shapefile geram um aviso explicito, nao sao
 # ignorados em silencio (ver run_coverage_3d_all_turbines()).
+# Usa wtg_3d_coverage <- "all" para correr a analise para todas as turbinas do shapefile.
 wtg_3d_coverage <- c('BSH54')
 
 coverage_mesh_step_xy   <- 50 # em metros; resolucao horizontal da malha 3D

@@ -25,7 +25,8 @@
 ##     radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
 ##     step_xy = coverage_mesh_step_xy, step_z = coverage_mesh_step_z,
 ##     prox_thresh_m = coverage_prox_thresh_m,
-##     risk_band_breaks = c(200), risk_band_labels = c("at risk", "above")
+##     risk_band_breaks = c(200), risk_band_labels = c("at risk", "above"),
+##     wtg_sel = wtg_3d_coverage # vetor de nomes (coluna InternalNa), ou "all"/NULL para todas
 ##   )
 ##   summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))
 ##   plot_mesh_coverage_3d(cov_all$BSH54$terrain_mesh, cov_all$BSH54$coverage,
@@ -201,8 +202,12 @@ run_coverage_3d_all_turbines <- function(wtg_sf, track_dt, dem_file,
 
   # wtg_sel: subconjunto de nomes de turbina (coluna wtg_id_col) a analisar --
   # analise 3D completa (DEM + malha + KD-tree) e cara, por isso NULL = todas
-  # as turbinas do shapefile so deve ser usado deliberadamente. Nomes que nao
-  # existirem no shapefile sao avisados explicitamente, nao ignorados em silencio.
+  # as turbinas do shapefile so deve ser usado deliberadamente. wtg_sel = "all"
+  # e equivalente a NULL (mais explicito no userSettings do que deixar em branco).
+  # Nomes que nao existirem no shapefile sao avisados explicitamente, nao
+  # ignorados em silencio.
+  if (identical(wtg_sel, "all")) wtg_sel <- NULL
+
   if (!is.null(wtg_sel)) {
     missing_wtg <- setdiff(wtg_sel, wtg_sf[[wtg_id_col]])
     if (length(missing_wtg) > 0) {
