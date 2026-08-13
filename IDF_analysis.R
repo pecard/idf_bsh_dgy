@@ -169,15 +169,16 @@ set_tier3_dt <- tier3_dt[idate < date(end)]
 
 #check if turbines labels match across all datasets
 Reduce(setdiff, list(
-  unique(wtg$ID),
+  unique(wtg$InternalNa),
   unique(scada_dt_unfilt$turbinelabel),
   unique(curtl_dt_unfilt$turbine),
   unique(track_dt_unfilt$turbine)
 ))
+
 #verificar qual falta
 # collect all turbine labels
 turbines <- sort(unique(c(
-  wtg$ID,
+  wtg$InternalNa,
   scada_dt_unfilt$turbinelabel,
   curtl_dt_unfilt$turbine,
   track_dt_unfilt$turbine
@@ -186,7 +187,7 @@ turbines <- sort(unique(c(
 # build presence table
 labels_table <- data.frame(
   turbine = turbines,
-  wtg   = as.integer(turbines %in% wtg$ID),
+  wtg   = as.integer(turbines %in% wtg$InternalNa),
   curtl = as.integer(turbines %in% curtl_dt_unfilt$turbine),
   track = as.integer(turbines %in% track_dt_unfilt$turbine),
   scada = as.integer(turbines %in% scada_dt_unfilt$turbinelabel)
