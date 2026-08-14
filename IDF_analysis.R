@@ -708,6 +708,24 @@ if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
 } else {print("SCADA data not available - Curtailment response assessment was skipped")}
 
 
+### 3.8. Fatality track investigation ----
+
+# track_proximity_threshold_m, fatality_incidents --> definidos no userSettings_BSH.R
+# Nao depende de scada_dt -- so precisa de track_dt, curtl_dt e wtg.
+
+source("R/fatality_track_investigation.R")
+
+fatality_tracks_dt <- investigate_fatality_incidents(
+  fatality_incidents, track_dt, curtl_dt, wtg,
+  proximity_threshold_m = track_proximity_threshold_m
+)
+
+writexl::write_xlsx(
+  list(Fatality_tracks = fatality_tracks_dt),
+  file.path(folder_output, "fatality_track_investigation.xlsx")
+)
+
+
 attr(curtl_scada_dt$start, "tzone")  # expected "Asia/Samarkand"
 curtl_scada_dt[track_id == "F96FD9F7-E742-4588-B495-DEA851EB5495", start]  # esperado: 06:44:52
 

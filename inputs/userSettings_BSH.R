@@ -161,6 +161,26 @@ safe_dist_reference_line_m <- 600 # em metros; linha de referencia nos plots -- 
 safe_dist_already_slowing_rpm <- 6
 
 
+## -- 3.8. Fatality track investigation --
+
+# em metros; limiar de proximidade a turbina para identificar candidatos a
+# colisao (rotor-swept zone, distancia horizontal/2D) -- ver R/fatality_track_investigation.R
+track_proximity_threshold_m <- 100
+
+# incidentes de fatalidade conhecidos -- incident_date e' a data em que a ave
+# foi ENCONTRADA numa prospecao, NAO a data da morte (ver CLAUDE.md); por
+# isso days_before define uma janela de varios dias antes (E incluindo) essa
+# data, nao so o proprio dia -- ajustar days_before por incidente conforme a
+# frequencia de prospecao/deteção de cada caso
+fatality_incidents <- data.table::data.table(
+  incident_id   = c("BSH_0002", "BSH_0004"),
+  turbine       = c("BSH54", "BSH62"),
+  species       = c("Steppe-Eagle", "Egyptian-Vulture"),
+  incident_date = as.Date(c("2025-10-31", "2026-03-19")),
+  days_before   = c(8, 8)
+)
+
+
 ## -- 4. Coverage --
 
 idf_op_detection_range <- 1000 # em metros; distancia de deteção operational do IDF a considerar na análise
