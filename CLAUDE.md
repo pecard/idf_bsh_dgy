@@ -23,3 +23,10 @@
   approaching from a few hundred meters, with the track stopping being
   recorded near the turbine, is a stronger collision indicator than a
   curtailment log entry.
+- The recorded "incident date" of a fatality is the date the carcass was
+  found during a turbine ground survey, NOT the date the bird actually died
+  from the collision. Never describe the incident date as "the date of
+  mortality", and do not over-focus the analysis on that single day — this
+  is exactly why the analysis looks at a window of days before the incident
+  (8 days by default in the reports so far; may need to be longer for other
+  cases, since survey frequency and carcass detectability vary).
