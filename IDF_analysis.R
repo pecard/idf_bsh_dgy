@@ -856,6 +856,40 @@ writexl::write_xlsx(
 
 
 ##
+## 6. Report support -- data extent summary ----
+##
+## Duas tabelas de apoio a escrita de relatorios (ver CLAUDE.md: cada
+## seccao deve ser auto-explicativa quanto ao universo de dados que usa) --
+## n de linhas e janela temporal de cada conjunto/subconjunto analisado, um
+## sumario para o panorama geral do parque, outro para a analise especifica
+## de turbinas (BSH54/BSH62). Ver R/dataset_summary.R.
+##
+
+source("R/dataset_summary.R")
+
+general_data_summary_dt <- summarise_dataset_extent(list(
+  Tracks       = list(dt = track_dt,  date_col = "timestamp"),
+  Curtailments = list(dt = curtl_dt,  date_col = "start"),
+  SCADA        = list(dt = scada_dt,  date_col = "datetime"),
+  Heartbeats   = list(dt = heartb_dt, date_col = "timestamp")
+))
+
+turbine_summary_list <- list()
+if (exists("curtl_scada_dt")) turbine_summary_list$Curtailments_BSH54_BSH62 <- list(dt = curtl_scada_dt, date_col = "start")
+if (exists("assess_dt"))      turbine_summary_list$Response_assessment     <- list(dt = assess_dt, date_col = "start")
+if (exists("tt_dt"))          turbine_summary_list$Shutdown_time           <- list(dt = tt_dt, date_col = "start")
+if (exists("safe_dist_dt"))   turbine_summary_list$Safe_distance           <- list(dt = safe_dist_dt, date_col = "start")
+if (exists("fatality_tracks_dt")) turbine_summary_list$Fatality_tracks     <- list(dt = fatality_tracks_dt, date_col = "first_time")
+
+turbine_data_summary_dt <- summarise_dataset_extent(turbine_summary_list)
+
+writexl::write_xlsx(
+  list(General_data_summary = general_data_summary_dt, Turbine_data_summary = turbine_data_summary_dt),
+  file.path(folder_output, "data_extent_summary.xlsx")
+)
+
+
+##
 ## Export various metrics in a single excel file  ----
 ## DESATIVADO - depende dos objetos criados pelas seccoes 3.2-5 acima
 ##
