@@ -40,14 +40,16 @@ trackreport_pattern  <- "TrackReport_" #"TrackReport.+csv"          # ex: TrackR
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
 scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_20260201_....csv
 heartbeats_pattern   <- "Bash_Heartbeats.+csv"          # ex: Heartbeats_20260201_....csv
-heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11", "BSH64-04", "BSH62-05", "BSH61-06")
+heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11", 
+                         "BSH64-04", "BSH62-05", "BSH61-06",
+                         'BSH14-41', 'BSH12-40')
 
 ##
 ## Timeframe for analysis/reporting period
 ##
 
 ini <- as.POSIXct('2025-10-01 00:00:00', tz = proj_timezone)
-end <- as.POSIXct('2026-06-30 23:59:59', tz = proj_timezone)
+end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
 
 
 ##
@@ -123,9 +125,9 @@ shorttrack_eval_range <- 300 # em metros; distancia ate qual se considera releva
 
 # Incluir time range e turbinas para o qual temos dados de SCADA, mesmo que no intervalo tenham "buracos" sem info
 scada_ini <- as.POSIXct('2025-10-15 00:00:00', tz = proj_timezone)
-scada_end <- as.POSIXct('2026-06-30 23:59:59', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
 
-turbinas_scada <- c('BSH54', 'BSH62')
+turbinas_scada <- c('BSH54', 'BSH62', 'BSH14')
 
 safe_shutdown_rpm <- 1 # threshold de rpm a considerar para uma safe passage; curtailment considerado feito com sucesso quando rpm da turbina < safe_shutdown_rpm
 
@@ -173,11 +175,11 @@ track_proximity_threshold_m <- 100
 # data, nao so o proprio dia -- ajustar days_before por incidente conforme a
 # frequencia de prospecao/deteção de cada caso
 fatality_incidents <- data.table::data.table(
-  incident_id   = c("BSH_0002", "BSH_0004"),
-  turbine       = c("BSH54", "BSH62"),
-  species       = c("Steppe-Eagle", "Egyptian-Vulture"),
-  incident_date = as.Date(c("2025-10-31", "2026-03-19")),
-  days_before   = c(8, 8)
+  incident_id   = c("BSH_0002", "BSH_0004", "BSH_0012"),
+  turbine       = c("BSH54", "BSH62", 'BSH14'),
+  species       = c("Steppe-Eagle", "Egyptian-Vulture", "Egyptian-Vulture"),
+  incident_date = as.Date(c("2025-10-31", "2026-03-19", "2026-08-03")),
+  days_before   = c(8, 8, 8)
 )
 
 
