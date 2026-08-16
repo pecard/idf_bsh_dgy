@@ -849,17 +849,32 @@ min_indiv_bins_dt <- count_min_individuals_per_bin(
 
 min_indiv_summary_dt <- summarise_min_individuals(min_indiv_bins_dt)
 
+# sintese diaria (maximo diario por especie) -- leitura fenologica/sazonal,
+# menos densa que os bins de 2min para todo o periodo do projeto
+min_indiv_daily_dt <- summarise_daily_max_individuals(min_indiv_bins_dt)
+
 writexl::write_xlsx(
-  list(Min_individuals_bins = min_indiv_bins_dt, Min_individuals_summary = min_indiv_summary_dt),
+  list(
+    Min_individuals_bins    = min_indiv_bins_dt,
+    Min_individuals_summary = min_indiv_summary_dt,
+    Min_individuals_daily   = min_indiv_daily_dt
+  ),
   file.path(folder_output, "min_individuals_per_bin.xlsx")
 )
 
 # altura ajustada ao nº de especies (1 facet por especie, ncol = 1)
 n_species_min_indiv <- length(unique(min_indiv_bins_dt$spec))
+
 p_min_indiv <- plot_min_individuals_per_bin(min_indiv_bins_dt)
 ggsave(
   file.path(folder_output, "min_individuals_per_bin.png"),
   plot = p_min_indiv, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
+)
+
+p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt)
+ggsave(
+  file.path(folder_output, "min_individuals_daily_max.png"),
+  plot = p_min_indiv_daily, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
 )
 
 
