@@ -43,6 +43,7 @@
 ##   )
 ##
 ##   summarise_min_individuals(bins_dt) # pico de individuos simultaneos, por especie/periodo
+##   plot_min_individuals_per_bin(bins_dt) # evolucao da contagem, eixo x = sequencia ordinal de bins
 ##
 
 
@@ -157,4 +158,33 @@ summarise_min_individuals <- function(bins_dt) {
 
   data.table::setorder(out, -peak_individuals)
   out[]
+}
+
+
+## 5. Plot -- evolucao da contagem ao longo dos bins, por especie ----
+##
+## x = indice ordinal do bin (1, 2, 3, ...), NAO o timestamp -- os bins de
+## bins_dt sao apenas os que tem pelo menos 1 registo (ver
+## count_min_individuals_per_bin(), agrupado por spec+bin_start), por isso a
+## sequencia ordinal salta bins vazios/sem deteções em vez de os mostrar como
+## um gap na escala temporal real.
+
+plot_min_individuals_per_bin <- function(bins_dt, species_sel = NULL) {
+
+  dt <- data.table::copy(bins_dt)
+  if (!is.null(species_sel)) dt <- dt[spec %in% species_sel]
+
+  data.table::setorder(dt, spec, bin_start)
+  dt[, bin_seq := seq_len(.N), by = spec]
+
+  ggplot(dt, aes(x = bin_seq, y = n_individuals_min)) +
+    geom_line(colour = "steelblue") +
+    geom_point(colour = "steelblue", size = 1.2) +
+    facet_wrap(~ spec, ncol = 1, scales = "free_y") +
+    labs(
+      x = "Time bin (ordinal sequence)",
+      y = "Minimum number of individuals",
+      title = "Minimum individuals per time bin"
+    ) +
+    theme_minimal()
 }
