@@ -43,7 +43,12 @@
 ##   )
 ##
 ##   summarise_min_individuals(bins_dt) # pico de individuos simultaneos, por especie/periodo
-##   plot_min_individuals_per_bin(bins_dt) # evolucao da contagem, eixo x = sequencia ordinal de bins
+##   plot_min_individuals_per_bin(bins_dt) # evolucao da contagem, eixo x = bin_start (timestamp real)
+##
+##   # sintese diaria -- maximo diario, para leitura fenologica/sazonal sem a
+##   # densidade dos bins de 2min
+##   daily_dt <- summarise_daily_max_individuals(bins_dt)
+##   plot_daily_max_individuals(daily_dt)
 ##
 ##   # auditoria -- validar manualmente um bin especifico (ex: um pico suspeito)
 ##   inspect_min_individuals_bin(track_dt, species = "Steppe-Eagle", bin_start = "2025-03-04 13:14:00")
@@ -173,26 +178,25 @@ summarise_min_individuals <- function(bins_dt) {
 
 ## 5. Plot -- evolucao da contagem ao longo dos bins, por especie ----
 ##
-## x = indice ordinal do bin (1, 2, 3, ...), NAO o timestamp -- os bins de
-## bins_dt sao apenas os que tem pelo menos 1 registo (ver
-## count_min_individuals_per_bin(), agrupado por spec+bin_start), por isso a
-## sequencia ordinal salta bins vazios/sem deteções em vez de os mostrar como
-## um gap na escala temporal real.
+## x = bin_start (timestamp real) -- bins_dt so tem linhas para bins com
+## pelo menos 1 registo (ver count_min_individuals_per_bin(), agrupado por
+## spec+bin_start), por isso os "buracos" sem deteção aparecem como espacos
+## em branco no eixo temporal, nao como bins com valor 0. Para um periodo
+## longo (ex: todo o projeto), a densidade de pontos de 2min pode tornar o
+## grafico dificil de ler -- ver summarise_daily_max_individuals() +
+## plot_daily_max_individuals() para uma leitura fenologica/sazonal.
 
 plot_min_individuals_per_bin <- function(bins_dt, species_sel = NULL) {
 
   dt <- data.table::copy(bins_dt)
   if (!is.null(species_sel)) dt <- dt[spec %in% species_sel]
 
-  data.table::setorder(dt, spec, bin_start)
-  dt[, bin_seq := seq_len(.N), by = spec]
-
-  ggplot(dt, aes(x = bin_seq, y = n_individuals_min)) +
+  ggplot(dt, aes(x = bin_start, y = n_individuals_min)) +
     geom_line(colour = "steelblue") +
     geom_point(colour = "steelblue", size = 1.2) +
     facet_wrap(~ spec, ncol = 1, scales = "free_y") +
     labs(
-      x = "Time bin (ordinal sequence)",
+      x = "Time",
       y = "Minimum number of individuals",
       title = "Minimum individuals per time bin"
     ) +
@@ -200,7 +204,50 @@ plot_min_individuals_per_bin <- function(bins_dt, species_sel = NULL) {
 }
 
 
-## 6. Auditoria -- detalhe de um bin especifico (validar manualmente um pico) ----
+## 6. Sumario diario -- maximo diario de individuos, por especie ----
+##
+## Para cada dia (e especie), retem o maior n_individuals_min observado em
+## qualquer bin desse dia -- uma sintese diaria da presenca simultanea da
+## especie, pensada para ler padroes fenologicos/sazonais (ex: picos de
+## migracao ao longo do ano) sem a densidade dos bins de 2min.
+
+summarise_daily_max_individuals <- function(bins_dt, tz = NULL) {
+
+  empty <- data.table::data.table(spec = character(), day = as.Date(character()), max_individuals = integer())
+  if (nrow(bins_dt) == 0L) return(empty)
+
+  if (is.null(tz)) tz <- attr(bins_dt$bin_start, "tzone")
+
+  dt <- data.table::copy(bins_dt)
+  dt[, day := as.Date(bin_start, tz = tz)]
+
+  out <- dt[, .(max_individuals = max(n_individuals_min)), by = .(spec, day)]
+  data.table::setorder(out, spec, day)
+  out[]
+}
+
+
+## 7. Plot diario -- maximo diario ao longo do calendario, por especie ----
+
+plot_daily_max_individuals <- function(daily_dt, species_sel = NULL) {
+
+  dt <- data.table::copy(daily_dt)
+  if (!is.null(species_sel)) dt <- dt[spec %in% species_sel]
+
+  ggplot(dt, aes(x = day, y = max_individuals)) +
+    geom_line(colour = "steelblue") +
+    geom_point(colour = "steelblue", size = 1.2) +
+    facet_wrap(~ spec, ncol = 1, scales = "free_y") +
+    labs(
+      x = "Date",
+      y = "Daily peak (max individuals in any 2-min bin)",
+      title = "Daily peak of minimum individuals, by species"
+    ) +
+    theme_minimal()
+}
+
+
+## 8. Auditoria -- detalhe de um bin especifico (validar manualmente um pico) ----
 ##
 ## Devolve, para uma especie e um bin (identificado pelo seu bin_start), um
 ## resumo por track: nº de pontos, unidade(s) IDF que o registaram, janela
