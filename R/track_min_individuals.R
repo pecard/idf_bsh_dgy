@@ -63,7 +63,7 @@
   if (nrow(edges) > 0L) {
     for (k in seq_len(nrow(edges))) {
       ra <- find(edges$i[k]); rb <- find(edges$j[k])
-      if (ra != rb) parent[ra] <<- rb
+      if (ra != rb) parent[ra] <- rb
     }
   }
 
