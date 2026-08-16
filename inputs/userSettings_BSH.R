@@ -8,6 +8,23 @@
 
 
 ##
+## Run switches -- que analises correm nesta ronda
+##
+## NAO condiciona a leitura de dados (seccao 0 de IDF_analysis.R, incluindo
+## a matriz turbina<->IDF, corre sempre) -- so as analises abaixo, que sao
+## caras ou nao sao precisas em toda corrida. FALSE salta o bloco (e grava
+## uma mensagem a dizer que foi saltado), nao o remove do script.
+##
+
+run_sections <- list(
+  curtailment_response   = TRUE,  # 3.5-3.7 (resposta a curtailments, shutdown time, safe distance) -- so corre se scada_dt tambem existir
+  fatality_investigation = TRUE,  # 3.8 (tracks + disponibilidade + resposta na janela de cada incidente)
+  coverage_3d             = TRUE,  # 4.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
+  min_individuals          = TRUE   # 5.4 (contagem minima de individuos por bin, farm-wide)
+)
+
+
+##
 ## Project inputs (inside folder inputs/)
 ##
 
@@ -168,10 +185,27 @@ safe_dist_reference_line_m <- 600 # em metros; linha de referencia nos plots -- 
 safe_dist_already_slowing_rpm <- 6
 
 
-## -- 3.8. Fatality track investigation --
+## -- 3.8. Fatality investigation (cross-cutting: 3.1 + 3.5-3.7 + 3.8) --
+##
+## Tudo o que precisa de um incidente + turbina + espécie + janela de dias
+## fica agrupado aqui, mesmo que a analise em si corra secções diferentes de
+## IDF_analysis.R:
+##   - tracks da especie perto da turbina, na janela            (3.8, R/fatality_track_investigation.R)
+##   - disponibilidade das unidades IDF dessa turbina, na janela (3.1, R/fatality_window_analysis.R)
+##   - resposta a curtailments dessa turbina, na janela          (3.5-3.7, R/fatality_window_analysis.R)
+## As duas analises de janela REUTILIZAM os thresholds ja definidos acima em
+## 3.1 (heartbeat_offline_gap_min, heartbeat_interval_min) e 3.5-3.6
+## (curtailment_start_end_gap_sec, curtailment_max_next_gap_sec,
+## curtailment_drop_pct_threshold, safe_shutdown_rpm, shutdown_time_thresholds,
+## shutdown_time_high_cut) -- nao ha parametros duplicados aqui.
+##
+## As unidades IDF de cada turbina sao resolvidas a partir da matriz manual
+## (turbine_idf_matrix_filename, seccao "Project inputs" acima) -- ver
+## R/turbine_idf_coverage.R e R/fatality_window_analysis.R.
 
 # em metros; limiar de proximidade a turbina para identificar candidatos a
-# colisao (rotor-swept zone, distancia horizontal/2D) -- ver R/fatality_track_investigation.R
+# colisao (rotor-swept zone, distancia horizontal/2D) -- global, o mesmo
+# para todos os incidentes (criterio fisico/biologico, nao operacional)
 track_proximity_threshold_m <- 100
 
 # incidentes de fatalidade conhecidos -- incident_date e' a data em que a ave
