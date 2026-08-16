@@ -227,3 +227,15 @@ coverage_min_sample_records <- 500000
 riskHeight_lower <- 50  # in meters
 riskHeight_upper <- 250 # in meters
 
+
+## -- 5.4. Minimum individuals per time bin (modulo geral, farm-wide) --
+
+# em minutos; duracao do bin usado para agrupar registos de tracks -- ver
+# R/track_min_individuals.R
+min_individuals_bin_min <- 2
+
+# em metros; dois tracks no mesmo bin (mesmo de unidades IDF diferentes)
+# contam como 1 individuo se a distancia minima entre qualquer par de
+# pontos dos dois tracks, dentro desse bin, for inferior a este valor
+min_individuals_merge_dist_m <- 200
+

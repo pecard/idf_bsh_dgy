@@ -830,6 +830,31 @@ plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
 #source(file.path(folder_script_IDF, 'bio_risk_per_species.R'))
 
 
+### 5.4. Minimum individuals per time bin ----
+
+# min_individuals_bin_min, min_individuals_merge_dist_m --> definidos no userSettings_BSH.R
+# Modulo geral e reutilizavel (qualquer especie, qualquer periodo, farm-wide)
+# -- ver R/track_min_individuals.R. Por omissao corre para as especies
+# prioritarias (prioritysp) em todo o periodo do projeto (ini/end); para uma
+# janela ou especie especifica, chamar count_min_individuals_per_bin()
+# diretamente (ex: species = "Steppe-Eagle", date_from/date_to = janela de 8
+# dias antes de uma fatalidade).
+
+source("R/track_min_individuals.R")
+
+min_indiv_bins_dt <- count_min_individuals_per_bin(
+  track_dt, species = prioritysp,
+  bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m
+)
+
+min_indiv_summary_dt <- summarise_min_individuals(min_indiv_bins_dt)
+
+writexl::write_xlsx(
+  list(Min_individuals_bins = min_indiv_bins_dt, Min_individuals_summary = min_indiv_summary_dt),
+  file.path(folder_output, "min_individuals_per_bin.xlsx")
+)
+
+
 ##
 ## Export various metrics in a single excel file  ----
 ## DESATIVADO - depende dos objetos criados pelas seccoes 3.2-5 acima
