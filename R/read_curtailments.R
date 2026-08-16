@@ -13,7 +13,16 @@ read_curtailments_data <- function(databases_dirs, pattern, tz = "UTC") {
       clean_names() %>%
       mutate(
         start = lubridate::as_datetime(start),
-        end   = lubridate::as_datetime(end)
+        end   = lubridate::as_datetime(end),
+        # forcar character explicitamente -- se uma destas colunas vier
+        # totalmente vazia num ficheiro (ex: turbina nao preenchida em
+        # nenhuma linha), o readxl infere-a como logical (NA), e o
+        # bind_rows() abaixo falha a combinar esse ficheiro com os outros
+        # (character vs logical) -- ver erro "Can't combine ..$turbine
+        # <character> and ..$turbine <logical>"
+        turbine  = as.character(turbine),
+        track_id = as.character(track_id),
+        species  = as.character(species)
       )
   }
 
