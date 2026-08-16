@@ -193,11 +193,13 @@ safe_dist_already_slowing_rpm <- 6
 ##   - tracks da especie perto da turbina, na janela            (3.8, R/fatality_track_investigation.R)
 ##   - disponibilidade das unidades IDF dessa turbina, na janela (3.1, R/fatality_window_analysis.R)
 ##   - resposta a curtailments dessa turbina, na janela          (3.5-3.7, R/fatality_window_analysis.R)
-## As duas analises de janela REUTILIZAM os thresholds ja definidos acima em
-## 3.1 (heartbeat_offline_gap_min, heartbeat_interval_min) e 3.5-3.6
+##   - abundancia (min individuals) pre- e pos-incidente          (5.4, R/fatality_window_analysis.R)
+## As analises de janela REUTILIZAM os thresholds ja definidos acima em 3.1
+## (heartbeat_offline_gap_min, heartbeat_interval_min), 3.5-3.6
 ## (curtailment_start_end_gap_sec, curtailment_max_next_gap_sec,
 ## curtailment_drop_pct_threshold, safe_shutdown_rpm, shutdown_time_thresholds,
-## shutdown_time_high_cut) -- nao ha parametros duplicados aqui.
+## shutdown_time_high_cut) e 5.4 (min_individuals_bin_min,
+## min_individuals_merge_dist_m) -- nao ha parametros duplicados aqui.
 ##
 ## As unidades IDF de cada turbina sao resolvidas a partir da matriz manual
 ## (turbine_idf_matrix_filename, seccao "Project inputs" acima) -- ver
@@ -207,6 +209,13 @@ safe_dist_already_slowing_rpm <- 6
 # colisao (rotor-swept zone, distancia horizontal/2D) -- global, o mesmo
 # para todos os incidentes (criterio fisico/biologico, nao operacional)
 track_proximity_threshold_m <- 100
+
+# dias APOS o incidente a comparar com a janela pre-incidente, na abundancia
+# (min individuals) da especie envolvida -- puramente descritivo, ver
+# R/fatality_window_analysis.R (summarise_individuals_pre_post()): uma
+# diferenca pode refletir o incidente OU so a fase natural da migracao a
+# passar, nao se assume causalidade (CLAUDE.md)
+fatality_post_incident_days <- 3
 
 # incidentes de fatalidade conhecidos -- incident_date e' a data em que a ave
 # foi ENCONTRADA numa prospecao, NAO a data da morte (ver CLAUDE.md); por
@@ -279,4 +288,19 @@ min_individuals_bin_min <- 2
 # contam como 1 individuo se a distancia minima entre qualquer par de
 # pontos dos dois tracks, dentro desse bin, for inferior a este valor
 min_individuals_merge_dist_m <- 200
+
+
+## -- 7. System performance vs. bird phenology (evolucao temporal, cross-cutting) --
+##
+## Evolucao ao longo de todo o periodo da qualidade de resposta a
+## curtailments (missed/delayed), sobreposta a abundancia de aves -- para
+## explorar se a performance do sistema varia com os periodos de maior
+## movimento migratorio. Ver R/curtailment_response_timeline.R. Reutiliza a
+## classificacao missed/delayed de R/curtailment_response_classify.R (mesmos
+## thresholds de 3.5-3.6) e os bins de R/track_min_individuals.R (5.4) --
+## nao ha parametros novos alem da granularidade da serie temporal.
+
+# "week" ou "month" -- granularidade da serie temporal (resposta e
+# abundancia sao agregadas nesta mesma escala, para poderem ser comparadas)
+response_timeline_unit <- "week"
 

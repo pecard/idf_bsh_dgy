@@ -777,6 +777,8 @@ if (isTRUE(run_sections$fatality_investigation)) {
     source("R/availability_daylight.R")
     source("R/curtailment_response.R")
     source("R/curtailment_shutdown_time.R")
+    source("R/curtailment_response_classify.R")
+    source("R/track_min_individuals.R")
     source("R/fatality_window_analysis.R")
 
     fatality_windows <- summarise_fatality_windows(
@@ -789,7 +791,12 @@ if (isTRUE(run_sections$fatality_investigation)) {
       start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
       drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
       shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut,
-      fallback_idf_units = heartbeat_idf_units
+      fallback_idf_units = heartbeat_idf_units,
+      track_dt = track_dt, post_days = fatality_post_incident_days,
+      min_indiv_bin_min = min_individuals_bin_min, min_indiv_merge_dist_m = min_individuals_merge_dist_m,
+      global_avail_from = ini, global_avail_to = end,
+      global_response_from = if (exists("scada_ini")) scada_ini else NULL,
+      global_response_to   = if (exists("scada_end")) scada_end else NULL
     )
 
     # achatar para exportacao -- 1 linha por incidente+unidade (disponibilidade),
@@ -815,14 +822,42 @@ if (isTRUE(run_sections$fatality_investigation)) {
       dt[]
     }), fill = TRUE)
 
+    # baseline "global" -- mesma estrutura, para comparar lado a lado com as
+    # tabelas de janela acima (degradou ou melhorou na janela do incidente?)
+    fatality_global_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+      dt <- fatality_windows[[id]]$availability_global$by_idf
+      if (is.null(dt) || nrow(dt) == 0L) return(NULL)
+      dt[, incident_id := id]
+      dt[]
+    }), fill = TRUE)
+
+    fatality_global_response_summary_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+      dt <- fatality_windows[[id]]$curtailment_response_global$by_flag
+      if (is.null(dt) || nrow(dt) == 0L) return(NULL)
+      dt[, incident_id := id]
+      dt[]
+    }), fill = TRUE)
+
+    # abundancia pre/pos-incidente -- descritivo, ver
+    # summarise_individuals_pre_post() em R/fatality_window_analysis.R
+    fatality_abundance_pre_post_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+      dt <- fatality_windows[[id]]$abundance
+      if (is.null(dt) || nrow(dt) == 0L) return(NULL)
+      dt[, incident_id := id]
+      dt[]
+    }), fill = TRUE)
+
     writexl::write_xlsx(
       list(
-        Fatality_tracks             = fatality_tracks_dt,
-        Fatality_signal_counts      = fatality_summary$counts_by_signal,
-        Fatality_top_candidates     = fatality_summary$top_candidates,
-        Window_availability_by_idf  = fatality_window_availability_dt,
-        Window_response_detail      = fatality_window_response_dt,
-        Window_response_summary     = fatality_window_response_summary_dt
+        Fatality_tracks               = fatality_tracks_dt,
+        Fatality_signal_counts        = fatality_summary$counts_by_signal,
+        Fatality_top_candidates       = fatality_summary$top_candidates,
+        Window_availability_by_idf    = fatality_window_availability_dt,
+        Window_response_detail        = fatality_window_response_dt,
+        Window_response_summary       = fatality_window_response_summary_dt,
+        Global_availability_by_idf    = fatality_global_availability_dt,
+        Global_response_summary       = fatality_global_response_summary_dt,
+        Abundance_pre_post             = fatality_abundance_pre_post_dt
       ),
       file.path(folder_output, "fatality_track_investigation.xlsx")
     )
@@ -1027,6 +1062,59 @@ writexl::write_xlsx(
   list(General_data_summary = general_data_summary_dt, Turbine_data_summary = turbine_data_summary_dt),
   file.path(folder_output, "data_extent_summary.xlsx")
 )
+
+
+##
+## 7. System performance vs. bird phenology (evolucao temporal) ----
+##
+## Evolucao temporal (por omissao semanal, response_timeline_unit --
+## definido no userSettings_BSH.R) da qualidade de resposta a curtailments
+## (missed/delayed) em curtl_scada_dt, sobreposta a abundancia (min
+## individuals) das especies dos incidentes de fatalidade -- para dar
+## contexto a se a performance do sistema varia com os periodos de maior
+## movimento migratorio. Ver R/curtailment_response_timeline.R. So corre se
+## a seccao 3.5-3.7 (curtl_scada_dt) e a 5.4 (min_indiv_bins_dt) tiverem
+## corrido (run_sections + dados disponiveis).
+##
+
+if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
+
+  source("R/curtailment_response_classify.R")
+  source("R/curtailment_response_timeline.R")
+
+  response_flag_dt <- classify_response_flag(
+    curtl_scada_dt, scada_dt,
+    start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
+    drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
+    shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
+  )
+
+  response_timeline_dt  <- summarise_response_timeline(response_flag_dt, unit = response_timeline_unit)
+  abundance_timeline_dt <- summarise_abundance_timeline(min_indiv_bins_dt, unit = response_timeline_unit)
+
+  writexl::write_xlsx(
+    list(Response_timeline = response_timeline_dt, Abundance_timeline = abundance_timeline_dt),
+    file.path(folder_output, "response_vs_phenology_timeline.xlsx")
+  )
+
+  # um par de plots por especie de fatality_incidents -- contexto direto
+  # para a seccao nova do relatorio
+  for (sp in unique(fatality_incidents$species)) {
+    p_pair <- plot_response_vs_phenology(response_timeline_dt, abundance_timeline_dt, species_sel = sp)
+    sp_slug <- gsub("[^A-Za-z0-9]+", "_", sp)
+    ggsave(
+      file.path(folder_output, paste0("response_timeline_", sp_slug, ".png")),
+      plot = p_pair$response_plot, width = 8, height = 4, dpi = 300, bg = "white"
+    )
+    ggsave(
+      file.path(folder_output, paste0("abundance_timeline_", sp_slug, ".png")),
+      plot = p_pair$abundance_plot, width = 8, height = 4, dpi = 300, bg = "white"
+    )
+  }
+
+} else {
+  message("curtl_scada_dt e/ou min_indiv_bins_dt nao disponiveis -- seccao 7 (performance vs. fenologia) saltada.")
+}
 
 
 ##
