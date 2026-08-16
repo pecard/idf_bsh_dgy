@@ -876,6 +876,7 @@ ggsave(
 )
 
 p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt)
+p_min_indiv_daily
 ggsave(
   file.path(folder_output, "min_individuals_daily_max.png"),
   plot = p_min_indiv_daily, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"

@@ -195,12 +195,24 @@ plot_min_individuals_per_bin <- function(bins_dt, species_sel = NULL) {
     geom_line(colour = "steelblue") +
     geom_point(colour = "steelblue", size = 1.2) +
     facet_wrap(~ spec, ncol = 1, scales = "free_y") +
+    scale_x_date(
+      date_breaks = "15 days",
+      date_labels = "%d/%m/%Y" # Altera o formato conforme preferires (ex: "%d %b")
+    ) +
     labs(
       x = "Time",
       y = "Minimum number of individuals",
       title = "Minimum individuals per time bin"
     ) +
-    theme_minimal()
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(
+        angle = 90,    # Rotação vertical
+        vjust = 0.5,   # Alinha o texto ao centro da marca do eixo
+        hjust = 1,     # Ajusta a extremidade ao eixo
+        size = 8       # Tamanho da fonte (reduzido)
+      )
+    )
 }
 
 
@@ -238,12 +250,24 @@ plot_daily_max_individuals <- function(daily_dt, species_sel = NULL) {
     geom_line(colour = "steelblue") +
     geom_point(colour = "steelblue", size = 1.2) +
     facet_wrap(~ spec, ncol = 1, scales = "free_y") +
+    scale_x_date(
+      date_breaks = "15 days",
+      date_labels = "%d/%m/%Y" # Altera o formato conforme preferires (ex: "%d %b")
+    ) +
     labs(
       x = "Date",
       y = "Daily peak (max individuals in any 2-min bin)",
       title = "Daily peak of minimum individuals, by species"
     ) +
-    theme_minimal()
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(
+        angle = 90,    # Rotação vertical
+        vjust = 0.5,   # Alinha o texto ao centro da marca do eixo
+        hjust = 1,     # Ajusta a extremidade ao eixo
+        size = 8       # Tamanho da fonte (reduzido)
+      )
+    )
 }
 
 
