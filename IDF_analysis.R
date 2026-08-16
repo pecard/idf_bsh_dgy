@@ -854,9 +854,13 @@ writexl::write_xlsx(
   file.path(folder_output, "min_individuals_per_bin.xlsx")
 )
 
+
+inspect_min_individuals_bin(track_dt, species = "Steppe-Eagle", bin_start = "2025-03-04 13:14:00")
+
 # altura ajustada ao nº de especies (1 facet por especie, ncol = 1)
 n_species_min_indiv <- length(unique(min_indiv_bins_dt$spec))
 p_min_indiv <- plot_min_individuals_per_bin(min_indiv_bins_dt)
+p_min_indiv
 ggsave(
   file.path(folder_output, "min_individuals_per_bin.png"),
   plot = p_min_indiv, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
