@@ -45,6 +45,9 @@
 ##   summarise_min_individuals(bins_dt) # pico de individuos simultaneos, por especie/periodo
 ##   plot_min_individuals_per_bin(bins_dt) # evolucao da contagem, eixo x = sequencia ordinal de bins
 ##
+##   # auditoria -- validar manualmente um bin especifico (ex: um pico suspeito)
+##   inspect_min_individuals_bin(track_dt, species = "Steppe-Eagle", bin_start = "2025-03-04 13:14:00")
+##
 
 
 ## 1. Componentes conexas (union-find) -- auxiliar interno ----
@@ -136,6 +139,13 @@ count_min_individuals_per_bin <- function(track_dt, species, bin_min = 2, merge_
 ##    bound) do numero de individuos distintos presentes nesse periodo: se
 ##    naquele bin de 2min havia, no minimo, X individuos claramente distintos
 ##    (>=200m entre si), entao a populacao presente no periodo e' >= X.
+##
+##    mean_individuals_nonzero -- media de n_individuals_min sobre os n_bins
+##    bins ONDE A ESPECIE FOI DETETADA (bins_dt so tem linhas para bins com
+##    >=1 deteccao -- nao ha linhas com n_individuals_min=0 para filtrar; o
+##    "nonzero" no nome refere-se a esse desenho dos dados de entrada, nao a
+##    um filtro ativo aqui). Ou seja: em media, quantos individuos distintos
+##    estao simultaneamente presentes num bin em que a especie aparece.
 
 summarise_min_individuals <- function(bins_dt) {
 
@@ -187,4 +197,58 @@ plot_min_individuals_per_bin <- function(bins_dt, species_sel = NULL) {
       title = "Minimum individuals per time bin"
     ) +
     theme_minimal()
+}
+
+
+## 6. Auditoria -- detalhe de um bin especifico (validar manualmente um pico) ----
+##
+## Devolve, para uma especie e um bin (identificado pelo seu bin_start), um
+## resumo por track: nº de pontos, unidade(s) IDF que o registaram, janela
+## temporal dentro do bin, extensao espacial (min-max UTM), e o group_id
+## atribuido pelo algoritmo de componentes conexas (mesmo group_id = mesmo
+## individuo, por count_min_individuals_per_bin()).
+##
+## Serve para distinguir um pico genuino (ex: kettle de migracao, varios
+## tracks bem separados no espaco e/ou vistos por unidades IDF diferentes)
+## de um possivel artefacto de fragmentacao de track_id -- o IdentiFlight
+## por vezes atribui um novo track_id a meio do voo da mesma ave (troca de
+## ID, ver seccao 1.2 "ID transitions" do IDF_analysis.R); tracks muito
+## curtos (poucos pontos), da mesma unidade IDF, que comecam mesmo a seguir
+## a outro terminar perto do mesmo sitio, sao um sinal desse artefacto --
+## nesse caso o algoritmo pode estar a contar como 2+ individuos o que e'
+## na realidade a mesma ave, se os dois fragmentos ficarem a mais de
+## merge_dist_m um do outro no momento da troca.
+
+inspect_min_individuals_bin <- function(track_dt, species, bin_start, bin_min = 2, merge_dist_m = 200) {
+
+  tz <- attr(track_dt$timestamp, "tzone")
+  bin_start <- as.POSIXct(bin_start, tz = tz)
+  bin_end   <- bin_start + bin_min * 60
+
+  pts <- track_dt[
+    spec == species & timestamp >= bin_start & timestamp < bin_end,
+    .(track_id, timestamp, idf, utm_x, utm_y)
+  ]
+
+  empty <- data.table::data.table(
+    track_id = character(), group_id = integer(), n_points = integer(),
+    idf_units = character(), first_time = as.POSIXct(character(), tz = tz),
+    last_time = as.POSIXct(character(), tz = tz), utm_x_range = character(), utm_y_range = character()
+  )
+  if (nrow(pts) == 0L) return(empty)
+
+  r <- .min_individuals_one_bin(pts, merge_dist_m = merge_dist_m)
+
+  track_summary <- pts[, .(
+    n_points    = .N,
+    idf_units   = paste(sort(unique(idf)), collapse = ", "),
+    first_time  = min(timestamp),
+    last_time   = max(timestamp),
+    utm_x_range = sprintf("%.0f - %.0f", min(utm_x), max(utm_x)),
+    utm_y_range = sprintf("%.0f - %.0f", min(utm_y), max(utm_y))
+  ), by = track_id]
+
+  out <- merge(track_summary, r$groups, by = "track_id")
+  data.table::setorder(out, group_id, first_time)
+  out[]
 }
