@@ -720,8 +720,18 @@ fatality_tracks_dt <- investigate_fatality_incidents(
   proximity_threshold_m = track_proximity_threshold_m
 )
 
+# sumario -- contagens por sinal (quantidades por tipo de track classificado)
+# e os tracks candidatos mais provaveis a colisao (ver signal ==
+# no_curtailment_lost_near_turbine / curtailment_lost_near_turbine em
+# R/fatality_track_investigation.R)
+fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
+
 writexl::write_xlsx(
-  list(Fatality_tracks = fatality_tracks_dt),
+  list(
+    Fatality_tracks        = fatality_tracks_dt,
+    Fatality_signal_counts = fatality_summary$counts_by_signal,
+    Fatality_top_candidates = fatality_summary$top_candidates
+  ),
   file.path(folder_output, "fatality_track_investigation.xlsx")
 )
 

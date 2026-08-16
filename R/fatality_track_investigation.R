@@ -40,6 +40,11 @@
 ##     proximity_threshold_m = track_proximity_threshold_m
 ##   )
 ##
+##   # sumario -- contagens por sinal e candidatos mais provaveis a colisao
+##   summary_i <- summarise_fatality_tracks(all_tracks_i, top_n = 10)
+##   summary_i$counts_by_signal
+##   summary_i$top_candidates
+##
 
 
 ## 1. Um incidente -- turbina + especie + janela de dias ----
@@ -137,4 +142,51 @@ investigate_fatality_incidents <- function(fatality_incidents, track_dt, curtl_d
   })
 
   data.table::rbindlist(res)
+}
+
+
+## 3. Sumario -- contagens por sinal e candidatos mais provaveis a colisao ----
+##
+## "Candidatos" = tracks cujo signal e' no_curtailment_lost_near_turbine ou
+## curtailment_lost_near_turbine, i.e. a ULTIMA posicao registada do track
+## esta dentro do limiar de proximidade -- o IdentiFlight deixou de seguir a
+## ave (sem mais pontos depois desse) enquanto ela ainda estava perto da
+## turbina, o indicador mais forte de possivel colisao (ver CLAUDE.md).
+## Ordenados por prioridade de sinal (sem curtailment primeiro, por ser o
+## cenario mais critico -- nenhuma resposta e a ave desaparece perto da
+## turbina) e depois por last_dist_m (mais perto da turbina primeiro).
+
+fatality_signal_priority <- c(
+  no_curtailment_lost_near_turbine = 1L,  # mais critico: sem resposta, track termina perto da turbina
+  curtailment_lost_near_turbine    = 2L,  # houve curtailment, mas o track ainda assim termina perto
+  near_turbine_not_last            = 3L,  # chegou perto, mas o track continua/afasta-se depois
+  far_from_turbine                 = 4L   # nunca esteve dentro do limiar de proximidade
+)
+
+summarise_fatality_tracks <- function(fatality_tracks_dt, top_n = 10) {
+
+  empty_counts <- data.table::data.table(
+    incident_id = character(), turbine = character(), species = character(),
+    signal = character(), n_tracks = integer(), pct_of_incident = numeric()
+  )
+
+  if (nrow(fatality_tracks_dt) == 0L) {
+    return(list(counts_by_signal = empty_counts, top_candidates = fatality_tracks_dt))
+  }
+
+  counts_by_signal <- fatality_tracks_dt[, .(n_tracks = .N), by = .(incident_id, turbine, species, signal)]
+  counts_by_signal[, pct_of_incident := round(100 * n_tracks / sum(n_tracks), 1), by = incident_id]
+  counts_by_signal[, signal_ord := fatality_signal_priority[signal]]
+  data.table::setorder(counts_by_signal, incident_id, signal_ord)
+  counts_by_signal[, signal_ord := NULL]
+
+  candidate_signals <- names(fatality_signal_priority)[1:2]
+  candidates <- fatality_tracks_dt[signal %in% candidate_signals]
+  candidates[, signal_ord := fatality_signal_priority[signal]]
+  data.table::setorder(candidates, incident_id, signal_ord, last_dist_m)
+  candidates[, signal_ord := NULL]
+
+  top_candidates <- candidates[, .SD[seq_len(min(.N, top_n))], by = incident_id]
+
+  list(counts_by_signal = counts_by_signal[], top_candidates = top_candidates[])
 }
