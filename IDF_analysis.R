@@ -613,8 +613,8 @@ if (exists("heartb_dt")) {
 # $by_immediate — agrupa os mesmos totais pelo no_immediate_response (só a verificação da leitura seguinte ao sinal — um critério diferente, independente do final_status).
 # $by_turbine — agrupa os mesmos totais por turbina, cruzando os dois critérios numa linha por turbina.
 # 
-if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
-  
+if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas corre se tiver dados de SCADA e o switch estiver ligado
+
   source("R/curtailment_response.R")
   
   curtl_scada_dt <- curtl_dt[
@@ -741,35 +741,107 @@ if (exists("scada_dt")) { #Apenas corre se tiver dados de SCADA
     plot = p_trigger_dist_status, width = 8, height = 8, dpi = 300, bg = "white"
   )
 
-} else {print("SCADA data not available - Curtailment response assessment was skipped")}
+} else {message("run_sections$curtailment_response = FALSE ou SCADA nao disponivel -- 3.5-3.7 saltadas nesta ronda.")}
 
 
-### 3.8. Fatality track investigation ----
+### 3.8. Fatality investigation (tracks + disponibilidade + resposta na janela) ----
 
 # track_proximity_threshold_m, fatality_incidents --> definidos no userSettings_BSH.R
-# Nao depende de scada_dt -- so precisa de track_dt, curtl_dt e wtg.
+# (seccao "Fatality investigation", consolidada -- ver comentario la)
+# turbine_idf_manual_dt (se existir) vem da seccao 0 (matriz turbina<->IDF)
 
-source("R/fatality_track_investigation.R")
+if (isTRUE(run_sections$fatality_investigation)) {
 
-fatality_tracks_dt <- investigate_fatality_incidents(
-  fatality_incidents, track_dt, curtl_dt, wtg,
-  proximity_threshold_m = track_proximity_threshold_m
-)
+  # 1) tracks da especie perto da turbina, na janela -- nao depende de
+  #    scada_dt, so precisa de track_dt, curtl_dt e wtg.
+  source("R/fatality_track_investigation.R")
 
-# sumario -- contagens por sinal (quantidades por tipo de track classificado)
-# e os tracks candidatos mais provaveis a colisao (ver signal ==
-# no_curtailment_lost_near_turbine / curtailment_lost_near_turbine em
-# R/fatality_track_investigation.R)
-fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
+  fatality_tracks_dt <- investigate_fatality_incidents(
+    fatality_incidents, track_dt, curtl_dt, wtg,
+    proximity_threshold_m = track_proximity_threshold_m
+  )
 
-writexl::write_xlsx(
-  list(
-    Fatality_tracks        = fatality_tracks_dt,
-    Fatality_signal_counts = fatality_summary$counts_by_signal,
-    Fatality_top_candidates = fatality_summary$top_candidates
-  ),
-  file.path(folder_output, "fatality_track_investigation.xlsx")
-)
+  # sumario -- contagens por sinal (quantidades por tipo de track classificado)
+  # e os tracks candidatos mais provaveis a colisao (ver signal ==
+  # no_curtailment_lost_near_turbine / curtailment_lost_near_turbine em
+  # R/fatality_track_investigation.R)
+  fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
+
+  # 2) disponibilidade das unidades IDF da turbina + resposta a curtailments,
+  #    na mesma janela -- reutiliza os thresholds de 3.1/3.5-3.6 (ver
+  #    R/fatality_window_analysis.R). Precisa de heartb_dt; a parte de
+  #    resposta a curtailments so produz resultado se scada_dt tambem existir
+  #    (fica com detail/by_flag vazios caso contrario, sem gerar erro).
+  if (exists("heartb_dt")) {
+
+    source("R/availability_daylight.R")
+    source("R/curtailment_response.R")
+    source("R/curtailment_shutdown_time.R")
+    source("R/fatality_window_analysis.R")
+
+    fatality_windows <- summarise_fatality_windows(
+      fatality_incidents, heartb_dt,
+      curtl_dt = curtl_dt,
+      scada_dt = if (exists("scada_dt")) scada_dt else data.table::data.table(),
+      manual_matrix_dt = if (exists("turbine_idf_manual_dt")) turbine_idf_manual_dt else NULL,
+      lat = proj_lat, lon = proj_lon, tz = proj_timezone,
+      offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min,
+      start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
+      drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
+      shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut,
+      fallback_idf_units = heartbeat_idf_units
+    )
+
+    # achatar para exportacao -- 1 linha por incidente+unidade (disponibilidade),
+    # 1 linha por incidente+curtailment (resposta), com incident_id anexado
+    fatality_window_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+      dt <- fatality_windows[[id]]$availability$by_idf
+      if (nrow(dt) == 0L) return(NULL)
+      dt[, incident_id := id]
+      dt[]
+    }), fill = TRUE)
+
+    fatality_window_response_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+      dt <- fatality_windows[[id]]$curtailment_response$detail
+      if (nrow(dt) == 0L) return(NULL)
+      dt[, incident_id := id]
+      dt[]
+    }), fill = TRUE)
+
+    fatality_window_response_summary_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+      dt <- fatality_windows[[id]]$curtailment_response$by_flag
+      if (nrow(dt) == 0L) return(NULL)
+      dt[, incident_id := id]
+      dt[]
+    }), fill = TRUE)
+
+    writexl::write_xlsx(
+      list(
+        Fatality_tracks             = fatality_tracks_dt,
+        Fatality_signal_counts      = fatality_summary$counts_by_signal,
+        Fatality_top_candidates     = fatality_summary$top_candidates,
+        Window_availability_by_idf  = fatality_window_availability_dt,
+        Window_response_detail      = fatality_window_response_dt,
+        Window_response_summary     = fatality_window_response_summary_dt
+      ),
+      file.path(folder_output, "fatality_track_investigation.xlsx")
+    )
+
+  } else {
+    message("heartb_dt nao disponivel -- analises de janela (disponibilidade/resposta) da secção 3.8 saltadas, so os tracks foram exportados.")
+    writexl::write_xlsx(
+      list(
+        Fatality_tracks         = fatality_tracks_dt,
+        Fatality_signal_counts  = fatality_summary$counts_by_signal,
+        Fatality_top_candidates = fatality_summary$top_candidates
+      ),
+      file.path(folder_output, "fatality_track_investigation.xlsx")
+    )
+  }
+
+} else {
+  message("run_sections$fatality_investigation = FALSE -- 3.8 saltada nesta ronda.")
+}
 
 
 attr(curtl_scada_dt$start, "tzone")  # expected "Asia/Samarkand"
@@ -802,7 +874,7 @@ if (identical(wtg_3d_coverage, "all")) {
   print(setdiff(wtg_3d_coverage, wtg$InternalNa))
 }
 
-if (file.exists(dem_file)) {
+if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
 
   source("R/coverage_3d_topography.R")
   # usa a totalidade dos dados de track sem filtros
@@ -834,7 +906,7 @@ if (file.exists(dem_file)) {
   # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height)
   # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height, not_covered = TRUE)
 
-} else {print("DEM file not available - 3D coverage analysis was skipped")}
+} else {message("run_sections$coverage_3d = FALSE ou DEM nao disponivel -- 4.2 saltada nesta ronda.")}
 
 plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
                              coverage_cylinder_height)
@@ -875,6 +947,8 @@ plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
 # janela ou especie especifica, chamar count_min_individuals_per_bin()
 # diretamente (ex: species = "Steppe-Eagle", date_from/date_to = janela de 8
 # dias antes de uma fatalidade).
+
+if (isTRUE(run_sections$min_individuals)) {
 
 source("R/track_min_individuals.R")
 
@@ -917,6 +991,8 @@ ggsave(
   file.path(folder_output, "min_individuals_daily_max.png"),
   plot = p_min_indiv_daily, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
 )
+
+} else {message("run_sections$min_individuals = FALSE -- 5.4 saltada nesta ronda.")}
 
 
 ##
