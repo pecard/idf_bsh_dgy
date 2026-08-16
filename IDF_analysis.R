@@ -130,6 +130,42 @@ wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
 #IDF
 idf <- sf::read_sf(file.path(folder_input, idf_filename))
 
+#Turbine <-> IDF unit coverage (matriz manual + validacao geometrica) --
+#turbine_idf_matrix_filename --> definido no userSettings_BSH.R
+#idf_op_detection_range --> definido no userSettings_BSH.R (reutilizado como
+#raio do buffer -- e' o mesmo conceito, o raio de deteção operacional do IDF)
+source("R/turbine_idf_coverage.R")
+
+turbine_idf_coverage_dt <- compute_turbine_idf_coverage(
+  wtg, idf, buffer_m = idf_op_detection_range,
+  wtg_id_col = "InternalNa", idf_id_col = "imaging_he"
+)
+turbine_idf_coverage_wide_dt <- pivot_turbine_idf_coverage_wide(turbine_idf_coverage_dt)
+
+turbine_idf_matrix_file <- file.path(folder_input, turbine_idf_matrix_filename)
+if (file.exists(turbine_idf_matrix_file)) {
+
+  turbine_idf_manual_dt <- read_xlsx(turbine_idf_matrix_file)
+  turbine_idf_comparison_dt <- compare_turbine_idf_matrix(turbine_idf_manual_dt, turbine_idf_coverage_dt)
+
+  writexl::write_xlsx(
+    list(
+      Geometric_long   = turbine_idf_coverage_dt,
+      Geometric_wide   = turbine_idf_coverage_wide_dt,
+      Manual_matrix    = turbine_idf_manual_dt,
+      Comparison       = turbine_idf_comparison_dt
+    ),
+    file.path(folder_output, "turbine_idf_coverage.xlsx")
+  )
+
+} else {
+  print("Turbine-IDF manual matrix not available - comparison was skipped (geometric coverage still computed)")
+  writexl::write_xlsx(
+    list(Geometric_long = turbine_idf_coverage_dt, Geometric_wide = turbine_idf_coverage_wide_dt),
+    file.path(folder_output, "turbine_idf_coverage.xlsx")
+  )
+}
+
 #Tier scheme
 tier <- read_xlsx(file.path(folder_input, tier_start_scheme_filename))
 

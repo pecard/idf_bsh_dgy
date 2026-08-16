@@ -19,6 +19,11 @@ idf_filename                <- "Bash_IDF_coord.shp"                         # in
 tier_start_scheme_filename  <- "Bash_tier_scheme_20260215.xlsx"             # em .xlsx
 tier3_start_scheme_filename <- "Bash_tier_3_commissioning_20260215.xlsx"    # em .xlsx
 
+# matriz turbina -> unidade(s) IDF (Primary/Secondary), mantida manualmente
+# -- colunas usadas: Site, `Turbine ID`, `Primary IDF`, `Secondary IDF(s)`,
+# `Secondary command capability` -- ver R/turbine_idf_coverage.R
+turbine_idf_matrix_filename <- "ACWA_IDF_Coverage_Matrix.xlsx"              # em .xlsx
+
 proj_lat      <- 40.65
 proj_lon      <- 64.67
 proj_timezone <- "Asia/Samarkand"
