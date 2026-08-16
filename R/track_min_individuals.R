@@ -43,7 +43,12 @@
 ##   )
 ##
 ##   summarise_min_individuals(bins_dt) # pico de individuos simultaneos, por especie/periodo
-##   plot_min_individuals_per_bin(bins_dt) # evolucao da contagem, eixo x = bin_start (timestamp real)
+##
+##   # plots -- species_sel filtra as especies mostradas (default:
+##   # Egyptian-Vulture e Steppe-Eagle); passar species_sel = NULL mostra
+##   # todas as especies presentes em bins_dt/daily_dt
+##   plot_min_individuals_per_bin(bins_dt) # eixo x = bin_start (timestamp real)
+##   plot_min_individuals_per_bin(bins_dt, species_sel = "Golden-Eagle")
 ##
 ##   # sintese diaria -- maximo diario, para leitura fenologica/sazonal sem a
 ##   # densidade dos bins de 2min
@@ -186,7 +191,7 @@ summarise_min_individuals <- function(bins_dt) {
 ## grafico dificil de ler -- ver summarise_daily_max_individuals() +
 ## plot_daily_max_individuals() para uma leitura fenologica/sazonal.
 
-plot_min_individuals_per_bin <- function(bins_dt, species_sel = NULL) {
+plot_min_individuals_per_bin <- function(bins_dt, species_sel = c("Egyptian-Vulture", "Steppe-Eagle")) {
 
   dt <- data.table::copy(bins_dt)
   if (!is.null(species_sel)) dt <- dt[spec %in% species_sel]
@@ -195,7 +200,7 @@ plot_min_individuals_per_bin <- function(bins_dt, species_sel = NULL) {
     geom_line(colour = "steelblue") +
     geom_point(colour = "steelblue", size = 1.2) +
     facet_wrap(~ spec, ncol = 1, scales = "free_y") +
-    scale_x_date(
+    scale_x_datetime(
       date_breaks = "15 days",
       date_labels = "%d/%m/%Y" # Altera o formato conforme preferires (ex: "%d %b")
     ) +
@@ -241,7 +246,7 @@ summarise_daily_max_individuals <- function(bins_dt, tz = NULL) {
 
 ## 7. Plot diario -- maximo diario ao longo do calendario, por especie ----
 
-plot_daily_max_individuals <- function(daily_dt, species_sel = NULL) {
+plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vulture", "Steppe-Eagle")) {
 
   dt <- data.table::copy(daily_dt)
   if (!is.null(species_sel)) dt <- dt[spec %in% species_sel]
