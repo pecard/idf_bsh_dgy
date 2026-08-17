@@ -21,7 +21,9 @@ data_date_range <- function(dt, datetime_col, label) {
     ))
   }
 
-  dates <- as.Date(dt[[datetime_col]])
+  # tz= explicito -- as.Date() sem tz usa UTC por omissao, o que desloca a
+  # data (ate 5h, Asia/Samarkand = UTC+5) perto da meia-noite local
+  dates <- as.Date(dt[[datetime_col]], tz = attr(dt[[datetime_col]], "tzone"))
   start <- min(dates, na.rm = TRUE)
   end   <- max(dates, na.rm = TRUE)
 
@@ -62,7 +64,8 @@ daily_presence <- function(dt, datetime_col, label) {
   }
 
   dt <- as.data.table(dt)
-  daily <- dt[, .(n = .N), by = .(date = as.Date(get(datetime_col)))]
+  dc_tz <- attr(dt[[datetime_col]], "tzone")
+  daily <- dt[, .(n = .N), by = .(date = as.Date(get(datetime_col), tz = dc_tz))]
   daily[, dataset := label]
   daily[]
 }
@@ -210,7 +213,8 @@ daily_presence_by_turbine <- function(dt, datetime_col, turbine_col, label) {
   }
 
   dt <- as.data.table(dt)
-  daily <- dt[, .(n = .N), by = .(turbine = get(turbine_col), date = as.Date(get(datetime_col)))]
+  dc_tz <- attr(dt[[datetime_col]], "tzone")
+  daily <- dt[, .(n = .N), by = .(turbine = get(turbine_col), date = as.Date(get(datetime_col), tz = dc_tz))]
   daily[, dataset := label]
   daily[]
 }

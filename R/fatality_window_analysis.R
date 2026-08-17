@@ -98,7 +98,11 @@ resolve_incident_idf_units <- function(turbine_id, manual_matrix_dt) {
 summarise_availability_window <- function(heartb_dt, idf_units, window_from, window_to,
                                           lat, lon, tz, offline_gap_min = 60, online_grace_min = 30) {
 
-  daylight_cal <- build_daylight_calendar(as.Date(window_from), as.Date(window_to), lat, lon, tz)
+  # as.Date() sem tz= usa UTC por omissao -- window_from as 00:00:00 local
+  # (Asia/Samarkand, UTC+5) cai as 19:00 do dia ANTERIOR em UTC, empurrando
+  # daylight_cal para tras 1 dia (janela de N+1 dias em vez de N) -- mesma
+  # familia dos bugs de tz ja corrigidos no resto do projeto
+  daylight_cal <- build_daylight_calendar(as.Date(window_from, tz = tz), as.Date(window_to, tz = tz), lat, lon, tz)
 
   empty <- list(
     daily = data.table::data.table(idf = character(), date = as.Date(character())),

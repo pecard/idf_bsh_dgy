@@ -58,7 +58,10 @@ summarise_response_timeline <- function(response_dt, unit = "week", by_turbine =
   if (nrow(response_dt) == 0L) return(empty)
 
   dt <- data.table::copy(response_dt)
-  dt[, period := lubridate::floor_date(as.Date(start), unit = unit)]
+  # as.Date() sem tz= usa UTC por omissao e desloca o limite do periodo ate
+  # 5h (Asia/Samarkand = UTC+5) -- mesma familia de bug ja corrigida em
+  # R/fatality_window_analysis.R
+  dt[, period := lubridate::floor_date(as.Date(start, tz = attr(start, "tzone")), unit = unit)]
 
   by_cols <- if (by_turbine) c("turbine", "period", "response_flag") else c("period", "response_flag")
   counts <- dt[, .(n = .N), by = by_cols]
@@ -89,7 +92,7 @@ summarise_abundance_timeline <- function(bins_dt, unit = "week") {
   if (nrow(bins_dt) == 0L) return(empty)
 
   dt <- data.table::copy(bins_dt)
-  dt[, period := lubridate::floor_date(as.Date(bin_start), unit = unit)]
+  dt[, period := lubridate::floor_date(as.Date(bin_start, tz = attr(bin_start, "tzone")), unit = unit)]
 
   out <- dt[, .(peak_individuals = max(n_individuals_min)), by = .(spec, period)]
   data.table::setorder(out, spec, period)

@@ -21,7 +21,11 @@
 
 build_daylight_calendar <- function(start_date, end_date, lat, lon, tz) {
 
-  dates <- seq(as.Date(start_date), as.Date(end_date), by = "day")
+  # as.Date() sem tz= usa UTC por omissao -- se start_date/end_date forem
+  # POSIXct (ex: ini/end em Asia/Samarkand, UTC+5), a meia-noite local cai
+  # as 19h do dia anterior em UTC, empurrando o calendario 1 dia para tras.
+  # tz=tz aqui reutiliza o mesmo fuso ja recebido para o suncalc abaixo.
+  dates <- seq(as.Date(start_date, tz = tz), as.Date(end_date, tz = tz), by = "day")
 
   sun <- as.data.table(
     suncalc::getSunlightTimes(
