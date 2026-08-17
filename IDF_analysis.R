@@ -1134,6 +1134,28 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
 
 
 ##
+## 8. Turbine recent activity (apoio a matriz de decisao do protocolo de
+##    resposta a outages do IdentiFlight) ----
+##
+## recent_activity_days --> definido no userSettings_BSH.R. Farm-wide (79
+## turbinas), nao so' as que tem SCADA -- ver R/turbine_recent_activity.R.
+##
+
+source("R/turbine_recent_activity.R")
+
+turbine_recent_activity_dt <- summarise_turbine_recent_activity(
+  track_dt, wtg, species = prioritysp,
+  date_from = end - lubridate::days(recent_activity_days), date_to = end,
+  proximity_threshold_m = track_proximity_threshold_m
+)
+
+write_xlsx_local(
+  list(Turbine_recent_activity = turbine_recent_activity_dt),
+  file.path(folder_output, "turbine_recent_activity.xlsx")
+)
+
+
+##
 ## Export various metrics in a single excel file  ----
 ## DESATIVADO - depende dos objetos criados pelas seccoes 3.2-5 acima
 ##

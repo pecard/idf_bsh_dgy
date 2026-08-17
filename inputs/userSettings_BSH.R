@@ -313,3 +313,17 @@ min_individuals_merge_dist_m <- 200
 # abundancia sao agregadas nesta mesma escala, para poderem ser comparadas)
 response_timeline_unit <- "week"
 
+
+## -- 8. Turbine recent activity (apoio a matriz de decisao do protocolo
+##       de resposta a outages do IdentiFlight) --
+##
+## Atividade recente de aves prioritarias por turbina (farm-wide, nao so'
+## as turbinas com SCADA) -- ver R/turbine_recent_activity.R. Alimenta,
+## junto com a matriz turbina<->IDF (seccao 0/Project inputs) e o historico
+## de missed/no_data (3.5-3.7), a matriz de decisao Excel do protocolo de
+## resposta a outages (documento externo, IDF_Response_Protocol).
+
+# em dias; janela "recente" considerada (a contar para tras a partir de
+# `end`) -- nao e' o mesmo conceito de days_before da seccao "Fatality
+# investigation" (essa e' fixa, em torno de um incidente ja conhecido)
+recent_activity_days <- 14
