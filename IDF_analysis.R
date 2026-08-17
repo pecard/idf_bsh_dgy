@@ -882,6 +882,8 @@ if (isTRUE(run_sections$fatality_investigation)) {
   message("run_sections$fatality_investigation = FALSE -- 3.8 saltada nesta ronda.")
 }
 
+fatality_global_response_summary_dt
+fatality_abundance_pre_post_dt
 
 attr(curtl_scada_dt$start, "tzone")  # expected "Asia/Samarkand"
 curtl_scada_dt[track_id == "F96FD9F7-E742-4588-B495-DEA851EB5495", start]  # esperado: 06:44:52
@@ -952,6 +954,13 @@ plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
 
 plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius, 
                              coverage_cylinder_height, not_covered = TRUE)
+
+plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
+                             coverage_cylinder_height)
+
+plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius, 
+                             coverage_cylinder_height, not_covered = TRUE)
+
 ##
 ## 5. Biological (supporting info) ----
 ##
