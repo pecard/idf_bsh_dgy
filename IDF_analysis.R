@@ -419,13 +419,13 @@ unique(heartb_dt$idf)
 ### Tier 3 data only
 ###
 
-tier3_track_dt <-
-  track_dt[set_tier3_dt, 
-           on = .(turbine), 
-           nomatch = 0][
-             timestamp > i.timestamp, # filter tier 3 only
-             .SD, 
-             .SDcols = names(track_dt)]
+# tier3_track_dt <-
+#   track_dt[set_tier3_dt, 
+#            on = .(turbine), 
+#            nomatch = 0][
+#              timestamp > i.timestamp, # filter tier 3 only
+#              .SD, 
+#              .SDcols = names(track_dt)]
 
 
 
@@ -551,8 +551,9 @@ if (exists("heartb_dt")) {
   )
   
 } else {print("Heartbeat data not available - IDF availability analysis was skipped")}
-
-
+p_availability_cal
+p_availability_freq
+p_heartbeat_slots
 # System availability - data sent by IDF team
 #source(file.path(folder_script_IDF, 'WTG_protect_time.R')) 
 # TEM HARD CODE #
@@ -743,6 +744,9 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
 
 } else {message("run_sections$curtailment_response = FALSE ou SCADA nao disponivel -- 3.5-3.7 saltadas nesta ronda.")}
 
+summary_safe_dist
+p_safe_dist_hist
+p_trigger_dist_status
 
 ### 3.8. Fatality investigation (tracks + disponibilidade + resposta na janela) ----
 
