@@ -30,3 +30,16 @@
   is exactly why the analysis looks at a window of days before the incident
   (8 days by default in the reports so far; may need to be longer for other
   cases, since survey frequency and carcass detectability vary).
+
+## Communicating about this project (emails, messages)
+
+- All exchanges with Shahin, or about this project generally (emails,
+  messages), are written in English — never Portuguese, even though the
+  working conversation with Paulo is in Portuguese.
+- Write these in Paulo's own voice: a competent non-native English speaker,
+  native to Portugal. Natural idiosyncrasies of that voice — slightly formal
+  phrasing, direct/literal constructions translated from Portuguese, minor
+  non-idiomatic prepositions or word choices — are fine and expected. Do not
+  flatten it into polished native-level English, but do not exaggerate it
+  into a caricature either; it should read as genuinely natural, not as a
+  parody of an accent.
