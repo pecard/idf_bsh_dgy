@@ -120,9 +120,14 @@ sink()
 ## ANALYSIS ----
 ##
 
-##  
+##
 ## 0. Import data ----
 ##
+
+# write_xlsx_local() -- corrige a exportacao de colunas POSIXct para xlsx
+# (writexl::write_xlsx() nao preserva tzone, sai 5h atrasado -- ver
+# R/write_utils.R); usada em vez de writexl::write_xlsx() em todo o script
+source("R/write_utils.R")
 
 #WTG
 wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
@@ -148,7 +153,7 @@ if (file.exists(turbine_idf_matrix_file)) {
   turbine_idf_manual_dt <- read_xlsx(turbine_idf_matrix_file)
   turbine_idf_comparison_dt <- compare_turbine_idf_matrix(turbine_idf_manual_dt, turbine_idf_coverage_dt)
 
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(
       Geometric_long   = turbine_idf_coverage_dt,
       Geometric_wide   = turbine_idf_coverage_wide_dt,
@@ -160,7 +165,7 @@ if (file.exists(turbine_idf_matrix_file)) {
 
 } else {
   print("Turbine-IDF manual matrix not available - comparison was skipped (geometric coverage still computed)")
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(Geometric_long = turbine_idf_coverage_dt, Geometric_wide = turbine_idf_coverage_wide_dt),
     file.path(folder_output, "turbine_idf_coverage.xlsx")
   )
@@ -321,7 +326,7 @@ if (!is.null(scada_dt_unfilt) && nrow(curtl_dt_unfilt) > 0) {
     units = "mm", dpi = 300, bg = "white", limitsize = FALSE
   )
   
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(Overlap = coverage_turbine_dt, Summary = coverage_turbine_summary),
     file.path(folder_output, "data_coverage_turbine_curtailments_scada.xlsx")
   )
@@ -341,7 +346,7 @@ if (!is.null(heartb_dt_unfilt) && nrow(heartb_dt_unfilt) > 0) {
     units = "mm", dpi = 300, bg = "white", limitsize = FALSE
   )
   
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(Presence = coverage_idf_dt, Summary = coverage_idf_summary),
     file.path(folder_output, "data_coverage_idf_heartbeats.xlsx")
   )
@@ -630,7 +635,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
   )
   summary_assess <- summarise_curtailment_assessment(assess_dt)
   
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(
       Assessment   = assess_dt,
       By_status    = summary_assess$by_status,
@@ -648,7 +653,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
   )
   summary_response <- summarise_curtailment_response(response_dt)
   
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(
       Window_response = response_dt,
       By_status       = summary_response$by_status,
@@ -672,7 +677,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     tt_dt, low_cut = shutdown_time_low_cut, high_cut = shutdown_time_high_cut
   )
   
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(
       Time_to_threshold = tt_dt,
       By_turbine        = summary_tt_by_turbine,
@@ -713,7 +718,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     safe_dist_dt[turbine_state == "already_slowing"], prioritysp
   )
 
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(
       Safe_distance                = safe_dist_dt,
       Overall                      = summary_safe_dist$overall,
@@ -851,7 +856,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
       dt[]
     }), fill = TRUE)
 
-    writexl::write_xlsx(
+    write_xlsx_local(
       list(
         Fatality_tracks               = fatality_tracks_dt,
         Fatality_signal_counts        = fatality_summary$counts_by_signal,
@@ -868,7 +873,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
 
   } else {
     message("heartb_dt nao disponivel -- analises de janela (disponibilidade/resposta) da secção 3.8 saltadas, so os tracks foram exportados.")
-    writexl::write_xlsx(
+    write_xlsx_local(
       list(
         Fatality_tracks         = fatality_tracks_dt,
         Fatality_signal_counts  = fatality_summary$counts_by_signal,
@@ -930,7 +935,7 @@ if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
 
   summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))
 
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band),
     file.path(folder_output, "coverage_3d_summary.xlsx")
   )
@@ -1011,7 +1016,7 @@ min_indiv_summary_dt <- summarise_min_individuals(min_indiv_bins_dt)
 # menos densa que os bins de 2min para todo o periodo do projeto
 min_indiv_daily_dt <- summarise_daily_max_individuals(min_indiv_bins_dt)
 
-writexl::write_xlsx(
+write_xlsx_local(
   list(
     Min_individuals_bins    = min_indiv_bins_dt,
     Min_individuals_summary = min_indiv_summary_dt,
@@ -1069,7 +1074,7 @@ if (exists("fatality_tracks_dt")) turbine_summary_list$Fatality_tracks     <- li
 
 turbine_data_summary_dt <- summarise_dataset_extent(turbine_summary_list)
 
-writexl::write_xlsx(
+write_xlsx_local(
   list(General_data_summary = general_data_summary_dt, Turbine_data_summary = turbine_data_summary_dt),
   file.path(folder_output, "data_extent_summary.xlsx")
 )
@@ -1103,7 +1108,7 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
   response_timeline_dt  <- summarise_response_timeline(response_flag_dt, unit = response_timeline_unit)
   abundance_timeline_dt <- summarise_abundance_timeline(min_indiv_bins_dt, unit = response_timeline_unit)
 
-  writexl::write_xlsx(
+  write_xlsx_local(
     list(Response_timeline = response_timeline_dt, Abundance_timeline = abundance_timeline_dt),
     file.path(folder_output, "response_vs_phenology_timeline.xlsx")
   )
