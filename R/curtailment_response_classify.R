@@ -8,11 +8,20 @@
 ## definicao de missed/delayed, para serem diretamente comparaveis.
 ##
 ## response_flag, por curtailment:
-##   "missed"  -- a turbina nao confirmou ter parado (final_status
-##                partial_or_no_stop/no_data -- ver assess_curtailment_response()
-##                em R/curtailment_response.R)
-##   "delayed" -- parou, mas demorou mais que shutdown_high_cut_sec a atingir
-##                o 1º limiar de rpm (o maior valor de shutdown_thresholds)
+##   "missed"  -- CONFIRMADO que a turbina nao parou (final_status ==
+##                partial_or_no_stop -- ha leitura SCADA fiavel no start E no
+##                end, e o end nao mostra paragem)
+##   "no_data" -- NAO SABEMOS o que aconteceu (final_status == "no_data" --
+##                nenhuma leitura SCADA dentro de start_end_gap_sec do sinal,
+##                tipicamente por a amostragem SCADA nao coincidir tao perto
+##                do trigger). NAO e' o mesmo que "missed": e' ausencia de
+##                dado, nao falha confirmada -- ver R/curtailment_response.R
+##                (assess_curtailment_response()). Distinguido de "missed"
+##                desde 2026-08 -- antes os dois eram somados em "missed",
+##                inflacionando essa contagem com casos so' de cobertura SCADA.
+##   "delayed" -- parou (start/end validos), mas demorou mais que
+##                shutdown_high_cut_sec a atingir o 1º limiar de rpm (o maior
+##                valor de shutdown_thresholds)
 ##   "ok"      -- parou dentro do tempo esperado
 ##
 ## Depende de: data.table, R/curtailment_response.R (assess_curtailment_response),
@@ -58,7 +67,8 @@ classify_response_flag <- function(curtl_dt, scada_dt,
   out <- merge(assess_dt, tt_first, by = "curtailment_id", all.x = TRUE)
 
   out[, response_flag := data.table::fcase(
-    final_status %in% c("partial_or_no_stop", "no_data"), "missed",
+    final_status == "partial_or_no_stop", "missed",
+    final_status == "no_data", "no_data",
     !is.na(time_to_first_threshold_sec) & time_to_first_threshold_sec > shutdown_high_cut_sec, "delayed",
     default = "ok"
   )]
