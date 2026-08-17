@@ -140,8 +140,11 @@ summarise_curtailment_response_window <- function(curtl_dt, scada_dt, turbine_id
     final_status = character(), no_immediate_response = logical(),
     time_to_first_threshold_sec = numeric(), response_flag = character()
   )
+  empty_by_flag <- data.table::data.table(
+    response_flag = character(), n = integer(), pct_of_total = numeric(), pct_of_known = numeric()
+  )
   if (nrow(curtl_window) == 0L) {
-    return(list(detail = empty_detail, by_flag = data.table::data.table(response_flag = character(), n = integer())))
+    return(list(detail = empty_detail, by_flag = empty_by_flag))
   }
 
   # classificacao missed/delayed/ok -- regra partilhada com a timeline
@@ -153,10 +156,11 @@ summarise_curtailment_response_window <- function(curtl_dt, scada_dt, turbine_id
     shutdown_high_cut_sec = shutdown_high_cut_sec
   )
 
-  by_flag <- out[, .(n = .N), by = response_flag]
-  data.table::setorder(by_flag, -n)
+  # contagem + % do total + % dos casos conhecidos (exclui no_data) --
+  # ver summarise_response_by_flag() em R/curtailment_response_classify.R
+  by_flag <- summarise_response_by_flag(out)
 
-  list(detail = out[], by_flag = by_flag[])
+  list(detail = out[], by_flag = by_flag)
 }
 
 

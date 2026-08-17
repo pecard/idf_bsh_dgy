@@ -40,6 +40,8 @@
 ##     shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
 ##   )
 ##
+##   by_flag_dt <- summarise_response_by_flag(response_dt) # n, pct_of_total, pct_of_known (exclui no_data)
+##
 
 classify_response_flag <- function(curtl_dt, scada_dt,
                                    start_end_gap_sec = 2, max_next_gap_sec = 20,
@@ -74,4 +76,38 @@ classify_response_flag <- function(curtl_dt, scada_dt,
   )]
 
   out[]
+}
+
+
+## Sumario por response_flag -- contagem, % do total (incluindo no_data) e %
+## dos casos CONHECIDOS (missed+delayed+ok, excluindo no_data). no_data fica
+## com pct_of_known = NA -- nao faz sentido pedir "que % dos casos e' que
+## sao casos sem dado", ja e' o proprio universo excluido.
+##
+## pct_of_total mostra a dimensao real do no_data (nao esconder que grande
+## parte dos curtailments pode nao ter leitura SCADA fiavel perto do
+## sinal); pct_of_known responde a pergunta "dos curtailments que
+## conseguimos classificar, que % pararam bem / falharam / demoraram" --
+## normalmente a leitura mais relevante para o relatorio.
+
+summarise_response_by_flag <- function(response_dt) {
+
+  empty <- data.table::data.table(
+    response_flag = character(), n = integer(), pct_of_total = numeric(), pct_of_known = numeric()
+  )
+  if (nrow(response_dt) == 0L) return(empty)
+
+  by_flag <- response_dt[, .(n = .N), by = response_flag]
+
+  n_total <- sum(by_flag$n)
+  n_known <- sum(by_flag[response_flag != "no_data", n])
+
+  by_flag[, pct_of_total := round(100 * n / n_total, 1)]
+  by_flag[, pct_of_known := data.table::fifelse(
+    response_flag == "no_data", NA_real_,
+    round(100 * n / n_known, 1)
+  )]
+
+  data.table::setorder(by_flag, -n)
+  by_flag[]
 }

@@ -43,10 +43,18 @@
 
 
 ## 1. Serie temporal de missed/delayed/ok, farm-wide (ou por turbina) ----
+##
+## pct_of_total = % do periodo incluindo no_data; pct_of_known = % so' dos
+## casos classificaveis (exclui no_data, fica NA nessa linha) -- mesma logica
+## de summarise_response_by_flag() em R/curtailment_response_classify.R,
+## aqui repetida por periodo (e turbina, se by_turbine=TRUE).
 
 summarise_response_timeline <- function(response_dt, unit = "week", by_turbine = FALSE) {
 
-  empty <- data.table::data.table(period = as.Date(character()), response_flag = character(), n = integer(), pct = numeric())
+  empty <- data.table::data.table(
+    period = as.Date(character()), response_flag = character(), n = integer(),
+    pct_of_total = numeric(), pct_of_known = numeric()
+  )
   if (nrow(response_dt) == 0L) return(empty)
 
   dt <- data.table::copy(response_dt)
@@ -56,7 +64,12 @@ summarise_response_timeline <- function(response_dt, unit = "week", by_turbine =
   counts <- dt[, .(n = .N), by = by_cols]
 
   totals_by_cols <- setdiff(by_cols, "response_flag")
-  counts[, pct := round(100 * n / sum(n), 1), by = totals_by_cols]
+  counts[, pct_of_total := round(100 * n / sum(n), 1), by = totals_by_cols]
+  counts[, n_known := sum(n[response_flag != "no_data"]), by = totals_by_cols]
+  counts[, pct_of_known := data.table::fifelse(
+    response_flag == "no_data", NA_real_, round(100 * n / n_known, 1)
+  )]
+  counts[, n_known := NULL]
 
   data.table::setorder(counts, period)
   counts[]
@@ -91,13 +104,17 @@ summarise_abundance_timeline <- function(bins_dt, unit = "week") {
 
 plot_response_vs_phenology <- function(timeline_dt, abundance_dt, species_sel) {
 
+  # pct_of_known -- % dos curtailments CLASSIFICAVEIS nesse periodo (exclui
+  # no_data), a leitura mais direta de "qualidade de resposta"; pct_of_total
+  # fica disponivel em timeline_dt para quem preferir ver diluido pelo no_data
   resp <- timeline_dt[response_flag %in% c("missed", "delayed")]
   aband <- abundance_dt[spec %in% species_sel]
 
-  p_response <- ggplot(resp, aes(x = period, y = pct, fill = response_flag)) +
+  p_response <- ggplot(resp, aes(x = period, y = pct_of_known, fill = response_flag)) +
     geom_col() +
     scale_fill_manual(values = c(missed = "firebrick", delayed = "orange")) +
-    labs(x = NULL, y = "% of curtailments", fill = NULL, title = "Missed / delayed curtailments over time") +
+    labs(x = NULL, y = "% of classifiable curtailments", fill = NULL,
+        title = "Missed / delayed curtailments over time") +
     theme_minimal()
 
   p_abundance <- ggplot(aband, aes(x = period, y = peak_individuals, colour = spec)) +
