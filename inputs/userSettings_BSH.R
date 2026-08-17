@@ -70,7 +70,7 @@ heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11",
 ## Timeframe for analysis/reporting period
 ##
 
-ini <- as.POSIXct('2025-10-01 00:00:00', tz = proj_timezone)
+ini <- as.POSIXct('2025-01-01 00:00:00', tz = proj_timezone)
 end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
 
 
@@ -89,7 +89,8 @@ prioritysp <- c(
   'Imperial-Eagle',
   'Saker-Falcon',
   'Peregrine-Or-Saker-Falcon',
-  'White-Tailed-Eagle'
+  'White-Tailed-Eagle',
+  'Protected'
 )
 
 nonprioritysp <- c(
@@ -107,6 +108,7 @@ nonprioritysp <- c(
   'Sparrow-Hawk',
   'Harrier',
   'Eagle-Unknown'
+  
 )
 
 othersp <- c(
@@ -117,7 +119,14 @@ othersp <- c(
   'Pigeon',
   'Grey-Heron',
   'Cormorant',
-  'Great-Egret'
+  'Great-Egret',
+  'Lark',
+  'Gull',
+  'Pigeon',
+  'Other',
+  'Pelican',
+  'Swan',
+  'Not-Eagle'
 )
 
 

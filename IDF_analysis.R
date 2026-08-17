@@ -1020,9 +1020,6 @@ writexl::write_xlsx(
   file.path(folder_output, "min_individuals_per_bin.xlsx")
 )
 
-
-inspect_min_individuals_bin(track_dt, species = "Steppe-Eagle", bin_start = "2025-03-04 13:14:00")
-
 # altura ajustada ao nº de especies (1 facet por especie, ncol = 1)
 n_species_min_indiv <- length(unique(min_indiv_bins_dt$spec))
 
@@ -1042,6 +1039,7 @@ ggsave(
 
 } else {message("run_sections$min_individuals = FALSE -- 5.4 saltada nesta ronda.")}
 
+inspect_min_individuals_bin(track_dt, species = "Steppe-Eagle", bin_start = "2026-02-18 14:34:00")
 
 ##
 ## 6. Report support -- data extent summary ----
