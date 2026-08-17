@@ -1,0 +1,3 @@
+Analysis technician: Paulo EC
+Analysis date: 2026-08-17
+Script version: idf_bsh_dgy
