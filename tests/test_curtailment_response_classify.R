@@ -172,7 +172,9 @@ sweep_drop <- rbindlist(lapply(c(0.05, 0.10, 0.15, 0.20), function(pct) {
     drop_pct_threshold = pct, rpm_threshold = 1,
     shutdown_thresholds = c(2, 1, 0), shutdown_high_cut_sec = 50
   )
-  r[, .(n_flags = .N), by = .(drop_pct_threshold = pct, response_flag)]
+  counts <- r[, .(n_flags = .N), by = response_flag]
+  counts[, drop_pct_threshold := pct]
+  counts[]
 }))
 sweep_drop_wide <- dcast(sweep_drop, drop_pct_threshold ~ response_flag, value.var = "n_flags", fill = 0)
 
