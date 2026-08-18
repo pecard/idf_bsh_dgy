@@ -565,12 +565,62 @@ p_heartbeat_slots
 
 
 
-## Secções 3.2 a 5 (abaixo) e as exportações finais estão DESATIVADAS por agora -
+## Secções 3.3 a 5 (abaixo) e as exportações finais estão DESATIVADAS por agora -
 ## dependem de scripts_IDF/, ainda nao migrado para R/. Vamos reativando
-## bloco a bloco à medida que cada módulo for trazido para R/.
+## bloco a bloco à medida que cada módulo for trazido para R/. (3.2 já
+## migrada para R/id_transitions.R.)
 
 ### 3.2. Curtailments due to ID transitions ----
-#source(file.path(folder_script_IDF, 'curtailments_ID_transitions.R'))
+## Migrado de scripts_IDF/ID_transitions.R + curtailments_ID_transitions.R
+## -- ver R/id_transitions.R para a definicao de risco P->NP (curtailment
+## disparado, especie final nao-prioritaria -- custo de producao) e das 2
+## direcoes NP->P (sem curtailment / curtailment tardio -- risco biologico),
+## incluindo os 2 criterios de "tardio" (tempo e distancia) a comparar antes
+## de decidir qual manter.
+
+if (exists("track_dt") && exists("curtl_dt")) {
+
+  source("R/id_transitions.R")
+
+  id_richness_dt <- track_species_summary(track_dt)
+  id_richness_summary <- summarise_species_richness(id_richness_dt)
+
+  id_risk_dt <- classify_id_transition_risk(
+    id_richness_dt, track_dt, curtl_dt, prioritysp,
+    late_time_threshold_sec = id_transition_late_time_sec,
+    late_dist_threshold_m = track_proximity_threshold_m
+  )
+  id_risk_summary <- summarise_id_transition_risk(id_risk_dt, curtl_dt)
+
+  write_xlsx_local(
+    list(
+      Track_species_richness = id_richness_dt,
+      Richness_by_n_species  = id_richness_summary$by_n_species,
+      Richness_rate          = id_richness_summary$rate,
+      Richness_entropy       = id_richness_summary$entropy,
+      ID_transition_risk     = id_risk_dt,
+      Risk_by_direction      = id_risk_summary$by_direction,
+      Risk_PNP_curtailments  = id_risk_summary$pnp_curtailments,
+      Late_criteria_compare  = id_risk_summary$late_criteria_compare
+    ),
+    file.path(folder_output, "id_transitions.xlsx")
+  )
+
+  p_id_richness <- plot_species_richness_hist(id_richness_dt)
+  p_id_richness
+  ggsave(
+    file.path(folder_output, "id_transition_richness_hist.png"),
+    plot = p_id_richness, width = 6, height = 4, dpi = 300, bg = "white"
+  )
+
+  p_id_entropy <- plot_entropy_hist(id_richness_dt)
+  p_id_entropy
+  ggsave(
+    file.path(folder_output, "id_transition_entropy_hist.png"),
+    plot = p_id_entropy, width = 6, height = 4, dpi = 300, bg = "white"
+  )
+
+} else {message("track_dt/curtl_dt nao disponiveis -- 3.2 (ID transitions) saltada nesta ronda.")}
 
 
 
