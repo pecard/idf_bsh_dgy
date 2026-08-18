@@ -146,6 +146,20 @@ heartbeat_offline_gap_min <- 60 # gap (min) a partir do qual se considera a unid
 idf_availability_top_n    <- 12L # nº de unidades (com mais tempo offline) mostradas nos graficos de calendario/frequencia
 
 
+## -- 3.2. Curtailments due to ID transitions --
+##
+## "Atraso" de um curtailment apos a reclassificacao NP->P (nao-prioritaria
+## -> prioritaria) dentro do mesmo track e' avaliado por 2 criterios em
+## paralelo, para comparar e depois decidir qual manter (ver R/id_transitions.R):
+##   - por TEMPO: gap entre o 1º registo do track ja classificado como
+##     prioritaria e o inicio do curtailment (id_transition_late_time_sec)
+##   - por DISTANCIA: reutiliza track_proximity_threshold_m (definido abaixo,
+##     seccao 3.8) -- se a ave ja estava dentro desse limiar no momento da
+##     reclassificacao, considera-se tardio independentemente do tempo
+
+id_transition_late_time_sec <- 50 # segundos; mesmo valor de shutdown_time_high_cut (3.6) como ponto de partida, a rever
+
+
 ## -- 3.4. Short-track curtailment --
 
 shorttrack_min_points <- 6   # threshold de pontos dos tracks abaixo do qual se considera short-tracks

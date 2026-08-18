@@ -14,12 +14,42 @@
 ##     meio do track por ele parecer ser de especie prioritaria, mas a
 ##     classificacao final e' nao-prioritaria -- turbina parada
 ##     desnecessariamente (custo de producao).
-##   - NP -> P (nao-prioritaria -> prioritaria): NAO foi ativado
-##     curtailment por o track parecer nao-prioritario, mas a classificacao
-##     final e' prioritaria -- individuo de especie sensivel pode ter ficado
-##     sem proteção (risco biologico). Esta direcao nao estava coberta no
-##     script original (so' via P->NP), foi adicionada por pedido do Paulo
-##     (2026-08).
+##   - NP -> P (nao-prioritaria -> prioritaria): a classificacao final e'
+##     prioritaria -- individuo de especie sensivel pode ter ficado sem
+##     protecao adequada (risco biologico). Esta direcao nao estava coberta
+##     no script original (so' via P->NP), foi adicionada por pedido do
+##     Paulo (2026-08), com 3 niveis de gravidade:
+##       - NP_to_P_no_curtailment -- NUNCA disparou curtailment. O caso mais
+##         grave (gap total de protecao).
+##       - NP_to_P_late_curtailment -- disparou curtailment, mas tarde
+##         demais por pelo menos 1 de 2 criterios avaliados em paralelo (ver
+##         late_by_time/late_by_dist abaixo) -- protecao pode nao ter
+##         chegado a tempo apesar de "ter havido curtailment".
+##       - no_risk -- disparou curtailment a tempo (ou o track nunca foi
+##         reclassificado como prioritario).
+##
+## Criterios de "tarde demais" para o curtailment, calculados os DOIS em
+## paralelo (pedido do Paulo, 2026-08) para comparar e depois eliminar um
+## deles por eficiencia:
+##   - late_by_time -- gap (segundos) entre o 1º registo do track ja
+##     classificado como prioritario (first_priority_ts) e o inicio do
+##     curtailment, acima de late_time_threshold_sec
+##     (id_transition_late_time_sec no userSettings). Limiar arbitrario, sem
+##     base biologica direta.
+##   - late_by_dist -- distancia da ave a turbina mais proxima (dist3d, tal
+##     como calculado pelo proprio algoritmo do IdentiFlight) no momento de
+##     first_priority_ts, dentro de late_dist_threshold_m
+##     (track_proximity_threshold_m no userSettings, o mesmo limiar usado na
+##     investigacao forense de fatalidades -- ver R/fatality_track_investigation.R
+##     e CLAUDE.md). Nao depende de quando o curtailment disparou -- so' de a
+##     ave ja estar perto demais QUANDO foi reclassificada, o que por si so
+##     ja pode nao deixar margem para uma paragem eficaz. ATENCAO: usa
+##     dist3d (NearestTurbineDistance3d do proprio IdentiFlight), nao a
+##     distancia recalculada a partir do shapefile de turbinas como em
+##     fatality_track_investigation.R -- pode atribuir mal pontos de
+##     fronteira (mesma ressalva ja documentada nesse modulo); aceitavel
+##     aqui por ser um rastreio farm-wide, nao uma analise forense por
+##     incidente especifico.
 ##
 ## Aproximacao usada (tal como no script original): usa-se a ultima especie
 ## classificada no track (last_species) como proxy da classificacao final,
@@ -39,7 +69,11 @@
 ##   p_hist <- plot_species_richness_hist(richness_dt)
 ##   p_entropy <- plot_entropy_hist(richness_dt)
 ##
-##   risk_dt <- classify_id_transition_risk(richness_dt, curtl_dt, prioritysp)
+##   risk_dt <- classify_id_transition_risk(
+##     richness_dt, track_dt, curtl_dt, prioritysp,
+##     late_time_threshold_sec = id_transition_late_time_sec,
+##     late_dist_threshold_m = track_proximity_threshold_m
+##   )
 ##   risk_summary <- summarise_id_transition_risk(risk_dt, curtl_dt)
 ##
 
@@ -125,42 +159,91 @@ plot_entropy_hist <- function(richness_dt) {
 }
 
 
+## Timestamp e distancia (dist3d) do 1º registo de cada track ja
+## classificado como especie prioritaria -- so' faz sentido para tracks que
+## em algum momento tiveram uma leitura prioritaria (inner: tracks 100%
+## nao-prioritarios nao aparecem aqui, e nao precisam: last_is_priority sera'
+## FALSE e a fcase abaixo nunca chega a olhar para estes campos)
+track_first_priority_state <- function(track_dt, prioritysp) {
+
+  dt <- track_dt[!is.na(spec) & spec %in% prioritysp, .(track_id, timestamp, dist3d)]
+  if (nrow(dt) == 0L) {
+    return(data.table::data.table(
+      track_id = dt$track_id, first_priority_ts = as.POSIXct(character()), dist_at_first_priority = numeric()
+    ))
+  }
+  data.table::setorder(dt, track_id, timestamp)
+
+  dt[, .(
+    first_priority_ts      = data.table::first(timestamp),
+    dist_at_first_priority = data.table::first(dist3d)
+  ), by = track_id]
+}
+
+
 ##
 ## Risco de transicao P<->NP para tracks multi-ID (>=2 especies) ----
 ##
 
-classify_id_transition_risk <- function(richness_dt, curtl_dt, prioritysp) {
+classify_id_transition_risk <- function(richness_dt, track_dt, curtl_dt, prioritysp,
+                                        late_time_threshold_sec = 50,
+                                        late_dist_threshold_m = 100) {
 
   multi_dt <- richness_dt[n_species >= 2]
 
   if (nrow(multi_dt) == 0L) {
     return(multi_dt[, `:=`(
-      triggered_curtailment = logical(), last_is_priority = logical(),
-      first_is_priority = logical(), risk_direction = character()
+      triggered_curtailment = logical(), last_is_priority = logical(), first_is_priority = logical(),
+      first_priority_ts = as.POSIXct(character()), first_curtailment_start = as.POSIXct(character()),
+      dist_at_first_priority = numeric(), time_to_curtailment_after_priority_sec = numeric(),
+      late_by_time = logical(), late_by_dist = logical(), risk_direction = character()
     )][])
   }
 
-  curtailed_ids <- unique(as.character(curtl_dt$track_id))
+  # 1º curtailment por track (um track pode ter varios) -- track_id_chr
+  # porque curtl_dt$track_id e' character (ver read_curtailments.R), o
+  # track_id de track_dt/richness_dt normalmente nao e' -- comparar sem
+  # converter e' o bug recorrente deste projeto (ver CLAUDE.md/PROJECT_CHECKPOINT.md)
+  curtl_first <- curtl_dt[, .(first_curtailment_start = min(start)), by = track_id]
+  curtl_first[, track_id_chr := as.character(track_id)]
+
+  priority_state <- track_first_priority_state(track_dt, prioritysp)
 
   out <- data.table::copy(multi_dt)
-  out[, triggered_curtailment := as.character(track_id) %in% curtailed_ids]
+  out[, track_id_chr := as.character(track_id)]
+  out[, triggered_curtailment := track_id_chr %in% curtl_first$track_id_chr]
   out[, last_is_priority  := last_species %in% prioritysp]
   out[, first_is_priority := first_species %in% prioritysp]
 
+  out <- merge(out, priority_state, by = "track_id", all.x = TRUE)
+  out <- merge(out, curtl_first[, .(track_id_chr, first_curtailment_start)], by = "track_id_chr", all.x = TRUE)
+
+  out[, time_to_curtailment_after_priority_sec :=
+    as.numeric(difftime(first_curtailment_start, first_priority_ts, units = "secs"))]
+
+  out[, late_by_time := triggered_curtailment & !is.na(time_to_curtailment_after_priority_sec) &
+        time_to_curtailment_after_priority_sec > late_time_threshold_sec]
+  out[, late_by_dist := last_is_priority & !is.na(dist_at_first_priority) &
+        dist_at_first_priority <= late_dist_threshold_m]
+
   out[, risk_direction := data.table::fcase(
-    triggered_curtailment  & !last_is_priority,  "P_to_NP_unnecessary_curtailment",
-    !triggered_curtailment &  last_is_priority,  "NP_to_P_protection_gap",
+    triggered_curtailment  & !last_is_priority,                          "P_to_NP_unnecessary_curtailment",
+    last_is_priority       & !triggered_curtailment,                     "NP_to_P_no_curtailment",
+    last_is_priority       & triggered_curtailment & (late_by_time | late_by_dist), "NP_to_P_late_curtailment",
     default = "no_risk"
   )]
 
+  out[, track_id_chr := NULL]
+  data.table::setcolorder(out, c("track_id", "n_species", "species", "first_species", "last_species"))
   out[]
 }
 
 
 ## Sumarios para relatorio: custo de producao (P->NP, com contagem de
-## curtailments efetivamente disparados por essas tracks) e risco biologico
-## (NP->P, tracks nunca curtailed apesar de terminarem em especie
-## prioritaria -- nao ha "curtailments" a contar aqui, por definicao)
+## curtailments efetivamente disparados por essas tracks), risco biologico
+## (NP->P, com os 3 niveis de gravidade -- ver R/id_transitions.R topo) e a
+## comparacao late_by_time vs late_by_dist pedida pelo Paulo, para decidir
+## qual dos 2 criterios manter no pipeline final
 summarise_id_transition_risk <- function(risk_dt, curtl_dt) {
 
   empty_tracks <- data.table::data.table(
@@ -172,6 +255,9 @@ summarise_id_transition_risk <- function(risk_dt, curtl_dt) {
       pnp_curtailments = data.table::data.table(
         total_curtailments = integer(), curtailments_from_multi_id_tracks = integer(),
         curtailments_due_to_p_to_np = integer(), pct_of_total = numeric()
+      ),
+      late_criteria_compare = data.table::data.table(
+        late_by_time = logical(), late_by_dist = logical(), n_tracks = integer()
       )
     ))
   }
@@ -205,5 +291,17 @@ summarise_id_transition_risk <- function(risk_dt, curtl_dt) {
     pct_of_total                      = round(100 * n_pnp_curt / n_total_curt, 1)
   )
 
-  list(by_direction = by_direction[], pnp_curtailments = pnp_curtailments[])
+  # Comparacao dos 2 criterios de "tarde demais", so' entre tracks onde os
+  # dois fazem sentido em simultaneo (reclassificados para prioritaria E com
+  # curtailment disparado) -- concordam? um sinaliza mais casos que o outro?
+  # base para decidir qual manter (pedido do Paulo, 2026-08)
+  late_base <- risk_dt[last_is_priority == TRUE & triggered_curtailment == TRUE]
+  late_criteria_compare <- late_base[, .(n_tracks = .N), by = .(late_by_time, late_by_dist)]
+  data.table::setorder(late_criteria_compare, -late_by_time, -late_by_dist)
+
+  list(
+    by_direction          = by_direction[],
+    pnp_curtailments      = pnp_curtailments[],
+    late_criteria_compare = late_criteria_compare[]
+  )
 }

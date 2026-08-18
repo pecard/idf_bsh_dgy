@@ -573,9 +573,10 @@ p_heartbeat_slots
 ### 3.2. Curtailments due to ID transitions ----
 ## Migrado de scripts_IDF/ID_transitions.R + curtailments_ID_transitions.R
 ## -- ver R/id_transitions.R para a definicao de risco P->NP (curtailment
-## disparado, especie final nao-prioritaria -- custo de producao) e da
-## direcao nova NP->P (sem curtailment, especie final prioritaria -- risco
-## biologico).
+## disparado, especie final nao-prioritaria -- custo de producao) e das 2
+## direcoes NP->P (sem curtailment / curtailment tardio -- risco biologico),
+## incluindo os 2 criterios de "tardio" (tempo e distancia) a comparar antes
+## de decidir qual manter.
 
 if (exists("track_dt") && exists("curtl_dt")) {
 
@@ -584,7 +585,11 @@ if (exists("track_dt") && exists("curtl_dt")) {
   id_richness_dt <- track_species_summary(track_dt)
   id_richness_summary <- summarise_species_richness(id_richness_dt)
 
-  id_risk_dt <- classify_id_transition_risk(id_richness_dt, curtl_dt, prioritysp)
+  id_risk_dt <- classify_id_transition_risk(
+    id_richness_dt, track_dt, curtl_dt, prioritysp,
+    late_time_threshold_sec = id_transition_late_time_sec,
+    late_dist_threshold_m = track_proximity_threshold_m
+  )
   id_risk_summary <- summarise_id_transition_risk(id_risk_dt, curtl_dt)
 
   write_xlsx_local(
@@ -595,7 +600,8 @@ if (exists("track_dt") && exists("curtl_dt")) {
       Richness_entropy       = id_richness_summary$entropy,
       ID_transition_risk     = id_risk_dt,
       Risk_by_direction      = id_risk_summary$by_direction,
-      Risk_PNP_curtailments  = id_risk_summary$pnp_curtailments
+      Risk_PNP_curtailments  = id_risk_summary$pnp_curtailments,
+      Late_criteria_compare  = id_risk_summary$late_criteria_compare
     ),
     file.path(folder_output, "id_transitions.xlsx")
   )
