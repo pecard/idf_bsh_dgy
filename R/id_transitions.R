@@ -18,9 +18,18 @@
 ##     prioritaria -- individuo de especie sensivel pode ter ficado sem
 ##     protecao adequada (risco biologico). Esta direcao nao estava coberta
 ##     no script original (so' via P->NP), foi adicionada por pedido do
-##     Paulo (2026-08), com 3 niveis de gravidade:
-##       - NP_to_P_no_curtailment -- NUNCA disparou curtailment. O caso mais
-##         grave (gap total de protecao).
+##     Paulo (2026-08), com 4 niveis de gravidade:
+##       - NP_to_P_no_curtailment_near -- NUNCA disparou curtailment, E a ave
+##         ja estava dentro de late_dist_threshold_m quando foi reclassificada
+##         -- gap de proteção real. O caso mais grave.
+##       - NP_to_P_no_curtailment_far -- NUNCA disparou curtailment, mas a
+##         ave estava longe quando foi reclassificada -- nao e' alarmante em
+##         si (nunca chegou a justificar curtailment por proximidade), so'
+##         descritivo. Separado do "_near" em 2026-08 depois de, nos dados
+##         reais de Bash, ~99% dos "no_curtailment" carem neste balde --
+##         sem esta distincao a contagem agregada sugeria um problema de
+##         proteccao ~85x maior do que o que a distancia justifica (29.837
+##         vs 354 tracks).
 ##       - NP_to_P_late_curtailment -- disparou curtailment, mas tarde
 ##         demais por pelo menos 1 de 2 criterios avaliados em paralelo (ver
 ##         late_by_time/late_by_dist abaixo) -- protecao pode nao ter
@@ -227,9 +236,10 @@ classify_id_transition_risk <- function(richness_dt, track_dt, curtl_dt, priorit
         dist_at_first_priority <= late_dist_threshold_m]
 
   out[, risk_direction := data.table::fcase(
-    triggered_curtailment  & !last_is_priority,                          "P_to_NP_unnecessary_curtailment",
-    last_is_priority       & !triggered_curtailment,                     "NP_to_P_no_curtailment",
-    last_is_priority       & triggered_curtailment & (late_by_time | late_by_dist), "NP_to_P_late_curtailment",
+    triggered_curtailment  & !last_is_priority,                                     "P_to_NP_unnecessary_curtailment",
+    last_is_priority       & !triggered_curtailment & late_by_dist,                  "NP_to_P_no_curtailment_near",
+    last_is_priority       & !triggered_curtailment & !late_by_dist,                 "NP_to_P_no_curtailment_far",
+    last_is_priority       & triggered_curtailment  & (late_by_time | late_by_dist), "NP_to_P_late_curtailment",
     default = "no_risk"
   )]
 
@@ -241,9 +251,11 @@ classify_id_transition_risk <- function(richness_dt, track_dt, curtl_dt, priorit
 
 ## Sumarios para relatorio: custo de producao (P->NP, com contagem de
 ## curtailments efetivamente disparados por essas tracks), risco biologico
-## (NP->P, com os 3 niveis de gravidade -- ver R/id_transitions.R topo) e a
-## comparacao late_by_time vs late_by_dist pedida pelo Paulo, para decidir
-## qual dos 2 criterios manter no pipeline final
+## (NP->P, com os 4 niveis de gravidade -- ver R/id_transitions.R topo,
+## incluindo a separacao near/far do "sem curtailment" que se revelou
+## essencial nos dados reais de Bash) e a comparacao late_by_time vs
+## late_by_dist pedida pelo Paulo, para decidir qual dos 2 criterios manter
+## no pipeline final
 summarise_id_transition_risk <- function(risk_dt, curtl_dt) {
 
   empty_tracks <- data.table::data.table(

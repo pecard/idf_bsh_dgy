@@ -12,8 +12,14 @@
 ##   - "P_to_NP_unnecessary_curtailment": curtailment disparado, especie
 ##     final nao-prioritaria -- custo de producao (inalterado desde a 1ª
 ##     versao deste modulo).
-##   - "NP_to_P_no_curtailment": NENHUM curtailment disparado, especie final
-##     prioritaria -- gap total de protecao (o mais grave).
+##   - "NP_to_P_no_curtailment_near"/"_far": NENHUM curtailment disparado,
+##     especie final prioritaria -- so' "_near" (ave ja dentro de
+##     late_dist_threshold_m quando reclassificada) e' gap real; "_far" e'
+##     so' descritivo (nunca chegou perto o suficiente para justificar
+##     curtailment). Separacao adicionada depois de, nos dados reais de
+##     Bash, ~99% dos "sem curtailment" carem em "_far" -- sem isto a
+##     contagem agregada sugeria um problema ~85x maior do que a distancia
+##     justificava.
 ##   - "NP_to_P_late_curtailment": curtailment disparado, especie final
 ##     prioritaria, MAS tarde demais por >=1 dos 2 criterios:
 ##       - late_by_time: gap entre a 1ª deteccao ja prioritaria e o inicio
@@ -51,19 +57,22 @@ t0 <- function(base_min) as.POSIXct("2026-04-01 00:00:00", tz = "UTC") + base_mi
 ## T6  -- estavel, 1 especie prioritaria, com curtailment -- idem
 ## T2  -- NP -> P, curtailment PROMPT (5s depois, longe da turbina) -- no_risk
 ## T3  -- P -> NP, curtailment disparado -- P_to_NP_unnecessary_curtailment
-## T4a -- NP -> P, SEM curtailment -- NP_to_P_no_curtailment (gap total)
+## T4a -- NP -> P, SEM curtailment, longe (400m) quando reclassificada --
+##        NP_to_P_no_curtailment_far (descritivo, nao alarmante)
 ## T4b -- NP -> P, curtailment disparado mas 100s depois (>50s) -- late SO' por tempo
 ## T4c -- NP -> P, curtailment disparado so' 2s depois (rapido!), MAS a ave
 ##        ja estava a 80m (<=100m) quando foi reclassificada -- late SO' por
 ##        distancia -- este e' o caso concreto que o Paulo levantou: rapido
 ##        em tempo nao chega se a reclassificacao em si ja' foi tardia
+## T4d -- NP -> P, SEM curtailment, so' 70m (<=100m) quando reclassificada --
+##        NP_to_P_no_curtailment_near (gap de proteccao real)
 ## T5  -- NP -> NP (troca entre 2 nao-prioritarias), sem curtailment -- no_risk
 ##
 
 track_dt <- data.table(
   track_id = c(
     rep("T1", 5), rep("T6", 3), rep("T2", 3), rep("T3", 4),
-    rep("T4a", 4), rep("T4b", 4), rep("T4c", 3), rep("T5", 4)
+    rep("T4a", 4), rep("T4b", 4), rep("T4c", 3), rep("T4d", 3), rep("T5", 4)
   ),
   spec = c(
     rep("Steppe-Eagle", 5),                                     # T1
@@ -73,6 +82,7 @@ track_dt <- data.table(
     "Kestrel", "Kestrel", "Steppe-Eagle", "Steppe-Eagle",       # T4a
     "Kestrel", "Kestrel", "Steppe-Eagle", "Steppe-Eagle",       # T4b
     "Kestrel", "Steppe-Eagle", "Steppe-Eagle",                  # T4c
+    "Kestrel", "Steppe-Eagle", "Steppe-Eagle",                  # T4d
     "Kestrel", "Kestrel", "Common-Buzzard", "Common-Buzzard"    # T5
   ),
   timestamp = c(
@@ -83,6 +93,7 @@ track_dt <- data.table(
     t0(40) + c(0, 10, 20, 30),
     t0(50) + c(0, 10, 20, 30),
     t0(60) + c(0, 10, 20),
+    t0(80) + c(0, 10, 20),
     t0(70) + c(0, 10, 20, 30)
   ),
   dist3d = c(
@@ -93,6 +104,7 @@ track_dt <- data.table(
     c(500, 450, 400, 350),        # T4a -- 1ª deteccao prioritaria (t=20) a 400m -- longe, mas sem curtailment
     c(500, 450, 400, 350),        # T4b -- 1ª deteccao prioritaria (t=20) a 400m -- longe, mas curtailment so' aos 100s
     c(200, 80, 50),                # T4c -- 1ª deteccao prioritaria (t=10) a SO' 80m -- ja perto ao reclassificar
+    c(200, 70, 50),                # T4d -- 1ª deteccao prioritaria (t=10) a SO' 70m, SEM curtailment
     c(500, 450, 400, 350)         # T5 -- nunca prioritaria
   )
 )
@@ -121,11 +133,11 @@ cat("\n===== PARTE A: track_species_summary() =====\n")
 print(richness_dt[order(track_id)])
 
 expected_n_species <- data.table(
-  track_id           = c("T1", "T6", "T2", "T3", "T4a", "T4b", "T4c", "T5"),
-  expected_n_species = c(1, 1, 2, 2, 2, 2, 2, 2),
+  track_id           = c("T1", "T6", "T2", "T3", "T4a", "T4b", "T4c", "T4d", "T5"),
+  expected_n_species = c(1, 1, 2, 2, 2, 2, 2, 2, 2),
   expected_last_spec = c(
     "Steppe-Eagle", "Golden-Eagle", "Steppe-Eagle", "Kestrel",
-    "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Common-Buzzard"
+    "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Common-Buzzard"
   )
 )
 check_a <- merge(richness_dt, expected_n_species, by = "track_id")
@@ -159,10 +171,10 @@ print(risk_dt[order(track_id), .(
 )])
 
 expected_risk <- data.table(
-  track_id                = c("T2",      "T3",                               "T4a",                    "T4b",                     "T4c",                     "T5"),
-  expected_risk_direction = c("no_risk", "P_to_NP_unnecessary_curtailment", "NP_to_P_no_curtailment", "NP_to_P_late_curtailment", "NP_to_P_late_curtailment", "no_risk"),
-  expected_late_by_time   = c(FALSE, NA, NA, TRUE, FALSE, NA),
-  expected_late_by_dist   = c(FALSE, NA, NA, FALSE, TRUE, NA)
+  track_id                = c("T2",      "T3",                               "T4a",                        "T4b",                     "T4c",                     "T4d",                       "T5"),
+  expected_risk_direction = c("no_risk", "P_to_NP_unnecessary_curtailment", "NP_to_P_no_curtailment_far", "NP_to_P_late_curtailment", "NP_to_P_late_curtailment", "NP_to_P_no_curtailment_near", "no_risk"),
+  expected_late_by_time   = c(FALSE, NA, NA, TRUE, FALSE, NA, NA),
+  expected_late_by_dist   = c(FALSE, NA, FALSE, FALSE, TRUE, TRUE, NA)
 )
 check_b <- merge(risk_dt, expected_risk, by = "track_id")
 check_b[, risk_ok := risk_direction == expected_risk_direction]
@@ -190,6 +202,17 @@ cat(paste(
   "lacuna que motivou correr os 2 em paralelo.\n"
 ))
 
+cat(paste(
+  "\nNota sobre T4a vs T4d -- o par que motivou a separacao near/far do",
+  "'sem curtailment': em nenhum dos dois ha curtailment, mas T4a estava a",
+  "400m (longe) quando foi reclassificada -- nunca precisou de curtailment",
+  "por proximidade, e' so descritivo (_far). T4d estava a 70m (perto) -- gap",
+  "de proteccao real (_near). Sem esta distincao os dois cairiam no mesmo",
+  "balde 'NP_to_P_no_curtailment', escondendo que so um dos dois e'",
+  "realmente preocupante -- exatamente o que aconteceu nos dados reais de",
+  "Bash (29.483 '_far' vs 354 '_near', ver conversa com o Paulo).\n"
+))
+
 
 ##
 ## PARTE C -- sumarios para relatorio, incluindo a comparacao dos 2 criterios
@@ -201,8 +224,9 @@ cat("\n\n===== PARTE C: summarise_id_transition_risk() =====\n")
 cat("\n----- by_direction -----\n")
 print(risk_summary$by_direction)
 cat(paste(
-  "\nEsperado (n_multi_id_tracks=6: T2,T3,T4a,T4b,T4c,T5): no_risk=2 (T2,T5),",
-  "P_to_NP_unnecessary_curtailment=1 (T3), NP_to_P_no_curtailment=1 (T4a),",
+  "\nEsperado (n_multi_id_tracks=7: T2,T3,T4a,T4b,T4c,T4d,T5): no_risk=2",
+  "(T2,T5), P_to_NP_unnecessary_curtailment=1 (T3),",
+  "NP_to_P_no_curtailment_far=1 (T4a), NP_to_P_no_curtailment_near=1 (T4d),",
   "NP_to_P_late_curtailment=2 (T4b,T4c).\n"
 ))
 
@@ -211,8 +235,9 @@ print(risk_summary$pnp_curtailments)
 cat(paste(
   "\nEsperado: total_curtailments=5 (T6,T2,T3,T4b,T4c). De entre esses,",
   "curtailments_from_multi_id_tracks=4 (T2,T3,T4b,T4c -- T6 e' single-ID,",
-  "nao conta; T4a nunca disparou curtailment). curtailments_due_to_p_to_np=1",
-  "(a curtailment de T3) -- pct_of_total = 1/5 = 20.0%.\n"
+  "nao conta; T4a/T4d nunca dispararam curtailment).",
+  "curtailments_due_to_p_to_np=1 (a curtailment de T3) -- pct_of_total =",
+  "1/5 = 20.0%.\n"
 ))
 
 cat("\n----- late_criteria_compare -----\n")
