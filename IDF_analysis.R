@@ -403,6 +403,15 @@ curtl_dt[, .(
 #Track data
 track_dt <- track_dt_unfilt %>%
   filter(timestamp >= ini & timestamp <= end)
+track_dt <- data.table::as.data.table(track_dt)
+# count (nº de pontos por track) foi calculado em R/read_tracks.R sobre
+# track_dt_unfilt (NAO filtrado) -- o filtro de datas acima so remove
+# LINHAS, nao recalcula count, por isso um track que atravessa a fronteira
+# do periodo do relatorio ficava com count inflacionado (a incluir pontos
+# fora da janela em analise). Recalculado aqui para refletir so o periodo
+# do relatorio -- usado em R/curtailment_short_track.R (3.4) e
+# R/bio_flight_metrics.R (5.1-5.2).
+track_dt[, count := .N, by = track_id]
 #check
 track_dt[, .(
   min_datetime = min(timestamp, na.rm = TRUE),
@@ -654,15 +663,66 @@ if (exists("track_dt") && exists("curtl_dt")) {
 
 
 ### 3.3. Species-specific curtailment ----
-#source(file.path(folder_script_IDF, 'curtailments_species.R'))
+## Migrado de scripts_IDF/curtailments_species.R -- ver R/curtailment_species.R
+## para a diferenca face a R/id_transitions.R (3.2): aqui e' "que especies
+## estao a disparar curtailments", nao "esta classificacao mudou a meio do
+## track". Grupo "uncategorized" (species fora de prioritysp/nonprioritysp/
+## othersp) fica visivel -- o script original descartava-o em silencio.
+
+if (exists("curtl_dt")) {
+
+  source("R/curtailment_species.R")
+
+  species_curt_dt <- classify_curtailment_species(curtl_dt, prioritysp, nonprioritysp, othersp)
+  species_curt_by_species_dt <- summarise_curtailment_species(species_curt_dt)
+  species_curt_by_group_dt   <- summarise_curtailment_species_group(species_curt_dt)
+
+  if (species_curt_by_group_dt[species_group == "uncategorized", .N] > 0) {
+    message(sprintf(
+      "Aviso: %d curtailments com species fora de prioritysp/nonprioritysp/othersp -- ver folha Curtailments_by_species (grupo 'uncategorized').",
+      species_curt_by_group_dt[species_group == "uncategorized", n]
+    ))
+  }
+
+  write_xlsx_local(
+    list(
+      Curtailments_by_species = species_curt_by_species_dt,
+      Curtailments_by_group   = species_curt_by_group_dt
+    ),
+    file.path(folder_output, "curtailment_species.xlsx")
+  )
+
+} else {message("curtl_dt nao disponivel -- 3.3 (species-specific curtailment) saltada nesta ronda.")}
 
 
 
 ### 3.4. Short-track curtailment ----
+## Migrado de scripts_IDF/curtailments_short-track.R -- ver
+## R/curtailment_short_track.R para as 2 correcoes feitas: x2d recalculado
+## localmente (a coluna curtl_dt$x2d do script original ja nao existe) e
+## n_points recalculado a partir do track_dt filtrado (nao do track_dt$count
+## desatualizado -- ver correcao em "0. Filter data" acima).
 
-# shorttrack_min_points  --> definido no userSettings.txt
-# shorttrack_eval_range  --> definido no userSettings.txt
-#source(file.path(folder_script_IDF, 'curtailments_short-track.R'))
+if (exists("track_dt") && exists("curtl_dt")) {
+
+  source("R/curtailment_short_track.R")
+
+  short_track_dt <- classify_short_track_curtailments(
+    track_dt, curtl_dt, min_points = shorttrack_min_points, eval_range_m = shorttrack_eval_range
+  )
+  short_track_summary_dt <- summarise_short_track_curtailments(track_dt, short_track_dt, shorttrack_min_points)
+  short_track_by_species_dt <- summarise_short_track_by_species(short_track_dt, prioritysp)
+
+  write_xlsx_local(
+    list(
+      Short_track_summary    = short_track_summary_dt,
+      Short_track_by_species = short_track_by_species_dt,
+      Short_track_detail     = short_track_dt
+    ),
+    file.path(folder_output, "curtailment_short_track.xlsx")
+  )
+
+} else {message("track_dt/curtl_dt nao disponiveis -- 3.4 (short-track curtailment) saltada nesta ronda.")}
 
 
 
@@ -1051,14 +1111,46 @@ plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
 
 
 ### 5.1. Flight speed per species ----
-#source(file.path(folder_script_IDF, 'bio_flight_speed.R'))
-
-
 ### 5.2. Flight height per species ----
-#source(file.path(folder_script_IDF, 'bio_flight_height.R'))
+## Migrado de scripts_IDF/bio_flight_speed.R, bio_flight_height.R e
+## bio_distrib_flight_height_speed_per_species.R -- ver R/bio_flight_metrics.R
+## para a unificacao dos filtros de qualidade (os 3 scripts originais usavam
+## bases ligeiramente diferentes entre si) e o novo diagnostico de alturas
+## negativas (flight_height_qa(), visivel em vez de descartado em silencio).
 
-###Plot flight height and speed per species
-#source(file.path(folder_script_IDF, 'bio_distrib_flight_height_speed_per_species.R'))
+if (exists("track_dt")) {
+
+  source("R/bio_flight_metrics.R")
+
+  flight_base_dt <- flight_metrics_base(
+    track_dt, prioritysp, min_track_points = flight_min_track_points,
+    speed_ms_min = flight_speed_ms_min, speed_ms_max = flight_speed_ms_max
+  )
+  flight_speed_summary_dt  <- summarise_flight_speed(flight_base_dt)
+  flight_height_summary_dt <- summarise_flight_height(flight_base_dt)
+  flight_height_qa_dt      <- flight_height_qa(
+    track_dt, prioritysp, min_track_points = flight_min_track_points,
+    speed_ms_min = flight_speed_ms_min, speed_ms_max = flight_speed_ms_max
+  )
+
+  write_xlsx_local(
+    list(
+      Flight_speed_by_species  = flight_speed_summary_dt,
+      Flight_height_by_species = flight_height_summary_dt,
+      Flight_height_QA         = flight_height_qa_dt
+    ),
+    file.path(folder_output, "bio_flight_metrics.xlsx")
+  )
+
+  p_flight_metrics <- plot_flight_metrics_distribution(flight_base_dt, riskHeight_lower, riskHeight_upper)
+  p_flight_metrics
+  n_species_flight <- length(unique(flight_base_dt$spec))
+  ggsave(
+    file.path(folder_output, "bio_flight_metrics_distribution.png"),
+    plot = p_flight_metrics, width = 8, height = max(4, 2.2 * n_species_flight), dpi = 300, bg = "white"
+  )
+
+} else {message("track_dt nao disponivel -- 5.1-5.2 (flight speed/height) saltadas nesta ronda.")}
 
 
 

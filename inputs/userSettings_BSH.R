@@ -295,6 +295,21 @@ coverage_min_sample_records <- 500000
 # coverage_3d_risk_band_labels <- c("at risk", "above")
 
 
+## -- 5.1-5.2. Flight speed / flight height per species --
+##
+## Filtros de qualidade PARTILHADOS pelas 2 metricas e pelo grafico
+## combinado (ver R/bio_flight_metrics.R) -- os 3 scripts originais
+## (scripts_IDF/bio_flight_speed.R, bio_flight_height.R,
+## bio_distrib_flight_height_speed_per_species.R) usavam bases ligeiramente
+## diferentes entre si (count>2 vs count>3 vs sem filtro de count; so o
+## grafico filtrava altura>0). Aqui e' um so conjunto de parametros, no
+## valor mais exigente dos 2 scripts de tabela original.
+
+flight_min_track_points <- 4   # nº min. de pontos do track (equivalente ao "count>3" do bio_flight_height.R original)
+flight_speed_ms_min     <- 1   # m/s; abaixo disto considera-se ruido/estacionario
+flight_speed_ms_max     <- 100 # m/s; acima disto considera-se erro de sensor
+
+
 ## -- 5.3. Risk per species --
 
 riskHeight_lower <- 50  # in meters
