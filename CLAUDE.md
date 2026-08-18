@@ -43,3 +43,21 @@
   flatten it into polished native-level English, but do not exaggerate it
   into a caricature either; it should read as genuinely natural, not as a
   parody of an accent.
+
+## Naming objects in tests/ (R)
+
+- A synthetic/test object must never share its name with a real pipeline
+  object from IDF_analysis.R (track_dt, curtl_dt, scada_dt, heartb_dt, wtg,
+  idf, tier, tier3, and their *_unfilt variants). Give it a `_test` suffix
+  instead (e.g. `track_dt_test`, `curtl_dt_test`) — otherwise, sourcing the
+  test file in the same R session as a real analysis run silently
+  overwrites the real object with tiny synthetic data.
+- The only exception is a test that deliberately exercises the real
+  in-memory object from an already-run pipeline (e.g.
+  tests/smoke_test_coverage_3d.R) — there, use the original name, since
+  that's the object under test.
+- Test-only helper objects with no equivalent in IDF_analysis.R (e.g.
+  `check_a`, `expected_risk`, `richness_dt` when there's no real pipeline
+  object of that exact name) don't need the suffix — the rule is about
+  avoiding collisions with real objects, not renaming everything in
+  tests/.

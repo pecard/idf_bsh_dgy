@@ -32,6 +32,14 @@
 ## Nao usa testthat -- script normal que constroi dados sinteticos, corre as
 ## funcoes reais, e imprime "esperado vs obtido" para inspecionares.
 ##
+## track_dt_test/curtl_dt_test (sufixo _test) em vez de track_dt/curtl_dt --
+## convencao do projeto (ver CLAUDE.md): objetos sinteticos de teste nunca
+## usam o nome de um objeto real do pipeline (track_dt, curtl_dt, scada_dt,
+## heartb_dt, wtg, idf, ...), para nao os substituir por engano se este
+## script for corrido na mesma sessao R que o IDF_analysis.R. So' usar o
+## nome original quando o teste referencia mesmo o objeto real em memoria
+## (ver tests/smoke_test_coverage_3d.R).
+##
 ## Correr: source("tests/test_id_transitions.R")
 ##
 ## Depende de: data.table
@@ -69,7 +77,7 @@ t0 <- function(base_min) as.POSIXct("2026-04-01 00:00:00", tz = "UTC") + base_mi
 ## T5  -- NP -> NP (troca entre 2 nao-prioritarias), sem curtailment -- no_risk
 ##
 
-track_dt <- data.table(
+track_dt_test <- data.table(
   track_id = c(
     rep("T1", 5), rep("T6", 3), rep("T2", 3), rep("T3", 4),
     rep("T4a", 4), rep("T4b", 4), rep("T4c", 3), rep("T4d", 3), rep("T5", 4)
@@ -109,7 +117,7 @@ track_dt <- data.table(
   )
 )
 
-curtl_dt <- data.table(
+curtl_dt_test <- data.table(
   track_id = c("T6", "T2", "T3", "T4b", "T4c"),
   turbine  = c("TESTID0", "TESTID1", "TESTID2", "TESTID3", "TESTID4"),
   start    = c(
@@ -127,7 +135,7 @@ curtl_dt <- data.table(
 ## (inalterado desde a 1ª versao deste modulo -- mesma logica, mais tracks)
 ##
 
-richness_dt <- track_species_summary(track_dt)
+richness_dt <- track_species_summary(track_dt_test)
 
 cat("\n===== PARTE A: track_species_summary() =====\n")
 print(richness_dt[order(track_id)])
@@ -158,7 +166,7 @@ cat(sprintf(
 ##
 
 risk_dt <- classify_id_transition_risk(
-  richness_dt, track_dt, curtl_dt, test_prioritysp,
+  richness_dt, track_dt_test, curtl_dt_test, test_prioritysp,
   late_time_threshold_sec = test_late_time_threshold_sec,
   late_dist_threshold_m = test_late_dist_threshold_m
 )
@@ -218,7 +226,7 @@ cat(paste(
 ## PARTE C -- sumarios para relatorio, incluindo a comparacao dos 2 criterios
 ##
 
-risk_summary <- summarise_id_transition_risk(risk_dt, curtl_dt)
+risk_summary <- summarise_id_transition_risk(risk_dt, curtl_dt_test)
 
 cat("\n\n===== PARTE C: summarise_id_transition_risk() =====\n")
 cat("\n----- by_direction -----\n")
