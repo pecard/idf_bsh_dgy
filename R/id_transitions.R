@@ -88,6 +88,12 @@
 ##   # vista caso a caso dos "NP_to_P_late_curtailment" (both > dist_only > time_only)
 ##   late_cases_dt <- id_transition_late_cases(risk_dt, curtl_dt)
 ##
+##   # sensibilidade dos 2 limiares -- despistar se algum e' pouco efetivo
+##   time_sens_dt <- id_transition_late_time_sensitivity(risk_dt)
+##   dist_sens_dt <- id_transition_late_dist_sensitivity(risk_dt)
+##   p_late_time <- plot_late_time_distribution(risk_dt, threshold_sec = id_transition_late_time_sec)
+##   p_late_dist <- plot_late_dist_distribution(risk_dt, threshold_m = track_proximity_threshold_m)
+##
 
 ##
 ## Especies distintas por track_id (riqueza), sequencia e entropia ----
@@ -407,4 +413,112 @@ id_transition_late_cases <- function(risk_dt, curtl_dt) {
   out <- data.table::rbindlist(list(both_group, dist_group, time_group))
   data.table::setcolorder(out, c("track_id", "turbine", "late_severity"))
   out[]
+}
+
+
+##
+## Sensibilidade dos limiares late_by_time / late_by_dist ----
+##
+## Paulo decidiu manter os 2 criterios (2026-08), mas pediu forma de
+## despistar se algum esta pouco efetivo/irrelevante -- mesmo raciocinio ja
+## usado no projeto para outros limiares (ver Parte B de
+## tests/test_curtailment_response_classify.R): varia-se o limiar candidato
+## a candidato e ve-se como a contagem sinalizada muda. Um criterio "pouco
+## efetivo" mostra a mesma contagem (ou quase) em toda a gama plausivel --
+## sinal de que o valor concreto do limiar pouco importa, porque a
+## distribuicao nao tem massa relevante perto dele (ou esta toda de um
+## lado). Um criterio a "fazer trabalho real" mostra uma subida clara na
+## contagem a medida que o limiar afrouxa, com inclinacao mais acentuada
+## perto do valor atual do projeto.
+##
+## NAO recalculam risk_dt -- os campos continuos (time_to_curtailment_after_priority_sec,
+## dist_at_first_priority) ja estao lá, so se reaplica o corte a varios
+## limiares candidatos, mais barato que rechamar classify_id_transition_risk().
+##
+
+## Sensibilidade de late_by_time a id_transition_late_time_sec -- base =
+## tracks reclassificados para prioritaria E com curtailment disparado (so'
+## onde o "atraso em tempo" faz sentido)
+id_transition_late_time_sensitivity <- function(risk_dt, thresholds_sec = c(10, 20, 30, 50, 75, 100, 150, 200, 300)) {
+
+  base <- risk_dt[
+    last_is_priority == TRUE & triggered_curtailment == TRUE &
+      !is.na(time_to_curtailment_after_priority_sec)
+  ]
+  n_base <- nrow(base)
+
+  out <- data.table::rbindlist(lapply(thresholds_sec, function(th) {
+    n_flag <- base[, sum(time_to_curtailment_after_priority_sec > th)]
+    data.table::data.table(
+      threshold_sec = th,
+      n_flagged     = n_flag,
+      n_base        = n_base,
+      pct_flagged   = if (n_base > 0) round(100 * n_flag / n_base, 1) else NA_real_
+    )
+  }))
+  out[]
+}
+
+
+## Sensibilidade de late_by_dist a track_proximity_threshold_m -- base =
+## todos os tracks reclassificados para prioritaria (com OU sem
+## curtailment) -- e' o mesmo campo (dist_at_first_priority) que decide
+## near/far no "sem curtailment" e o "_dist" no "late_curtailment"
+id_transition_late_dist_sensitivity <- function(risk_dt, thresholds_m = c(25, 50, 75, 100, 150, 200, 300, 500)) {
+
+  base <- risk_dt[last_is_priority == TRUE & !is.na(dist_at_first_priority)]
+  n_base <- nrow(base)
+
+  out <- data.table::rbindlist(lapply(thresholds_m, function(th) {
+    n_flag <- base[, sum(dist_at_first_priority <= th)]
+    data.table::data.table(
+      threshold_m = th,
+      n_flagged   = n_flag,
+      n_base      = n_base,
+      pct_flagged = if (n_base > 0) round(100 * n_flag / n_base, 1) else NA_real_
+    )
+  }))
+  out[]
+}
+
+
+## Distribuicao de time_to_curtailment_after_priority_sec (base igual a
+## id_transition_late_time_sensitivity()), com linha vertical no limiar
+## atual -- para ver visualmente se o corte cai num vale natural da
+## distribuicao ou a meio de uma nuvem continua
+plot_late_time_distribution <- function(risk_dt, threshold_sec = 50, xlim_max = 300) {
+
+  base <- risk_dt[
+    last_is_priority == TRUE & triggered_curtailment == TRUE &
+      !is.na(time_to_curtailment_after_priority_sec)
+  ]
+
+  ggplot2::ggplot(base, ggplot2::aes(time_to_curtailment_after_priority_sec)) +
+    ggplot2::geom_histogram(binwidth = 5, fill = "steelblue", color = "black") +
+    ggplot2::geom_vline(xintercept = threshold_sec, color = "firebrick", linetype = "dashed", linewidth = 0.7) +
+    ggplot2::coord_cartesian(xlim = c(NA, xlim_max)) +
+    ggplot2::labs(
+      x = sprintf("Time from 1st priority detection to curtailment start (s) -- current threshold = %ds", threshold_sec),
+      y = "Number of tracks"
+    ) +
+    ggplot2::theme_minimal()
+}
+
+
+## Distribuicao de dist_at_first_priority (base igual a
+## id_transition_late_dist_sensitivity()), com linha vertical no limiar
+## atual
+plot_late_dist_distribution <- function(risk_dt, threshold_m = 100, xlim_max = 1000) {
+
+  base <- risk_dt[last_is_priority == TRUE & !is.na(dist_at_first_priority)]
+
+  ggplot2::ggplot(base, ggplot2::aes(dist_at_first_priority)) +
+    ggplot2::geom_histogram(binwidth = 20, fill = "steelblue", color = "black") +
+    ggplot2::geom_vline(xintercept = threshold_m, color = "firebrick", linetype = "dashed", linewidth = 0.7) +
+    ggplot2::coord_cartesian(xlim = c(NA, xlim_max)) +
+    ggplot2::labs(
+      x = sprintf("Distance to nearest turbine at 1st priority detection (m) -- current threshold = %dm", threshold_m),
+      y = "Number of tracks"
+    ) +
+    ggplot2::theme_minimal()
 }

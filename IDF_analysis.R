@@ -597,6 +597,13 @@ if (exists("track_dt") && exists("curtl_dt")) {
   # Paulo depois de ver os resultados reais (146 casos)
   id_late_cases_dt <- id_transition_late_cases(id_risk_dt, curtl_dt)
 
+  # sensibilidade dos 2 limiares "tarde demais" -- despistar se algum e'
+  # pouco efetivo/irrelevante antes de decidir a versao final (Paulo,
+  # 2026-08: decidiu manter os 2, mas quer confirmar que ambos discriminam
+  # alguma coisa)
+  id_late_time_sensitivity_dt <- id_transition_late_time_sensitivity(id_risk_dt)
+  id_late_dist_sensitivity_dt <- id_transition_late_dist_sensitivity(id_risk_dt)
+
   write_xlsx_local(
     list(
       Track_species_richness = id_richness_dt,
@@ -607,7 +614,9 @@ if (exists("track_dt") && exists("curtl_dt")) {
       Risk_by_direction      = id_risk_summary$by_direction,
       Risk_PNP_curtailments  = id_risk_summary$pnp_curtailments,
       Late_criteria_compare  = id_risk_summary$late_criteria_compare,
-      Late_cases_detail      = id_late_cases_dt
+      Late_cases_detail      = id_late_cases_dt,
+      Late_time_sensitivity  = id_late_time_sensitivity_dt,
+      Late_dist_sensitivity  = id_late_dist_sensitivity_dt
     ),
     file.path(folder_output, "id_transitions.xlsx")
   )
@@ -624,6 +633,20 @@ if (exists("track_dt") && exists("curtl_dt")) {
   ggsave(
     file.path(folder_output, "id_transition_entropy_hist.png"),
     plot = p_id_entropy, width = 6, height = 4, dpi = 300, bg = "white"
+  )
+
+  p_late_time <- plot_late_time_distribution(id_risk_dt, threshold_sec = id_transition_late_time_sec)
+  p_late_time
+  ggsave(
+    file.path(folder_output, "id_transition_late_time_dist.png"),
+    plot = p_late_time, width = 7, height = 4, dpi = 300, bg = "white"
+  )
+
+  p_late_dist <- plot_late_dist_distribution(id_risk_dt, threshold_m = track_proximity_threshold_m)
+  p_late_dist
+  ggsave(
+    file.path(folder_output, "id_transition_late_dist_dist.png"),
+    plot = p_late_dist, width = 7, height = 4, dpi = 300, bg = "white"
   )
 
 } else {message("track_dt/curtl_dt nao disponiveis -- 3.2 (ID transitions) saltada nesta ronda.")}

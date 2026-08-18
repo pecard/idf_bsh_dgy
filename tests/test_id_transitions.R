@@ -319,3 +319,52 @@ cat(paste(
   "preocupante. A coluna turbine e' do 1º curtailment do track, para",
   "cruzares com o portal IdentiFlight.\n"
 ))
+
+
+##
+## PARTE E -- sensibilidade dos 2 limiares "tarde demais", para despistar se
+## algum e' pouco efetivo/irrelevante (Paulo decidiu manter os 2, mas quer
+## confirmar que ambos discriminam alguma coisa antes do relatorio mensal)
+##
+
+time_sens_dt <- id_transition_late_time_sensitivity(risk_dt)
+
+cat("\n\n===== PARTE E: id_transition_late_time_sensitivity() =====\n")
+print(time_sens_dt)
+cat(paste(
+  "\nBase = tracks NP->P com curtailment disparado (T2=5s, T4b=100s,",
+  "T4c=2s, T4e=150s; n_base=4). Esperado por limiar: 10/20/30/50/75s -> 2",
+  "sinalizados (T4b,T4e, os unicos >50s); 100s -> 1 (so' T4e, 150>100;",
+  "T4b=100 NAO e' >100); 150/200/300s -> 0 (nenhum valor chega a superar",
+  "150). O 'degrau' entre 75s e 150s mostra que o criterio esta a",
+  "discriminar dentro dessa gama -- com um conjunto de 146 casos reais,",
+  "olhar para onde esse degrau acontece ajuda a perceber se 50s e' um corte",
+  "razoavel ou se esta a meio de uma nuvem continua sem uma quebra clara.\n"
+))
+
+dist_sens_dt <- id_transition_late_dist_sensitivity(risk_dt)
+
+cat("\n----- id_transition_late_dist_sensitivity() -----\n")
+print(dist_sens_dt)
+cat(paste(
+  "\nBase = tracks NP->P (com ou sem curtailment): T2=450m, T4a=400m,",
+  "T4b=400m, T4c=80m, T4d=70m, T4e=90m; n_base=6. Esperado por limiar:",
+  "25/50m -> 0; 75m -> 1 (so' T4d, 70m); 100/150/200/300m -> 3 (T4c,T4d,T4e",
+  "-- os 3 com dist <=100m); 500m -> 6 (todos, incluindo os 3 a 400-450m).",
+  "Dois degraus claros aqui (perto de 75-100m, e perto de 500m) --",
+  "novamente, com os dados reais o interessante e' ver se ha um vale",
+  "parecido perto de 100m ou se a subida e' gradual (nesse caso o limiar",
+  "atual seria mais arbitrario).\n"
+))
+
+cat(paste(
+  "\nNota geral sobre a PARTE E: um criterio 'pouco efetivo' mostraria a",
+  "MESMA contagem em toda a gama de limiares testada (ex: sempre 0, ou",
+  "sempre = n_base) -- sinal de que a distribuicao nao tem massa relevante",
+  "perto de nenhum limiar plausivel, e o corte concreto escolhido nao muda",
+  "nada. Os graficos plot_late_time_distribution()/plot_late_dist_distribution()",
+  "mostram a mesma informacao visualmente, com uma linha vertical no limiar",
+  "atual do projeto -- uteis para ver se esse limiar cai num vale natural",
+  "da distribuicao real (bom sinal) ou a meio de uma nuvem sem quebra clara",
+  "(limiar mais arbitrario, mas nao necessariamente errado).\n"
+))
