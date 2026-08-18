@@ -139,8 +139,12 @@ curtl_dt_test <- data.table(
 
 
 ##
-## PARTE A -- riqueza de especies por track (histograma) + entropia
-## (inalterado desde a 1ª versao deste modulo -- mesma logica, mais tracks)
+## PARTE A -- riqueza de especies por track (histograma) + entropia bruta e
+## normalizada (shannon_evenness_pct, 0-100% -- adicionada depois do Paulo
+## achar o indice bruto "abstrato, sem referencia numerica", 2026-08: o
+## maximo teorico de H e' log(n_species), diferente por track, por isso H
+## bruto nao e' diretamente comparavel entre tracks com nº de especies
+## diferente; a versao normalizada tem sempre teto 100%)
 ##
 
 richness_dt <- track_species_summary(track_dt_test)
@@ -154,17 +158,35 @@ expected_n_species <- data.table(
   expected_last_spec = c(
     "Steppe-Eagle", "Golden-Eagle", "Steppe-Eagle", "Kestrel",
     "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Common-Buzzard"
-  )
+  ),
+  # T1/T6 (1 especie): 0% por definicao. T3/T4a/T4b/T5 (split 50/50 entre 2
+  # especies): H = log(2) = H_max -> 100%. T2/T4c/T4d/T4e (split 1/3, 2/3
+  # entre 2 especies -- menos equilibrado): H = log(3) - (2/3)log(2) =
+  # 0.6365142 -> 100*0.6365142/log(2) = 91.8%.
+  expected_evenness_pct = c(0, 0, 91.8, 100, 100, 100, 91.8, 91.8, 91.8, 100)
 )
 check_a <- merge(richness_dt, expected_n_species, by = "track_id")
 check_a[, n_species_ok := n_species == expected_n_species]
 check_a[, last_species_ok := last_species == expected_last_spec]
+check_a[, evenness_ok := shannon_evenness_pct == expected_evenness_pct]
 
-cat("\nCheck n_species e last_species (esperado vs obtido):\n")
-print(check_a[, .(track_id, n_species, expected_n_species, n_species_ok, last_species, expected_last_spec, last_species_ok)])
+cat("\nCheck n_species, last_species e shannon_evenness_pct (esperado vs obtido):\n")
+print(check_a[, .(track_id, n_species, expected_n_species, n_species_ok, last_species, expected_last_spec,
+                   last_species_ok, shannon_evenness_pct, expected_evenness_pct, evenness_ok)])
 cat(sprintf(
-  "\nResultado: %d/%d n_species corretos, %d/%d last_species corretos.\n",
-  sum(check_a$n_species_ok), nrow(check_a), sum(check_a$last_species_ok), nrow(check_a)
+  "\nResultado: %d/%d n_species corretos, %d/%d last_species corretos, %d/%d shannon_evenness_pct corretos.\n",
+  sum(check_a$n_species_ok), nrow(check_a), sum(check_a$last_species_ok), nrow(check_a),
+  sum(check_a$evenness_ok), nrow(check_a)
+))
+
+richness_summary <- summarise_species_richness(richness_dt)
+cat("\n----- summarise_species_richness()$entropy -----\n")
+print(richness_summary$entropy)
+cat(paste(
+  "\nEsperado (10 tracks: 2 com H=0/0%, 4 com H=0.6365142/91.8% (split 1/3-2/3:",
+  "T2,T4c,T4d,T4e), 4 com H=0.6931472/100% (split 50/50: T3,T4a,T4b,T5)):",
+  "mean_entropy ~= 0.5319, median_entropy = 0.6365142, mean_evenness_pct =",
+  "76.7, median_evenness_pct = 91.8.\n"
 ))
 
 

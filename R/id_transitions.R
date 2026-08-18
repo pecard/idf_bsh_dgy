@@ -101,12 +101,24 @@ track_species_summary <- function(track_dt) {
     sp <- unique(spec) # ja em ordem cronologica -- track_dt vem ordenado por track_id, timestamp
     n_spec <- .N
     p_i <- as.numeric(table(spec)) / n_spec
+    n_sp <- length(sp)
+    h <- -sum(p_i * log(p_i))
     .(
-      n_species      = length(sp),
-      species        = paste(sp, collapse = ", "),
-      first_species  = sp[1],
-      last_species   = sp[length(sp)],
-      shannon_entropy = -sum(p_i * log(p_i))
+      n_species             = n_sp,
+      species               = paste(sp, collapse = ", "),
+      first_species         = sp[1],
+      last_species          = sp[length(sp)],
+      shannon_entropy       = h,
+      # Pielou's evenness (H / H_max, H_max = log(n_species)) -- normaliza a
+      # entropia para 0-100%, independente de n_species. Sem isto, H "em
+      # bruto" nao e' comparavel entre tracks com numeros de especies
+      # diferentes (o maximo teorico de H e' log(n_species), nao um valor
+      # fixo) -- foi por isso que o Paulo achou o indice "abstrato, sem
+      # referencia numerica" (2026-08). 0% = track estavel (1 unica
+      # especie, sem alternancia -- H_max tambem e' 0 aqui, 0/0 definido
+      # como 0%, nao NaN); 100% = alternancia maximamente equilibrada entre
+      # as n_species do track (o pior caso possivel PARA ESSE track).
+      shannon_evenness_pct = if (n_sp > 1) round(100 * h / log(n_sp), 1) else 0
     )
   }, by = track_id]
 
@@ -115,7 +127,7 @@ track_species_summary <- function(track_dt) {
 
 
 ## Sumario da distribuicao de n_species por track (histograma) + taxa de
-## transicao (>=2 especies) + sumario da entropia
+## transicao (>=2 especies) + sumario da entropia (bruta e normalizada)
 summarise_species_richness <- function(richness_dt) {
 
   if (nrow(richness_dt) == 0L) {
@@ -125,7 +137,10 @@ summarise_species_richness <- function(richness_dt) {
         total_tracks = integer(), tracks_with_transition = integer(),
         id_transition_rate = numeric(), id_transition_rate_pct = numeric()
       ),
-      entropy = data.table::data.table(n_tracks = integer(), mean_entropy = numeric(), median_entropy = numeric())
+      entropy = data.table::data.table(
+        n_tracks = integer(), mean_entropy = numeric(), median_entropy = numeric(),
+        mean_evenness_pct = numeric(), median_evenness_pct = numeric()
+      )
     ))
   }
 
@@ -142,9 +157,11 @@ summarise_species_richness <- function(richness_dt) {
   )]
 
   entropy <- richness_dt[, .(
-    n_tracks       = .N,
-    mean_entropy   = mean(shannon_entropy, na.rm = TRUE),
-    median_entropy = median(shannon_entropy, na.rm = TRUE)
+    n_tracks             = .N,
+    mean_entropy         = mean(shannon_entropy, na.rm = TRUE),
+    median_entropy       = median(shannon_entropy, na.rm = TRUE),
+    mean_evenness_pct    = round(mean(shannon_evenness_pct, na.rm = TRUE), 1),
+    median_evenness_pct  = round(median(shannon_evenness_pct, na.rm = TRUE), 1)
   )]
 
   list(by_n_species = by_n_species[], rate = rate[], entropy = entropy[])
@@ -161,12 +178,19 @@ plot_species_richness_hist <- function(richness_dt) {
 }
 
 
-## Distribuicao do indice de entropia de Shannon por track -- H=0 (so' 1
-## especie, estavel), H>0 tanto maior quanto mais alternancia entre especies
+## Distribuicao da entropia de Shannon por track, NORMALIZADA (Pielou's
+## evenness, shannon_evenness_pct -- ver track_species_summary()) em vez do
+## indice bruto -- este e' comparavel entre tracks com numeros de especies
+## diferentes e tem um teto fixo e interpretavel (100%), o que o indice
+## bruto nao tem (o maximo teorico de H e' log(n_species), diferente por
+## track). 0% = estavel (1 unica especie); 100% = alternancia maximamente
+## equilibrada entre as especies desse track.
 plot_entropy_hist <- function(richness_dt) {
-  ggplot2::ggplot(richness_dt, ggplot2::aes(shannon_entropy)) +
-    ggplot2::geom_histogram(binwidth = 0.05, fill = "steelblue", color = "black") +
-    ggplot2::labs(x = "Shannon entropy index", y = "Number of tracks") +
+  ggplot2::ggplot(richness_dt, ggplot2::aes(shannon_evenness_pct)) +
+    ggplot2::geom_histogram(binwidth = 5, fill = "steelblue", color = "black", boundary = 0) +
+    ggplot2::scale_x_continuous(limits = c(0, 100)) +
+    ggplot2::labs(x = "Shannon evenness (%) -- 0% stable, 100% maximally mixed for its own species count",
+                  y = "Number of tracks") +
     ggplot2::theme_minimal()
 }
 
