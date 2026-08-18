@@ -1,5 +1,5 @@
 ##
-## Metricas biologicas de voo por especie: velocidade (5.1) e altura (5.2) ----
+## Metricas biologicas de voo por especie: velocidade (6.1) e altura (6.2) ----
 ##
 ## Migrado de scripts_IDF/bio_flight_speed.R, bio_flight_height.R e
 ## bio_distrib_flight_height_speed_per_species.R.
@@ -27,7 +27,7 @@
 ## silenciosamente, mesma logica do rodape acima.
 ##
 ## risk_height_lower/upper (zona de risco desenhada no grafico) reutilizam
-## os parametros ja existentes no userSettings para a secção 5.3 (Risk per
+## os parametros ja existentes no userSettings para a secção 6.3 (Risk per
 ## species) -- o mesmo conceito de zona de risco, sem duplicar limiares.
 ##
 ## Depende de: data.table, ggplot2

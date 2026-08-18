@@ -480,7 +480,7 @@ if (exists("folder_subsample") && dir.exists(folder_subsample)) { #Apenas correr
 } else {print("Subsample folder does not exist - Confusion matrix analysis was skipped")}
 
 ### 1.2. ID transitions (stability in ID)
-#source(file.path(folder_script_IDF, 'ID_transitions.R'))
+## Ja migrado para R/id_transitions.R -- ver secção 3.2, mais abaixo.
 
 
 
@@ -574,10 +574,9 @@ p_heartbeat_slots
 
 
 
-## Secções 3.3 a 5 (abaixo) e as exportações finais estão DESATIVADAS por agora -
-## dependem de scripts_IDF/, ainda nao migrado para R/. Vamos reativando
-## bloco a bloco à medida que cada módulo for trazido para R/. (3.2 já
-## migrada para R/id_transitions.R.)
+## Secções 3.2-3.4 e 6.1-6.2 (abaixo) já migradas para R/ (ver cabeçalhos de
+## cada bloco). So a secção "Risk per species" (6.3, R/bio_risk_per_species.R
+## no scripts_IDF/) continua por migrar.
 
 ### 3.2. Curtailments due to ID transitions ----
 ## Migrado de scripts_IDF/ID_transitions.R + curtailments_ID_transitions.R
@@ -892,7 +891,9 @@ summary_safe_dist
 p_safe_dist_hist
 p_trigger_dist_status
 
-### 3.8. Fatality investigation (tracks + disponibilidade + resposta na janela) ----
+##
+## 4. Fatality investigation (tracks + disponibilidade + resposta na janela) ----
+##
 
 # track_proximity_threshold_m, fatality_incidents --> definidos no userSettings_BSH.R
 # (seccao "Fatality investigation", consolidada -- ver comentario la)
@@ -1011,7 +1012,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
     )
 
   } else {
-    message("heartb_dt nao disponivel -- analises de janela (disponibilidade/resposta) da secção 3.8 saltadas, so os tracks foram exportados.")
+    message("heartb_dt nao disponivel -- analises de janela (disponibilidade/resposta) da secção 4 saltadas, so os tracks foram exportados.")
     write_xlsx_local(
       list(
         Fatality_tracks         = fatality_tracks_dt,
@@ -1023,7 +1024,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
   }
 
 } else {
-  message("run_sections$fatality_investigation = FALSE -- 3.8 saltada nesta ronda.")
+  message("run_sections$fatality_investigation = FALSE -- 4 saltada nesta ronda.")
 }
 
 fatality_global_response_summary_dt
@@ -1035,15 +1036,15 @@ curtl_scada_dt[track_id == "F96FD9F7-E742-4588-B495-DEA851EB5495", start]  # esp
 
 
 ##
-## 4. Coverage ----
+## 5. Coverage ----
 ##
 
 
-### 4.1. WF coverage ----
+### 5.1. WF coverage ----
 #source(file.path(folder_script_IDF, 'coverage_analysis_WF.R'))
 
 
-### 4.2. WTG coverage 3D (topografia + deteções de aves) ----
+### 5.2. WTG coverage 3D (topografia + deteções de aves) ----
 
 # dem_filename, wtg_3d_coverage, coverage_min_sample_records --> definidos no userSettings_BSH.R (coloca o .tif em databases_dir)
 dem_file <- file.path(databases_dir, dem_filename)
@@ -1091,7 +1092,7 @@ if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
   # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height)
   # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height, not_covered = TRUE)
 
-} else {message("run_sections$coverage_3d = FALSE ou DEM nao disponivel -- 4.2 saltada nesta ronda.")}
+} else {message("run_sections$coverage_3d = FALSE ou DEM nao disponivel -- 5.2 saltada nesta ronda.")}
 
 plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
                              coverage_cylinder_height)
@@ -1106,12 +1107,12 @@ plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
                              coverage_cylinder_height, not_covered = TRUE)
 
 ##
-## 5. Biological (supporting info) ----
+## 6. Biological (supporting info) ----
 ##
 
 
-### 5.1. Flight speed per species ----
-### 5.2. Flight height per species ----
+### 6.1. Flight speed per species ----
+### 6.2. Flight height per species ----
 ## Migrado de scripts_IDF/bio_flight_speed.R, bio_flight_height.R e
 ## bio_distrib_flight_height_speed_per_species.R -- ver R/bio_flight_metrics.R
 ## para a unificacao dos filtros de qualidade (os 3 scripts originais usavam
@@ -1150,11 +1151,11 @@ if (exists("track_dt")) {
     plot = p_flight_metrics, width = 8, height = max(4, 2.2 * n_species_flight), dpi = 300, bg = "white"
   )
 
-} else {message("track_dt nao disponivel -- 5.1-5.2 (flight speed/height) saltadas nesta ronda.")}
+} else {message("track_dt nao disponivel -- 6.1-6.2 (flight speed/height) saltadas nesta ronda.")}
 
 
 
-### 5.3. Risk per species ----
+### 6.3. Risk per species ----
 
 #NOTA:
 # riskHeight_lower --> definido no userSettings.txt
@@ -1162,7 +1163,7 @@ if (exists("track_dt")) {
 #source(file.path(folder_script_IDF, 'bio_risk_per_species.R'))
 
 
-### 5.4. Minimum individuals per time bin ----
+### 6.4. Minimum individuals per time bin ----
 
 # min_individuals_bin_min, min_individuals_merge_dist_m --> definidos no userSettings_BSH.R
 # Modulo geral e reutilizavel (qualquer especie, qualquer periodo, farm-wide)
@@ -1213,12 +1214,12 @@ ggsave(
   plot = p_min_indiv_daily, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
 )
 
-} else {message("run_sections$min_individuals = FALSE -- 5.4 saltada nesta ronda.")}
+} else {message("run_sections$min_individuals = FALSE -- 6.4 saltada nesta ronda.")}
 
 inspect_min_individuals_bin(track_dt, species = "Steppe-Eagle", bin_start = "2026-02-18 14:34:00")
 
 ##
-## 6. Report support -- data extent summary ----
+## 7. Report support -- data extent summary ----
 ##
 ## Duas tabelas de apoio a escrita de relatorios (ver CLAUDE.md: cada
 ## seccao deve ser auto-explicativa quanto ao universo de dados que usa) --
@@ -1252,7 +1253,7 @@ write_xlsx_local(
 
 
 ##
-## 7. System performance vs. bird phenology (evolucao temporal) ----
+## 8. System performance vs. bird phenology (evolucao temporal) ----
 ##
 ## Evolucao temporal (por omissao semanal, response_timeline_unit --
 ## definido no userSettings_BSH.R) da qualidade de resposta a curtailments
@@ -1260,7 +1261,7 @@ write_xlsx_local(
 ## individuals) das especies dos incidentes de fatalidade -- para dar
 ## contexto a se a performance do sistema varia com os periodos de maior
 ## movimento migratorio. Ver R/curtailment_response_timeline.R. So corre se
-## a seccao 3.5-3.7 (curtl_scada_dt) e a 5.4 (min_indiv_bins_dt) tiverem
+## a seccao 3.5-3.7 (curtl_scada_dt) e a 6.4 (min_indiv_bins_dt) tiverem
 ## corrido (run_sections + dados disponiveis).
 ##
 
@@ -1300,12 +1301,12 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
   }
 
 } else {
-  message("curtl_scada_dt e/ou min_indiv_bins_dt nao disponiveis -- seccao 7 (performance vs. fenologia) saltada.")
+  message("curtl_scada_dt e/ou min_indiv_bins_dt nao disponiveis -- seccao 8 (performance vs. fenologia) saltada.")
 }
 
 
 ##
-## 8. Turbine recent activity (apoio a matriz de decisao do protocolo de
+## 9. Turbine recent activity (apoio a matriz de decisao do protocolo de
 ##    resposta a outages do IdentiFlight) ----
 ##
 ## recent_activity_days --> definido no userSettings_BSH.R. Farm-wide (79

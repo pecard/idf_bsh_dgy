@@ -18,9 +18,9 @@
 
 run_sections <- list(
   curtailment_response   = TRUE,  # 3.5-3.7 (resposta a curtailments, shutdown time, safe distance) -- so corre se scada_dt tambem existir
-  fatality_investigation = TRUE,  # 3.8 (tracks + disponibilidade + resposta na janela de cada incidente)
-  coverage_3d             = TRUE,  # 4.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
-  min_individuals          = TRUE   # 5.4 (contagem minima de individuos por bin, farm-wide)
+  fatality_investigation = TRUE,  # 4 (tracks + disponibilidade + resposta na janela de cada incidente)
+  coverage_3d             = TRUE,  # 5.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
+  min_individuals          = TRUE   # 6.4 (contagem minima de individuos por bin, farm-wide)
 )
 
 
@@ -154,7 +154,7 @@ idf_availability_top_n    <- 12L # nº de unidades (com mais tempo offline) most
 ##   - por TEMPO: gap entre o 1º registo do track ja classificado como
 ##     prioritaria e o inicio do curtailment (id_transition_late_time_sec)
 ##   - por DISTANCIA: reutiliza track_proximity_threshold_m (definido abaixo,
-##     seccao 3.8) -- se a ave ja estava dentro desse limiar no momento da
+##     seccao 4) -- se a ave ja estava dentro desse limiar no momento da
 ##     reclassificacao, considera-se tardio independentemente do tempo
 
 id_transition_late_time_sec <- 50 # segundos; mesmo valor de shutdown_time_high_cut (3.6) como ponto de partida, a rever
@@ -208,20 +208,20 @@ safe_dist_reference_line_m <- 600 # em metros; linha de referencia nos plots -- 
 safe_dist_already_slowing_rpm <- 6
 
 
-## -- 3.8. Fatality investigation (cross-cutting: 3.1 + 3.5-3.7 + 3.8) --
+## -- 4. Fatality investigation (cross-cutting: 3.1 + 3.5-3.7 + 4) --
 ##
 ## Tudo o que precisa de um incidente + turbina + espécie + janela de dias
 ## fica agrupado aqui, mesmo que a analise em si corra secções diferentes de
 ## IDF_analysis.R:
-##   - tracks da especie perto da turbina, na janela            (3.8, R/fatality_track_investigation.R)
+##   - tracks da especie perto da turbina, na janela            (4, R/fatality_track_investigation.R)
 ##   - disponibilidade das unidades IDF dessa turbina, na janela (3.1, R/fatality_window_analysis.R)
 ##   - resposta a curtailments dessa turbina, na janela          (3.5-3.7, R/fatality_window_analysis.R)
-##   - abundancia (min individuals) pre- e pos-incidente          (5.4, R/fatality_window_analysis.R)
+##   - abundancia (min individuals) pre- e pos-incidente          (6.4, R/fatality_window_analysis.R)
 ## As analises de janela REUTILIZAM os thresholds ja definidos acima em 3.1
 ## (heartbeat_offline_gap_min, heartbeat_interval_min), 3.5-3.6
 ## (curtailment_start_end_gap_sec, curtailment_max_next_gap_sec,
 ## curtailment_drop_pct_threshold, safe_shutdown_rpm, shutdown_time_thresholds,
-## shutdown_time_high_cut) e 5.4 (min_individuals_bin_min,
+## shutdown_time_high_cut) e 6.4 (min_individuals_bin_min,
 ## min_individuals_merge_dist_m) -- nao ha parametros duplicados aqui.
 ##
 ## As unidades IDF de cada turbina sao resolvidas a partir da matriz manual
@@ -254,7 +254,7 @@ fatality_incidents <- data.table::data.table(
 )
 
 
-## -- 4. Coverage --
+## -- 5. Coverage --
 
 idf_op_detection_range <- 1000 # em metros; distancia de deteção operational do IDF a considerar na análise
 
@@ -262,7 +262,7 @@ coverage_cylinder_height       <- 1000 # em metros; 3D coverage cylinder - heigh
 coverage_cylinder_wider_radius <- 1100 # em metros; 3D coverage cylinder - wider radius
 coverage_cylinder_inner_radius <- 600  # em metros; 3D coverage cylinder - inner radius
 
-## -- 4.2. WTG coverage 3D com topografia (DEM) --
+## -- 5.2. WTG coverage 3D com topografia (DEM) --
 
 # GeoTIFF cobrindo toda a area do parque (ex: Copernicus GLO-30), descarregado
 # manualmente e colocado em databases_dir -- o script faz o crop/mask ao raio
@@ -295,7 +295,7 @@ coverage_min_sample_records <- 500000
 # coverage_3d_risk_band_labels <- c("at risk", "above")
 
 
-## -- 5.1-5.2. Flight speed / flight height per species --
+## -- 6.1-6.2. Flight speed / flight height per species --
 ##
 ## Filtros de qualidade PARTILHADOS pelas 2 metricas e pelo grafico
 ## combinado (ver R/bio_flight_metrics.R) -- os 3 scripts originais
@@ -310,13 +310,13 @@ flight_speed_ms_min     <- 1   # m/s; abaixo disto considera-se ruido/estacionar
 flight_speed_ms_max     <- 100 # m/s; acima disto considera-se erro de sensor
 
 
-## -- 5.3. Risk per species --
+## -- 6.3. Risk per species --
 
 riskHeight_lower <- 50  # in meters
 riskHeight_upper <- 250 # in meters
 
 
-## -- 5.4. Minimum individuals per time bin (modulo geral, farm-wide) --
+## -- 6.4. Minimum individuals per time bin (modulo geral, farm-wide) --
 
 # em minutos; duracao do bin usado para agrupar registos de tracks -- ver
 # R/track_min_individuals.R
@@ -328,14 +328,14 @@ min_individuals_bin_min <- 2
 min_individuals_merge_dist_m <- 200
 
 
-## -- 7. System performance vs. bird phenology (evolucao temporal, cross-cutting) --
+## -- 8. System performance vs. bird phenology (evolucao temporal, cross-cutting) --
 ##
 ## Evolucao ao longo de todo o periodo da qualidade de resposta a
 ## curtailments (missed/delayed), sobreposta a abundancia de aves -- para
 ## explorar se a performance do sistema varia com os periodos de maior
 ## movimento migratorio. Ver R/curtailment_response_timeline.R. Reutiliza a
 ## classificacao missed/delayed de R/curtailment_response_classify.R (mesmos
-## thresholds de 3.5-3.6) e os bins de R/track_min_individuals.R (5.4) --
+## thresholds de 3.5-3.6) e os bins de R/track_min_individuals.R (6.4) --
 ## nao ha parametros novos alem da granularidade da serie temporal.
 
 # "week" ou "month" -- granularidade da serie temporal (resposta e
@@ -343,7 +343,7 @@ min_individuals_merge_dist_m <- 200
 response_timeline_unit <- "week"
 
 
-## -- 8. Turbine recent activity (apoio a matriz de decisao do protocolo
+## -- 9. Turbine recent activity (apoio a matriz de decisao do protocolo
 ##       de resposta a outages do IdentiFlight) --
 ##
 ## Atividade recente de aves prioritarias por turbina (farm-wide, nao so'
