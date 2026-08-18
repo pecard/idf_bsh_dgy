@@ -85,6 +85,9 @@
 ##   )
 ##   risk_summary <- summarise_id_transition_risk(risk_dt, curtl_dt)
 ##
+##   # vista caso a caso dos "NP_to_P_late_curtailment" (both > dist_only > time_only)
+##   late_cases_dt <- id_transition_late_cases(risk_dt, curtl_dt)
+##
 
 ##
 ## Especies distintas por track_id (riqueza), sequencia e entropia ----
@@ -316,4 +319,68 @@ summarise_id_transition_risk <- function(risk_dt, curtl_dt) {
     pnp_curtailments      = pnp_curtailments[],
     late_criteria_compare = late_criteria_compare[]
   )
+}
+
+
+##
+## Vista detalhada dos casos "NP_to_P_late_curtailment", para inspecao caso
+## a caso (pedido do Paulo, 2026-08 -- passo 1 de "rever os 146 casos ->
+## decidir late_by_time vs late_by_dist -> relatorio mensal").
+##
+## Ordenados em 3 grupos, do mais para o menos preocupante, e dentro de cada
+## grupo do caso mais extremo para o menos extremo:
+##   1. "both"      -- sinalizado pelos 2 criterios; ordenado por distancia
+##                      ascendente (mais perto primeiro)
+##   2. "dist_only"  -- so' late_by_dist; ordenado por distancia ascendente
+##   3. "time_only"  -- so' late_by_time; ordenado por atraso descendente
+##                      (mais tempo primeiro)
+##
+## Inclui a turbina do 1º curtailment do track (contexto para cruzar com o
+## portal IdentiFlight) -- um track pode ter varios curtailments; fica a do
+## primeiro, o mesmo que os campos de tempo desta tabela descrevem.
+##
+id_transition_late_cases <- function(risk_dt, curtl_dt) {
+
+  cols <- c(
+    "track_id", "n_species", "species", "first_species", "last_species",
+    "first_priority_ts", "dist_at_first_priority",
+    "first_curtailment_start", "time_to_curtailment_after_priority_sec",
+    "late_by_time", "late_by_dist"
+  )
+  out <- risk_dt[risk_direction == "NP_to_P_late_curtailment", ..cols]
+
+  if (nrow(out) == 0L) {
+    out[, late_severity := character()]
+    out[, turbine := character()]
+    return(out[])
+  }
+
+  out[, late_severity := data.table::fcase(
+    late_by_time & late_by_dist, "both",
+    late_by_dist,                "dist_only",
+    late_by_time,                "time_only"
+  )]
+
+  # filtra curtl_dt aos tracks late ANTES do group-by -- curtl_dt real tem
+  # centenas de milhares de linhas, a maioria irrelevante aqui (so' os
+  # ~146 tracks "late" importam)
+  curtl_late <- curtl_dt[as.character(track_id) %in% as.character(out$track_id)]
+  curtl_first_turbine <- curtl_late[, .SD[which.min(start)], by = track_id][, .(track_id, turbine)]
+  curtl_first_turbine[, track_id_chr := as.character(track_id)]
+  out[, track_id_chr := as.character(track_id)]
+  out <- merge(out, curtl_first_turbine[, .(track_id_chr, turbine)], by = "track_id_chr", all.x = TRUE)
+  out[, track_id_chr := NULL]
+
+  both_group <- out[late_severity == "both"]
+  data.table::setorder(both_group, dist_at_first_priority)
+
+  dist_group <- out[late_severity == "dist_only"]
+  data.table::setorder(dist_group, dist_at_first_priority)
+
+  time_group <- out[late_severity == "time_only"]
+  data.table::setorder(time_group, -time_to_curtailment_after_priority_sec)
+
+  out <- data.table::rbindlist(list(both_group, dist_group, time_group))
+  data.table::setcolorder(out, c("track_id", "turbine", "late_severity"))
+  out[]
 }

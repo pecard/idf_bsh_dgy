@@ -592,6 +592,11 @@ if (exists("track_dt") && exists("curtl_dt")) {
   )
   id_risk_summary <- summarise_id_transition_risk(id_risk_dt, curtl_dt)
 
+  # vista detalhada dos casos "late_curtailment", ordenada por gravidade
+  # (both > dist_only > time_only), para inspecao caso a caso -- pedido do
+  # Paulo depois de ver os resultados reais (146 casos)
+  id_late_cases_dt <- id_transition_late_cases(id_risk_dt, curtl_dt)
+
   write_xlsx_local(
     list(
       Track_species_richness = id_richness_dt,
@@ -601,7 +606,8 @@ if (exists("track_dt") && exists("curtl_dt")) {
       ID_transition_risk     = id_risk_dt,
       Risk_by_direction      = id_risk_summary$by_direction,
       Risk_PNP_curtailments  = id_risk_summary$pnp_curtailments,
-      Late_criteria_compare  = id_risk_summary$late_criteria_compare
+      Late_criteria_compare  = id_risk_summary$late_criteria_compare,
+      Late_cases_detail      = id_late_cases_dt
     ),
     file.path(folder_output, "id_transitions.xlsx")
   )

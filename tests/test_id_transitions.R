@@ -74,13 +74,17 @@ t0 <- function(base_min) as.POSIXct("2026-04-01 00:00:00", tz = "UTC") + base_mi
 ##        em tempo nao chega se a reclassificacao em si ja' foi tardia
 ## T4d -- NP -> P, SEM curtailment, so' 70m (<=100m) quando reclassificada --
 ##        NP_to_P_no_curtailment_near (gap de proteccao real)
+## T4e -- NP -> P, curtailment disparado 150s depois (>50s) E a ave ja
+##        estava a 90m (<=100m) quando reclassificada -- late pelos 2
+##        criterios em simultaneo ("both", o grupo mais grave da vista de
+##        inspecao caso a caso -- PARTE D)
 ## T5  -- NP -> NP (troca entre 2 nao-prioritarias), sem curtailment -- no_risk
 ##
 
 track_dt_test <- data.table(
   track_id = c(
     rep("T1", 5), rep("T6", 3), rep("T2", 3), rep("T3", 4),
-    rep("T4a", 4), rep("T4b", 4), rep("T4c", 3), rep("T4d", 3), rep("T5", 4)
+    rep("T4a", 4), rep("T4b", 4), rep("T4c", 3), rep("T4d", 3), rep("T4e", 3), rep("T5", 4)
   ),
   spec = c(
     rep("Steppe-Eagle", 5),                                     # T1
@@ -91,6 +95,7 @@ track_dt_test <- data.table(
     "Kestrel", "Kestrel", "Steppe-Eagle", "Steppe-Eagle",       # T4b
     "Kestrel", "Steppe-Eagle", "Steppe-Eagle",                  # T4c
     "Kestrel", "Steppe-Eagle", "Steppe-Eagle",                  # T4d
+    "Kestrel", "Steppe-Eagle", "Steppe-Eagle",                  # T4e
     "Kestrel", "Kestrel", "Common-Buzzard", "Common-Buzzard"    # T5
   ),
   timestamp = c(
@@ -102,6 +107,7 @@ track_dt_test <- data.table(
     t0(50) + c(0, 10, 20, 30),
     t0(60) + c(0, 10, 20),
     t0(80) + c(0, 10, 20),
+    t0(90) + c(0, 10, 20),
     t0(70) + c(0, 10, 20, 30)
   ),
   dist3d = c(
@@ -113,19 +119,21 @@ track_dt_test <- data.table(
     c(500, 450, 400, 350),        # T4b -- 1ª deteccao prioritaria (t=20) a 400m -- longe, mas curtailment so' aos 100s
     c(200, 80, 50),                # T4c -- 1ª deteccao prioritaria (t=10) a SO' 80m -- ja perto ao reclassificar
     c(200, 70, 50),                # T4d -- 1ª deteccao prioritaria (t=10) a SO' 70m, SEM curtailment
+    c(200, 90, 60),                # T4e -- 1ª deteccao prioritaria (t=10) a 90m -- perto, E curtailment tarde
     c(500, 450, 400, 350)         # T5 -- nunca prioritaria
   )
 )
 
 curtl_dt_test <- data.table(
-  track_id = c("T6", "T2", "T3", "T4b", "T4c"),
-  turbine  = c("TESTID0", "TESTID1", "TESTID2", "TESTID3", "TESTID4"),
+  track_id = c("T6", "T2", "T3", "T4b", "T4c", "T4e"),
+  turbine  = c("TESTID0", "TESTID1", "TESTID2", "TESTID3", "TESTID4", "TESTID5"),
   start    = c(
     t0(10) + 0,   # T6 -- prompt, so' para dar dado a este track (single-ID, nao entra na tabela de risco)
     t0(20) + 15,  # T2 -- 1ª deteccao prioritaria em t0(20)+10 -> curtailment 5s depois -- prompt
     t0(30) + 5,   # T3 -- irrelevante para o timing (P->NP nao usa late_by_time/dist)
     t0(50) + 120, # T4b -- 1ª deteccao prioritaria em t0(50)+20 -> curtailment 100s depois -- TARDE (tempo)
-    t0(60) + 12   # T4c -- 1ª deteccao prioritaria em t0(60)+10 -> curtailment so' 2s depois -- rapido, MAS ja a 80m
+    t0(60) + 12,  # T4c -- 1ª deteccao prioritaria em t0(60)+10 -> curtailment so' 2s depois -- rapido, MAS ja a 80m
+    t0(90) + 160  # T4e -- 1ª deteccao prioritaria em t0(90)+10 -> curtailment 150s depois -- TARDE (tempo E ja a 90m)
   )
 )
 
@@ -141,11 +149,11 @@ cat("\n===== PARTE A: track_species_summary() =====\n")
 print(richness_dt[order(track_id)])
 
 expected_n_species <- data.table(
-  track_id           = c("T1", "T6", "T2", "T3", "T4a", "T4b", "T4c", "T4d", "T5"),
-  expected_n_species = c(1, 1, 2, 2, 2, 2, 2, 2, 2),
+  track_id           = c("T1", "T6", "T2", "T3", "T4a", "T4b", "T4c", "T4d", "T4e", "T5"),
+  expected_n_species = c(1, 1, 2, 2, 2, 2, 2, 2, 2, 2),
   expected_last_spec = c(
     "Steppe-Eagle", "Golden-Eagle", "Steppe-Eagle", "Kestrel",
-    "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Common-Buzzard"
+    "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Steppe-Eagle", "Common-Buzzard"
   )
 )
 check_a <- merge(richness_dt, expected_n_species, by = "track_id")
@@ -179,10 +187,10 @@ print(risk_dt[order(track_id), .(
 )])
 
 expected_risk <- data.table(
-  track_id                = c("T2",      "T3",                               "T4a",                        "T4b",                     "T4c",                     "T4d",                       "T5"),
-  expected_risk_direction = c("no_risk", "P_to_NP_unnecessary_curtailment", "NP_to_P_no_curtailment_far", "NP_to_P_late_curtailment", "NP_to_P_late_curtailment", "NP_to_P_no_curtailment_near", "no_risk"),
-  expected_late_by_time   = c(FALSE, NA, NA, TRUE, FALSE, NA, NA),
-  expected_late_by_dist   = c(FALSE, NA, FALSE, FALSE, TRUE, TRUE, NA)
+  track_id                = c("T2",      "T3",                               "T4a",                        "T4b",                     "T4c",                     "T4d",                        "T4e",                     "T5"),
+  expected_risk_direction = c("no_risk", "P_to_NP_unnecessary_curtailment", "NP_to_P_no_curtailment_far", "NP_to_P_late_curtailment", "NP_to_P_late_curtailment", "NP_to_P_no_curtailment_near", "NP_to_P_late_curtailment", "no_risk"),
+  expected_late_by_time   = c(FALSE, NA, NA, TRUE, FALSE, NA, TRUE, NA),
+  expected_late_by_dist   = c(FALSE, NA, FALSE, FALSE, TRUE, TRUE, TRUE, NA)
 )
 check_b <- merge(risk_dt, expected_risk, by = "track_id")
 check_b[, risk_ok := risk_direction == expected_risk_direction]
@@ -232,29 +240,60 @@ cat("\n\n===== PARTE C: summarise_id_transition_risk() =====\n")
 cat("\n----- by_direction -----\n")
 print(risk_summary$by_direction)
 cat(paste(
-  "\nEsperado (n_multi_id_tracks=7: T2,T3,T4a,T4b,T4c,T4d,T5): no_risk=2",
+  "\nEsperado (n_multi_id_tracks=8: T2,T3,T4a,T4b,T4c,T4d,T4e,T5): no_risk=2",
   "(T2,T5), P_to_NP_unnecessary_curtailment=1 (T3),",
   "NP_to_P_no_curtailment_far=1 (T4a), NP_to_P_no_curtailment_near=1 (T4d),",
-  "NP_to_P_late_curtailment=2 (T4b,T4c).\n"
+  "NP_to_P_late_curtailment=3 (T4b,T4c,T4e).\n"
 ))
 
 cat("\n----- pnp_curtailments -----\n")
 print(risk_summary$pnp_curtailments)
 cat(paste(
-  "\nEsperado: total_curtailments=5 (T6,T2,T3,T4b,T4c). De entre esses,",
-  "curtailments_from_multi_id_tracks=4 (T2,T3,T4b,T4c -- T6 e' single-ID,",
+  "\nEsperado: total_curtailments=6 (T6,T2,T3,T4b,T4c,T4e). De entre esses,",
+  "curtailments_from_multi_id_tracks=5 (T2,T3,T4b,T4c,T4e -- T6 e' single-ID,",
   "nao conta; T4a/T4d nunca dispararam curtailment).",
   "curtailments_due_to_p_to_np=1 (a curtailment de T3) -- pct_of_total =",
-  "1/5 = 20.0%.\n"
+  "1/6 = 16.7%.\n"
 ))
 
 cat("\n----- late_criteria_compare -----\n")
 print(risk_summary$late_criteria_compare)
 cat(paste(
-  "\nEsperado: 3 tracks entram nesta comparacao (NP->P E com curtailment:",
-  "T2, T4b, T4c). T2 -> (late_by_time=FALSE, late_by_dist=FALSE): 1. T4b ->",
-  "(TRUE, FALSE): 1. T4c -> (FALSE, TRUE): 1. Nenhum caso (TRUE,TRUE) neste",
-  "conjunto sintetico -- os 2 criterios discordam completamente aqui, o que",
-  "e' deliberado para se ver os 2 tipos de deteccao lado a lado antes de",
-  "decidir qual manter.\n"
+  "\nEsperado: 4 tracks entram nesta comparacao (NP->P E com curtailment:",
+  "T2, T4b, T4c, T4e). T2 -> (FALSE, FALSE): 1. T4b -> (TRUE, FALSE): 1.",
+  "T4c -> (FALSE, TRUE): 1. T4e -> (TRUE, TRUE): 1 -- o caso 'both' que",
+  "faltava no conjunto anterior, agora coberto.\n"
+))
+
+
+##
+## PARTE D -- vista detalhada dos 3 casos "NP_to_P_late_curtailment", para
+## inspecao caso a caso (o proximo passo pedido pelo Paulo depois de ver os
+## resultados reais de Bash: rever os 146 casos individualmente antes de
+## decidir entre late_by_time/late_by_dist)
+##
+
+late_cases_dt <- id_transition_late_cases(risk_dt, curtl_dt_test)
+
+cat("\n\n===== PARTE D: id_transition_late_cases() =====\n")
+print(late_cases_dt[, .(track_id, turbine, late_severity, dist_at_first_priority,
+                         time_to_curtailment_after_priority_sec, late_by_time, late_by_dist)])
+
+expected_order <- c("T4e", "T4c", "T4b")
+order_ok <- identical(late_cases_dt$track_id, expected_order)
+cat(sprintf(
+  "\nOrdem esperada: %s (grupo 'both' primeiro -- T4e, unico caso -- depois",
+  paste(expected_order, collapse = ", ")
+))
+cat(sprintf(
+  "\n'dist_only' -- T4c -- depois 'time_only' -- T4b). Obtida: %s. Ordem correta: %s.\n",
+  paste(late_cases_dt$track_id, collapse = ", "), order_ok
+))
+cat(paste(
+  "\nCom os 146 casos reais de Bash, esta vista fica: todos os 'both'",
+  "primeiro (ordenados por distancia, mais perto primeiro), depois todos os",
+  "'dist_only' (idem), depois todos os 'time_only' (ordenados por atraso,",
+  "maior atraso primeiro) -- para percorreres do caso mais para o menos",
+  "preocupante. A coluna turbine e' do 1º curtailment do track, para",
+  "cruzares com o portal IdentiFlight.\n"
 ))
