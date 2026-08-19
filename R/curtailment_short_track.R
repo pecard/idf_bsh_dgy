@@ -31,6 +31,13 @@
 ##     versao "unica por especie" de track_dt) duplicava linhas para tracks
 ##     multi-ID sem necessidade -- x2d/n_points sao propriedades do track
 ##     inteiro, nao da especie, por isso aqui o join e' 1:1 por track_id.
+##   - O join usa update-join (out[track_meta, on=, `:=`(...)]) em vez de
+##     merge(): se curtl_dt alguma vez tiver (por exemplo, cache .fst antiga
+##     de uma versao anterior do pipeline) uma coluna n_points/x2d propria,
+##     merge() renomeia SILENCIOSAMENTE para "x2d.x"/"x2d.y" em vez de dar
+##     erro, e o codigo abaixo que espera a coluna "x2d" falha com "object
+##     'x2d' not found" -- update-join sobrescreve a coluna existente em vez
+##     de a duplicar com sufixo, portanto nao tem este modo de falha.
 ##
 ## Depende de: data.table
 ##
@@ -51,8 +58,12 @@ classify_short_track_curtailments <- function(track_dt, curtl_dt, min_points, ev
 
   out <- data.table::copy(curtl_dt)
   out[, track_id_chr := as.character(track_id)]
-  out <- merge(out, track_meta[, .(track_id_chr, n_points, x2d)], by = "track_id_chr", all.x = TRUE)
+  ## update-join: sobrescreve n_points/x2d se ja existirem em out, em vez de
+  ## os duplicar com sufixo ".x"/".y" (ver nota no cabecalho do ficheiro)
+  out[track_meta, on = "track_id_chr", `:=`(n_points = i.n_points, x2d = i.x2d)]
   out[, track_id_chr := NULL]
+
+  stopifnot(all(c("n_points", "x2d") %in% names(out)))
 
   out[, is_short_track     := !is.na(n_points) & n_points < min_points]
   out[, is_close            := !is.na(x2d) & x2d < eval_range_m]
