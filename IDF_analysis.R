@@ -1344,7 +1344,19 @@ write_xlsx_local(
 ## --> definidos no userSettings_BSH.R.
 ##
 
-if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt") && isTRUE(run_sections$turbine_clustering)) {
+## isTRUE(run_sections$turbine_clustering) fica FALSE tambem se run_sections
+## nao tiver este elemento (ex: userSettings_BSH.R desatualizado ainda em
+## memoria, sem re-fazer source() depois de adicionar este switch) -- por
+## isso o guard fica separado em 3 mensagens especificas, para nao dar a
+## entender que track_dt_unfilt/curtl_dt_unfilt e' que faltam quando pode
+## ser so' o run_sections desatualizado
+if (!exists("track_dt_unfilt")) {
+  message("10 saltada: track_dt_unfilt nao existe (ver secção 0 -- Import data).")
+} else if (!exists("curtl_dt_unfilt")) {
+  message("10 saltada: curtl_dt_unfilt nao existe (ver secção 0 -- Import data).")
+} else if (!isTRUE(run_sections$turbine_clustering)) {
+  message("10 saltada: run_sections$turbine_clustering != TRUE (confirma se o userSettings_BSH.R em memoria esta atualizado -- corre source() outra vez se tiveres duvidas).")
+} else {
 
   source("R/turbine_spatial_clusters.R")
   source("R/curtailment_cluster_patterns.R")
@@ -1432,7 +1444,7 @@ if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt") && isTRUE(run_section
     file.path(folder_output, "track_species_clusters.xlsx")
   )
 
-} else {message("track_dt_unfilt/curtl_dt_unfilt nao disponiveis ou run_sections$turbine_clustering = FALSE -- 10 saltada nesta ronda.")}
+}
 
 
 ##
