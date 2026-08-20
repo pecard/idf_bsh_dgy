@@ -175,6 +175,19 @@ id_transition_late_time_sec <- 50 # segundos; mesmo valor de shutdown_time_high_
 # mudando este parametro
 id_confusion_species_of_interest <- "Kestrel"
 
+# especie candidata a ser removida da estrategia de curtailment (discussao
+# com o cliente, 2026-08) -- ver R/curtailment_removal_risk.R,
+# evaluate_curtailment_removal_risk(). Quantifica o risco de remover os
+# curtailments disparados enquanto classificados como esta especie, para os
+# casos em que o track mais tarde revelou ser de especie prioritaria.
+curtailment_removal_species_of_interest <- "Kestrel"
+
+# em segundos; tolerancia maxima para associar um ponto do track ao momento
+# exato do disparo do curtailment (x2d_at_curtailment) -- mesma logica de
+# match_nearest_rpm() em R/curtailment_response.R (roll="nearest" com
+# limite de tolerancia, nao um match arbitrariamente distante)
+curtailment_removal_max_trigger_match_sec <- 30
+
 
 ## -- 3.4. Short-track curtailment --
 

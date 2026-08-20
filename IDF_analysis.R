@@ -696,6 +696,49 @@ if (exists("track_dt") && exists("curtl_dt")) {
 } else {message("track_dt/curtl_dt nao disponiveis -- 3.2 (ID transitions) saltada nesta ronda.")}
 
 
+## Curtailment removal risk -- quantifica o risco de remover
+## curtailment_removal_species_of_interest (Kestrel por omissao) da
+## estrategia de curtailment (discussao com o cliente, 2026-08). Usa o
+## historico COMPLETO (_unfilt), nao so' a janela do relatorio -- e' uma
+## decisao de politica permanente, nao uma metrica periodica -- ver
+## R/curtailment_removal_risk.R para a metodologia acordada com o Paulo.
+if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt")) {
+
+  source("R/curtailment_removal_risk.R")
+
+  removal_dt <- evaluate_curtailment_removal_risk(
+    curtl_dt_unfilt, track_dt_unfilt, prioritysp,
+    removed_species = curtailment_removal_species_of_interest,
+    max_trigger_match_sec = curtailment_removal_max_trigger_match_sec
+  )
+  removal_summary <- summarise_curtailment_removal_risk(removal_dt)
+  print_curtailment_removal_risk_summary(removal_summary, curtailment_removal_species_of_interest)
+
+  write_xlsx_local(
+    list(
+      Removal_overview          = removal_summary$overview,
+      Removal_by_next_species   = removal_summary$by_next_priority_species,
+      Removal_gap_stats         = removal_summary$gap_stats,
+      Removal_events_detail     = removal_dt
+    ),
+    file.path(folder_output, sprintf("curtailment_removal_risk_%s.xlsx", curtailment_removal_species_of_interest))
+  )
+
+  p_removal_time_gap <- plot_removal_time_gap(removal_dt)
+  ggsave(
+    file.path(folder_output, sprintf("curtailment_removal_%s_time_gap.png", curtailment_removal_species_of_interest)),
+    plot = p_removal_time_gap, width = 7, height = 4, dpi = 300, bg = "white"
+  )
+
+  p_removal_dist_gap <- plot_removal_dist_gap(removal_dt, threshold_m = track_proximity_threshold_m)
+  ggsave(
+    file.path(folder_output, sprintf("curtailment_removal_%s_dist_gap.png", curtailment_removal_species_of_interest)),
+    plot = p_removal_dist_gap, width = 7, height = 4, dpi = 300, bg = "white"
+  )
+
+} else {message("track_dt_unfilt/curtl_dt_unfilt nao disponiveis -- curtailment removal risk saltada nesta ronda.")}
+
+
 
 ### 3.3. Species-specific curtailment ----
 ## Migrado de scripts_IDF/curtailments_species.R -- ver R/curtailment_species.R
