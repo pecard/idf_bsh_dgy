@@ -129,12 +129,12 @@ manual_turbine_clusters_dt <- function(manual_clusters_list) {
 ##    escala X/Y distorce-se e o mapa fica enganador). Turbinas de interesse
 ##    (ex: fatality_incidents$turbine) ficam marcadas com triangulo maior.
 plot_turbine_clusters_map <- function(wtg_sf, cluster_dt, wtg_id_col = "InternalNa",
-                                      highlight_turbines = NULL, title = "Clusters de turbinas") {
+                                      highlight_turbines = NULL, title = "Turbine clusters") {
 
   coords <- sf::st_coordinates(wtg_sf)[, c("X", "Y"), drop = FALSE]
   dt <- data.table::data.table(turbine = wtg_sf[[wtg_id_col]], x = coords[, "X"], y = coords[, "Y"])
   dt[cluster_dt, on = "turbine", cluster_id := i.cluster_id]
-  dt[, cluster_id := data.table::fifelse(is.na(cluster_id), "(sem cluster)", cluster_id)]
+  dt[, cluster_id := data.table::fifelse(is.na(cluster_id), "(no cluster)", cluster_id)]
   dt[, is_highlight := turbine %in% highlight_turbines]
 
   ggplot2::ggplot(dt, ggplot2::aes(x = x, y = y, color = cluster_id)) +

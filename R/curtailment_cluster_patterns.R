@@ -198,7 +198,7 @@ permutation_test_marginal_contribution_all <- function(curtl_cl_dt, turbine_ids,
 ##    vermelho (highlight_clusters) para se ver logo a olho onde ficam
 ##    dentro da distribuicao geral
 
-plot_cluster_curtailments_total <- function(cluster_summary, highlight_clusters = NULL, title = "Curtailments por cluster (periodo completo)") {
+plot_cluster_curtailments_total <- function(cluster_summary, highlight_clusters = NULL, title = "Curtailments by cluster (full period)") {
 
   dt <- data.table::copy(cluster_summary$by_cluster)
   data.table::setorder(dt, -n_total)
@@ -208,13 +208,13 @@ plot_cluster_curtailments_total <- function(cluster_summary, highlight_clusters 
   ggplot2::ggplot(dt, ggplot2::aes(x = cluster_id, y = n_total, fill = highlight)) +
     ggplot2::geom_col() +
     ggplot2::scale_fill_manual(values = c(`TRUE` = "firebrick", `FALSE` = "steelblue"), guide = "none") +
-    ggplot2::labs(x = "Cluster", y = "Total de curtailments", title = title) +
+    ggplot2::labs(x = "Cluster", y = "Total curtailments", title = title) +
     ggplot2::theme_minimal() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 }
 
 
-plot_cluster_curtailments_weekly <- function(cluster_weekly_dt, highlight_clusters = NULL, title = "Curtailments semanais por cluster") {
+plot_cluster_curtailments_weekly <- function(cluster_weekly_dt, highlight_clusters = NULL, title = "Weekly curtailments by cluster") {
 
   dt <- cluster_weekly_dt[, .(n = sum(n)), by = .(cluster_id, period)]
   dt[, is_highlight := cluster_id %in% highlight_clusters]
@@ -222,6 +222,6 @@ plot_cluster_curtailments_weekly <- function(cluster_weekly_dt, highlight_cluste
   ggplot2::ggplot(dt, ggplot2::aes(x = period, y = n, color = cluster_id, linewidth = is_highlight, group = cluster_id)) +
     ggplot2::geom_line() +
     ggplot2::scale_linewidth_manual(values = c(`TRUE` = 1.3, `FALSE` = 0.5), guide = "none") +
-    ggplot2::labs(x = "Semana", y = "Curtailments", color = "Cluster", title = title) +
+    ggplot2::labs(x = "Week", y = "Curtailments", color = "Cluster", title = title) +
     ggplot2::theme_minimal()
 }

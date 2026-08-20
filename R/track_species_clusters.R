@@ -200,8 +200,8 @@ plot_species_occurrence_weekly <- function(weekly_dt, species_label = "Kestrel")
   ggplot2::ggplot(weekly_dt, ggplot2::aes(x = period, y = n_tracks)) +
     ggplot2::geom_line(color = "steelblue") +
     ggplot2::geom_point(color = "steelblue") +
-    ggplot2::labs(x = "Semana", y = "Nº de tracks",
-                  title = sprintf("Ocorrencia semanal de tracks -- %s (farm-wide)", species_label)) +
+    ggplot2::labs(x = "Week", y = "Number of tracks",
+                  title = sprintf("Weekly track occurrence -- %s (farm-wide)", species_label)) +
     ggplot2::theme_minimal()
 }
 
@@ -216,8 +216,8 @@ plot_cluster_species_total <- function(by_cluster_out, highlight_clusters = NULL
   ggplot2::ggplot(dt, ggplot2::aes(x = cluster_id, y = n_tracks, fill = highlight)) +
     ggplot2::geom_col() +
     ggplot2::scale_fill_manual(values = c(`TRUE` = "firebrick", `FALSE` = "darkgreen"), guide = "none") +
-    ggplot2::labs(x = "Cluster", y = "Nº de tracks",
-                  title = sprintf("Tracks por cluster -- %s (periodo completo)", species_label)) +
+    ggplot2::labs(x = "Cluster", y = "Number of tracks",
+                  title = sprintf("Tracks by cluster -- %s (full period)", species_label)) +
     ggplot2::theme_minimal() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 }
@@ -231,7 +231,7 @@ plot_cluster_species_weekly <- function(by_cluster_out, highlight_clusters = NUL
   ggplot2::ggplot(dt, ggplot2::aes(x = period, y = n_tracks, color = cluster_id, linewidth = is_highlight, group = cluster_id)) +
     ggplot2::geom_line() +
     ggplot2::scale_linewidth_manual(values = c(`TRUE` = 1.3, `FALSE` = 0.5), guide = "none") +
-    ggplot2::labs(x = "Semana", y = "Nº de tracks", color = "Cluster",
-                  title = sprintf("Tracks semanais por cluster -- %s", species_label)) +
+    ggplot2::labs(x = "Week", y = "Number of tracks", color = "Cluster",
+                  title = sprintf("Weekly tracks by cluster -- %s", species_label)) +
     ggplot2::theme_minimal()
 }

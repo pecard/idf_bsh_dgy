@@ -1377,7 +1377,7 @@ if (!exists("track_dt_unfilt")) {
   # para confirmar a olho que os clusters fazem sentido geograficamente
   p_map_stat <- plot_turbine_clusters_map(
     wtg, cluster_dt_stat, highlight_turbines = fatality_incidents$turbine,
-    title = sprintf("Clusters estatisticos de turbinas (max_dist_m=%g)", cluster_max_dist_m)
+    title = sprintf("Statistical turbine clusters (max_dist_m=%g)", cluster_max_dist_m)
   )
   ggsave(
     file.path(folder_output, "turbine_clusters_map_stat.png"),
@@ -1386,7 +1386,7 @@ if (!exists("track_dt_unfilt")) {
 
   p_map_manual <- plot_turbine_clusters_map(
     wtg, cluster_dt_manual, highlight_turbines = fatality_incidents$turbine,
-    title = "Setores manuais de turbinas"
+    title = "Manual turbine sectors"
   )
   ggsave(
     file.path(folder_output, "turbine_clusters_map_manual.png"),
@@ -1449,7 +1449,7 @@ if (!exists("track_dt_unfilt")) {
 
   p_curtl_stat_total <- plot_cluster_curtailments_total(
     cluster_summary_stat, highlight_clusters = highlight_clusters_stat,
-    title = "Curtailments por cluster estatistico (periodo completo)"
+    title = "Curtailments by statistical cluster (full period)"
   )
   ggsave(
     file.path(folder_output, "cluster_curtailments_stat_total.png"),
@@ -1458,7 +1458,7 @@ if (!exists("track_dt_unfilt")) {
 
   p_curtl_stat_weekly <- plot_cluster_curtailments_weekly(
     cluster_weekly_stat_dt, highlight_clusters = highlight_clusters_stat,
-    title = "Curtailments semanais por cluster estatistico"
+    title = "Weekly curtailments by statistical cluster"
   )
   ggsave(
     file.path(folder_output, "cluster_curtailments_stat_weekly.png"),
@@ -1467,7 +1467,7 @@ if (!exists("track_dt_unfilt")) {
 
   p_curtl_manual_total <- plot_cluster_curtailments_total(
     cluster_summary_manual, highlight_clusters = highlight_clusters_manual,
-    title = "Curtailments por setor manual (periodo completo)"
+    title = "Curtailments by manual sector (full period)"
   )
   ggsave(
     file.path(folder_output, "cluster_curtailments_manual_total.png"),
@@ -1476,7 +1476,7 @@ if (!exists("track_dt_unfilt")) {
 
   p_curtl_manual_weekly <- plot_cluster_curtailments_weekly(
     cluster_weekly_manual_dt, highlight_clusters = highlight_clusters_manual,
-    title = "Curtailments semanais por setor manual"
+    title = "Weekly curtailments by manual sector"
   )
   ggsave(
     file.path(folder_output, "cluster_curtailments_manual_weekly.png"),
