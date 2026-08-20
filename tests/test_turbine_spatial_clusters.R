@@ -18,7 +18,7 @@
 ##
 ## Correr: source("tests/test_turbine_spatial_clusters.R")
 ##
-## Depende de: data.table, sf, cluster
+## Depende de: data.table, sf, cluster, ggplot2
 ##
 
 source("R/turbine_spatial_clusters.R")
@@ -103,3 +103,12 @@ cat(paste(
   "(T1,T2,T3 -> Grupo_X; T4,T5 -> Grupo_Y; T6 -> Grupo_Z), mesmo formato de",
   "colunas que cluster_turbines_by_distance() (para serem intermutaveis).\n"
 ))
+
+## ---- plot_turbine_clusters_map() ----
+## So' confirma que corre sem erro e devolve um objeto ggplot -- o resto
+## (cores, posicoes) e' visual, ver a olho no PNG gravado pelo IDF_analysis.R
+
+p_map_test <- plot_turbine_clusters_map(wtg_test, manual_dt_test, highlight_turbines = "T1")
+cat("\n===== plot_turbine_clusters_map() =====\n")
+cat(sprintf("E' um objeto ggplot? %s (esperado: TRUE)\n", inherits(p_map_test, "ggplot")))
+print(p_map_test)

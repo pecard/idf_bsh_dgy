@@ -31,7 +31,7 @@
 ## cluster_max_dist_m as cegas, corre-se o sweep e ve-se onde o nº de
 ## clusters/silhouette estabiliza.
 ##
-## Depende de: data.table, sf, cluster (silhouette)
+## Depende de: data.table, sf, cluster (silhouette), ggplot2
 ##
 ## Uso:
 ##   source("R/turbine_spatial_clusters.R")
@@ -40,6 +40,8 @@
 ##   cluster_dt <- cluster_turbines_by_distance(dist_mat, max_dist_m = cluster_max_dist_m)
 ##   sens_dt    <- turbine_cluster_threshold_sensitivity(dist_mat, thresholds_m = cluster_threshold_sweep_m)
 ##   manual_dt  <- manual_turbine_clusters_dt(manual_turbine_clusters)
+##
+##   p_map <- plot_turbine_clusters_map(wtg, cluster_dt, highlight_turbines = fatality_incidents$turbine)
 ##
 
 ## 1. Matriz de distancias 2D entre turbinas (metros) ----
@@ -117,4 +119,33 @@ manual_turbine_clusters_dt <- function(manual_clusters_list) {
   data.table::rbindlist(lapply(names(manual_clusters_list), function(nm) {
     data.table::data.table(turbine = manual_clusters_list[[nm]], cluster_id = nm)
   }))
+}
+
+
+## 5. Mapa de referencia -- turbinas no espaco, coloridas pelo cluster a que
+##    pertencem (estatistico OU manual, o mesmo cluster_dt de sempre) --
+##    para se ver a olho se os clusters fazem sentido geograficamente antes
+##    de confiar nas tabelas. coord_equal() e' importante aqui (senao a
+##    escala X/Y distorce-se e o mapa fica enganador). Turbinas de interesse
+##    (ex: fatality_incidents$turbine) ficam marcadas com triangulo maior.
+plot_turbine_clusters_map <- function(wtg_sf, cluster_dt, wtg_id_col = "InternalNa",
+                                      highlight_turbines = NULL, title = "Clusters de turbinas") {
+
+  coords <- sf::st_coordinates(wtg_sf)[, c("X", "Y"), drop = FALSE]
+  dt <- data.table::data.table(turbine = wtg_sf[[wtg_id_col]], x = coords[, "X"], y = coords[, "Y"])
+  dt[cluster_dt, on = "turbine", cluster_id := i.cluster_id]
+  dt[, cluster_id := data.table::fifelse(is.na(cluster_id), "(sem cluster)", cluster_id)]
+  dt[, is_highlight := turbine %in% highlight_turbines]
+
+  ggplot2::ggplot(dt, ggplot2::aes(x = x, y = y, color = cluster_id)) +
+    ggplot2::geom_point(ggplot2::aes(size = is_highlight, shape = is_highlight)) +
+    ggplot2::geom_text(
+      ggplot2::aes(label = turbine), size = 2.5, vjust = -0.8, show.legend = FALSE
+    ) +
+    ggplot2::scale_size_manual(values = c(`TRUE` = 4, `FALSE` = 2.2), guide = "none") +
+    ggplot2::scale_shape_manual(values = c(`TRUE` = 17, `FALSE` = 16), guide = "none") +
+    ggplot2::scale_color_viridis_d() +
+    ggplot2::coord_equal() +
+    ggplot2::labs(x = "UTM X (m)", y = "UTM Y (m)", color = "Cluster", title = title) +
+    ggplot2::theme_minimal()
 }

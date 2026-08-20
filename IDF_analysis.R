@@ -1373,6 +1373,26 @@ if (!exists("track_dt_unfilt")) {
   highlight_clusters_stat   <- unique(cluster_dt_stat[turbine %in% fatality_incidents$turbine, cluster_id])
   highlight_clusters_manual <- unique(cluster_dt_manual[turbine %in% fatality_incidents$turbine, cluster_id])
 
+  # mapas de referencia -- turbinas coloridas pelo cluster a que pertencem,
+  # para confirmar a olho que os clusters fazem sentido geograficamente
+  p_map_stat <- plot_turbine_clusters_map(
+    wtg, cluster_dt_stat, highlight_turbines = fatality_incidents$turbine,
+    title = sprintf("Clusters estatisticos de turbinas (max_dist_m=%g)", cluster_max_dist_m)
+  )
+  ggsave(
+    file.path(folder_output, "turbine_clusters_map_stat.png"),
+    plot = p_map_stat, width = 10, height = 8, dpi = 300, bg = "white"
+  )
+
+  p_map_manual <- plot_turbine_clusters_map(
+    wtg, cluster_dt_manual, highlight_turbines = fatality_incidents$turbine,
+    title = "Setores manuais de turbinas"
+  )
+  ggsave(
+    file.path(folder_output, "turbine_clusters_map_manual.png"),
+    plot = p_map_manual, width = 10, height = 8, dpi = 300, bg = "white"
+  )
+
 
   ### 10.1. Curtailments por cluster de turbinas (estatistico + manual) ----
 
