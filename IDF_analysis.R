@@ -41,7 +41,8 @@ packages <- c('purrr','rstudioapi', #purrr needed for citation; rstudioapi neede
               'ggTimeSeries', 'suncalc', #,'patchwork','arrow'
               'openxlsx','writexl','rmarkdown','flextable','systemfonts',
               'terra', 'RANN', 'plotly', #terra/RANN/plotly: coverage 3D com topografia (DEM)
-              'fst') #fst: cache dos datasets grandes (ver R/data_cache.R)
+              'fst', #fst: cache dos datasets grandes (ver R/data_cache.R)
+              'cluster') #cluster: silhouette() para validar clusters espaciais de turbinas (secção 10)
 
 ##Check and install packages that are missing + call library()
 for (p in packages) {
@@ -1333,6 +1334,105 @@ write_xlsx_local(
   list(Turbine_recent_activity = turbine_recent_activity_dt),
   file.path(folder_output, "turbine_recent_activity.xlsx")
 )
+
+
+##
+## 10. Turbine spatial/temporal clustering ----
+##
+## cluster_max_dist_m, cluster_threshold_sweep_m, cluster_perm_n,
+## manual_turbine_clusters, cluster_species_sel, curtl_cluster_date_from/to
+## --> definidos no userSettings_BSH.R.
+##
+
+if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt") && isTRUE(run_sections$turbine_clustering)) {
+
+  source("R/turbine_spatial_clusters.R")
+  source("R/curtailment_cluster_patterns.R")
+  source("R/track_species_clusters.R")
+
+  turbine_dist_mat <- turbine_distance_matrix(wtg)
+
+  cluster_dt_stat   <- cluster_turbines_by_distance(turbine_dist_mat, max_dist_m = cluster_max_dist_m)
+  cluster_sens_dt   <- turbine_cluster_threshold_sensitivity(turbine_dist_mat, thresholds_m = cluster_threshold_sweep_m)
+  cluster_dt_manual <- manual_turbine_clusters_dt(manual_turbine_clusters)
+
+
+  ### 10.1. Curtailments por cluster de turbinas (estatistico + manual) ----
+
+  curtl_cl_stat_dt <- join_curtailments_to_clusters(
+    curtl_dt_unfilt, cluster_dt_stat, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
+  )
+  if (curtl_cl_stat_dt[is.na(cluster_id), .N] > 0) {
+    message(sprintf(
+      "Aviso: %d curtailments de turbinas fora do cluster estatistico (turbina nao existe em wtg?) -- turbinas: %s",
+      curtl_cl_stat_dt[is.na(cluster_id), .N],
+      paste(sort(unique(curtl_cl_stat_dt[is.na(cluster_id), turbine])), collapse = ", ")
+    ))
+  }
+  cluster_summary_stat    <- summarise_cluster_curtailments(curtl_cl_stat_dt)
+  cluster_weekly_stat_dt  <- summarise_cluster_curtailments_weekly(curtl_cl_stat_dt)
+  marginal_stat_dt        <- summarise_turbine_marginal_contribution(curtl_cl_stat_dt, fatality_incidents$turbine)
+  perm_stat_dt            <- permutation_test_marginal_contribution_all(
+    curtl_cl_stat_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
+  )
+
+  curtl_cl_manual_dt <- join_curtailments_to_clusters(
+    curtl_dt_unfilt, cluster_dt_manual, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
+  )
+  if (curtl_cl_manual_dt[is.na(cluster_id), .N] > 0) {
+    message(sprintf(
+      "Aviso: %d curtailments de turbinas fora dos setores manuais (manual_turbine_clusters incompleto?) -- turbinas: %s",
+      curtl_cl_manual_dt[is.na(cluster_id), .N],
+      paste(sort(unique(curtl_cl_manual_dt[is.na(cluster_id), turbine])), collapse = ", ")
+    ))
+  }
+  cluster_summary_manual   <- summarise_cluster_curtailments(curtl_cl_manual_dt)
+  cluster_weekly_manual_dt <- summarise_cluster_curtailments_weekly(curtl_cl_manual_dt)
+  marginal_manual_dt       <- summarise_turbine_marginal_contribution(curtl_cl_manual_dt, fatality_incidents$turbine)
+  perm_manual_dt           <- permutation_test_marginal_contribution_all(
+    curtl_cl_manual_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
+  )
+
+  write_xlsx_local(
+    list(
+      Cluster_threshold_sweep    = cluster_sens_dt,
+      Stat_cluster_by_turbine    = cluster_summary_stat$by_turbine,
+      Stat_cluster_by_cluster    = cluster_summary_stat$by_cluster,
+      Stat_cluster_weekly        = cluster_weekly_stat_dt,
+      Stat_marginal_contribution = marginal_stat_dt,
+      Stat_permutation_test      = perm_stat_dt,
+      Manual_cluster_by_turbine  = cluster_summary_manual$by_turbine,
+      Manual_cluster_by_cluster  = cluster_summary_manual$by_cluster,
+      Manual_cluster_weekly      = cluster_weekly_manual_dt,
+      Manual_marginal_contrib    = marginal_manual_dt,
+      Manual_permutation_test    = perm_manual_dt
+    ),
+    file.path(folder_output, "curtailment_cluster_patterns.xlsx")
+  )
+
+
+  ### 10.2. Ocorrencia de tracks de especie por cluster de turbinas ----
+
+  species_tracks_dt <- assign_tracks_to_nearest_turbine(track_dt_unfilt, wtg, species_sel = cluster_species_sel)
+
+  species_weekly_dt     <- summarise_track_occurrence_weekly(species_tracks_dt)
+  species_by_turbine_dt <- summarise_track_occurrence_by_turbine(species_tracks_dt)
+  species_by_cluster_stat   <- summarise_track_occurrence_by_cluster(species_tracks_dt, cluster_dt_stat)
+  species_by_cluster_manual <- summarise_track_occurrence_by_cluster(species_tracks_dt, cluster_dt_manual)
+
+  write_xlsx_local(
+    list(
+      Species_weekly            = species_weekly_dt,
+      Species_by_turbine        = species_by_turbine_dt,
+      Species_stat_cluster      = species_by_cluster_stat$by_cluster,
+      Species_stat_weekly       = species_by_cluster_stat$weekly,
+      Species_manual_cluster    = species_by_cluster_manual$by_cluster,
+      Species_manual_weekly     = species_by_cluster_manual$weekly
+    ),
+    file.path(folder_output, "track_species_clusters.xlsx")
+  )
+
+} else {message("track_dt_unfilt/curtl_dt_unfilt nao disponiveis ou run_sections$turbine_clustering = FALSE -- 10 saltada nesta ronda.")}
 
 
 ##

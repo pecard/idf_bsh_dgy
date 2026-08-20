@@ -20,7 +20,8 @@ run_sections <- list(
   curtailment_response   = TRUE,  # 3.5-3.7 (resposta a curtailments, shutdown time, safe distance) -- so corre se scada_dt tambem existir
   fatality_investigation = TRUE,  # 4 (tracks + disponibilidade + resposta na janela de cada incidente)
   coverage_3d             = FALSE,  # 5.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
-  min_individuals          = TRUE   # 6.4 (contagem minima de individuos por bin, farm-wide)
+  min_individuals          = TRUE,  # 6.4 (contagem minima de individuos por bin, farm-wide)
+  turbine_clustering       = TRUE   # 10 (clusters espaciais de turbinas: curtailments e tracks de especie) -- corre sobre o historico completo (_unfilt), pode ser mais lento
 )
 
 
@@ -364,3 +365,59 @@ response_timeline_unit <- "week"
 # `end`) -- nao e' o mesmo conceito de days_before da seccao "Fatality
 # investigation" (essa e' fixa, em torno de um incidente ja conhecido)
 recent_activity_days <- 14
+
+
+## -- 10. Turbine spatial/temporal clustering --
+##
+## 2 componentes, ver R/turbine_spatial_clusters.R,
+## R/curtailment_cluster_patterns.R, R/track_species_clusters.R:
+##   10.1 -- padroes espaciais/temporais de curtailments por cluster de
+##           turbinas (estatistico, por distancia, E manual, por setor),
+##           com o contributo marginal das turbinas de fatality_incidents
+##           (secção 4 acima) dentro do seu cluster
+##   10.2 -- ocorrencia de tracks de uma especie (Kestrel por omissao) por
+##           cluster de turbinas -- reutiliza os MESMOS clusters de 10.1
+##
+## Periodo (10.1): por omissao NULL = todo o periodo coberto por
+## curtl_dt_unfilt (nao so' a janela do relatorio) -- ajustar so' se for
+## preciso restringir.
+curtl_cluster_date_from <- NULL
+curtl_cluster_date_to   <- NULL
+
+# em metros; limiar de distancia "duro" para o cluster ESTATISTICO
+# (single-linkage -- 2 turbinas ficam no mesmo cluster se houver uma cadeia
+# de vizinhas, cada par consecutivo a <= este valor). AINDA POR CALIBRAR
+# com a geografia real da quinta -- ver cluster_threshold_sweep_m abaixo
+# (turbine_cluster_threshold_sensitivity(), nº de clusters + silhouette por
+# limiar) para escolher um valor defensavel em vez de arbitrario.
+cluster_max_dist_m <- 1500
+
+# vetor de limiares (m) para o sweep de sensibilidade acima
+cluster_threshold_sweep_m <- seq(200, 5000, by = 200)
+
+# nº de permutacoes no teste de validacao estatistica do contributo
+# marginal (permutation_test_marginal_contribution(), ver
+# R/curtailment_cluster_patterns.R)
+cluster_perm_n <- 999
+
+# Clusters MANUAIS (setores definidos a olho a partir do layout da quinta
+# -- desiguais em tamanho de proposito, representam um agrupamento espacial
+# coerente e nao um numero fixo de turbinas por setor)
+manual_turbine_clusters <- list(
+  Setor_A = c("BSH33", "BSH34", "BSH35", "BSH36", "BSH37", "BSH38", "BSH39", "BSH40"),
+  Setor_B = c("BSH41", "BSH42", "BSH43", "BSH44", "BSH45", "BSH46", "BSH47", "BSH48"),
+  Setor_C = c("BSH30", "BSH31", "BSH32"),
+  Setor_D = c("BSH16", "BSH17", "BSH18", "BSH19", "BSH20", "BSH21", "BSH22", "BSH23", "BSH24", "BSH25", "BSH26", "BSH27", "BSH28", "BSH29"),
+  Setor_E = c("BSH5", "BSH6", "BSH7", "BSH8", "BSH9", "BSH10", "BSH11", "BSH12", "BSH13", "BSH14", "BSH15"),
+  Setor_F = c("BSH1", "BSH2", "BSH3", "BSH4"),
+  Setor_G = c("BSH49", "BSH50", "BSH51", "BSH52", "BSH53", "BSH54", "BSH55", "BSH56", "BSH57", "BSH58", "BSH59", "BSH60"),
+  Setor_H = c("BSH61", "BSH62", "BSH63", "BSH64", "BSH65", "BSH66", "BSH67", "BSH68", "BSH70"),
+  Setor_I = c("BSH71", "BSH72", "BSH73", "BSH74", "BSH75", "BSH76", "BSH77", "BSH78", "BSH79", "BSH80")
+)
+
+## -- 10.2. Kestrel (ou outra especie) track occurrence por cluster --
+##
+## Especie(s) a analisar -- vetor, para permitir varias de uma vez;
+## Kestrel por omissao (unica nao-prioritaria com peso relevante no farm),
+## reutilizavel para outra especie no futuro so' mudando este parametro
+cluster_species_sel <- c("Kestrel")
