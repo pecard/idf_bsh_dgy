@@ -386,14 +386,28 @@ curtl_cluster_date_to   <- NULL
 
 # em metros; limiar de distancia "duro" para o cluster ESTATISTICO
 # (single-linkage -- 2 turbinas ficam no mesmo cluster se houver uma cadeia
-# de vizinhas, cada par consecutivo a <= este valor). AINDA POR CALIBRAR
-# com a geografia real da quinta -- ver cluster_threshold_sweep_m abaixo
-# (turbine_cluster_threshold_sensitivity(), nº de clusters + silhouette por
-# limiar) para escolher um valor defensavel em vez de arbitrario.
-cluster_max_dist_m <- 1500
+# de vizinhas, cada par consecutivo a <= este valor).
+#
+# Distancia real entre turbinas consecutivas no Bash: ~560m (confirmado
+# pelo Paulo). Isto importa MUITO para single-linkage: qualquer limiar
+# acima de ~560m ja liga turbinas consecutivas, e por chaining transitivo
+# (A-B<=limiar E B-C<=limiar => A,C no mesmo cluster mesmo que A-C>limiar)
+# um limiar generoso pode encadear uma fiada INTEIRA de turbinas num so
+# cluster gigante, mesmo que o objetivo fosse separar setores. 650m fica
+# logo acima do espacamento tipico (liga vizinhos diretos de uma fiada,
+# sem inflacionar mais o limiar do que o necessario), mas e' so' um ponto
+# de partida -- usar SEMPRE a tabela de sweep abaixo
+# (turbine_cluster_threshold_sensitivity(): nº de clusters + silhouette por
+# limiar) antes de confiar no resultado, e comparar o nº de clusters obtido
+# com o nº de setores manuais (9, manual_turbine_clusters abaixo) como
+# referencia de plausibilidade -- se o estatistico colapsar para 1-2
+# clusters gigantes bem abaixo do manual, e' sinal de chaining a mais.
+cluster_max_dist_m <- 650
 
-# vetor de limiares (m) para o sweep de sensibilidade acima
-cluster_threshold_sweep_m <- seq(200, 5000, by = 200)
+# vetor de limiares (m) para o sweep de sensibilidade acima -- resolucao
+# fina a volta da escala critica (560m, o espacamento real) para conseguir
+# ver ONDE e' que o chaining comeca a colapsar clusters entre si
+cluster_threshold_sweep_m <- seq(400, 3000, by = 100)
 
 # nº de permutacoes no teste de validacao estatistica do contributo
 # marginal (permutation_test_marginal_contribution(), ver
@@ -402,7 +416,9 @@ cluster_perm_n <- 999
 
 # Clusters MANUAIS (setores definidos a olho a partir do layout da quinta
 # -- desiguais em tamanho de proposito, representam um agrupamento espacial
-# coerente e nao um numero fixo de turbinas por setor)
+# coerente e nao um numero fixo de turbinas por setor).
+# Nota: BSH69 nao existe -- a numeracao das turbinas salta mesmo de BSH68
+# para BSH70 (confirmado, nao e' uma turbina em falta desta lista).
 manual_turbine_clusters <- list(
   Setor_A = c("BSH33", "BSH34", "BSH35", "BSH36", "BSH37", "BSH38", "BSH39", "BSH40"),
   Setor_B = c("BSH41", "BSH42", "BSH43", "BSH44", "BSH45", "BSH46", "BSH47", "BSH48"),
