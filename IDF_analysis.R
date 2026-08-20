@@ -1094,17 +1094,25 @@ if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
 
 } else {message("run_sections$coverage_3d = FALSE ou DEM nao disponivel -- 5.2 saltada nesta ronda.")}
 
-plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
-                             coverage_cylinder_height)
+## Plots interativos de turbinas especificas, so' quando cov_all foi mesmo
+## (re)criado nesta ronda -- caso contrario "object 'cov_all' not found"
+## (cov_all so' existe dentro do if acima; se run_sections$coverage_3d =
+## FALSE ou o DEM nao existir, nao ha cov_all para usar aqui)
+if (exists("cov_all")) {
 
-plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius, 
-                             coverage_cylinder_height, not_covered = TRUE)
+  plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
+                               coverage_cylinder_height)
 
-plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
-                             coverage_cylinder_height)
+  plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
+                               coverage_cylinder_height, not_covered = TRUE)
 
-plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius, 
-                             coverage_cylinder_height, not_covered = TRUE)
+  plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
+                               coverage_cylinder_height)
+
+  plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
+                               coverage_cylinder_height, not_covered = TRUE)
+
+} else {message("cov_all nao disponivel nesta ronda -- plots individuais BSH61/BSH14 saltados.")}
 
 ##
 ## 6. Biological (supporting info) ----
