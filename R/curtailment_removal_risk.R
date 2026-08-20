@@ -140,14 +140,22 @@ summarise_curtailment_removal_risk <- function(removal_dt) {
 
   n_total <- nrow(removal_dt)
 
+  # protected_by_reclassification e' TRUE sse existe alguma deteccao
+  # prioritaria DEPOIS do disparo -- por construcao, isso e' exatamente
+  # "sob a nova politica, uma curtailment de substituicao teria disparado
+  # nessa reclassificacao" (a assuncao contrafactual simples acordada com
+  # o Paulo). Nao ha' um 3º balde "com prioritaria a seguir mas mesmo assim
+  # sem proteccao" -- so' ha 2 grupos: n_with_later_priority (precisa de
+  # escrutinio, ver gap_stats) e o complementar (n_total - n_with_later_priority,
+  # genuinamente nunca-prioritario, remover sem custo biologico plausivel).
   overview <- data.table::data.table(
-    n_events_removed              = n_total,
-    n_tracks_affected             = data.table::uniqueN(removal_dt$track_id),
-    n_with_later_priority         = sum(removal_dt$protected_by_reclassification, na.rm = TRUE),
-    n_unprotected_if_removed      = sum(!removal_dt$protected_by_reclassification)
+    n_events_removed      = n_total,
+    n_tracks_affected     = data.table::uniqueN(removal_dt$track_id),
+    n_with_later_priority = sum(removal_dt$protected_by_reclassification, na.rm = TRUE)
   )
-  overview[, pct_with_later_priority    := round(100 * n_with_later_priority / n_total, 1)]
-  overview[, pct_unprotected_if_removed := round(100 * n_unprotected_if_removed / n_total, 1)]
+  overview[, n_never_priority      := n_events_removed - n_with_later_priority]
+  overview[, pct_with_later_priority := round(100 * n_with_later_priority / n_total, 1)]
+  overview[, pct_never_priority      := round(100 * n_never_priority / n_total, 1)]
 
   protected <- removal_dt[protected_by_reclassification == TRUE]
 
@@ -208,12 +216,8 @@ print_curtailment_removal_risk_summary <- function(removal_summary, removed_spec
     ov$n_with_later_priority, format(ov$pct_with_later_priority, nsmall = 1)
   ))
   cat(sprintf(
-    "  %d (%s%%) NEVER showed a priority species after -- safe to remove, no protection lost.\n",
-    ov$n_events_removed - ov$n_with_later_priority, format(100 - ov$pct_with_later_priority, nsmall = 1)
-  ))
-  cat(sprintf(
-    "  Of the %d needing scrutiny: %d (%s%% of ALL removed events) would leave the track with NO curtailment at all under the new policy -- most critical bucket.\n",
-    ov$n_with_later_priority, ov$n_unprotected_if_removed, format(ov$pct_unprotected_if_removed, nsmall = 1)
+    "  %d (%s%%) NEVER showed a priority species after -- genuinely non-priority, safe to remove, no biological cost.\n",
+    ov$n_never_priority, format(ov$pct_never_priority, nsmall = 1)
   ))
 
   gs <- removal_summary$gap_stats

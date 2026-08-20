@@ -109,7 +109,7 @@ print(removal_summary$overview)
 cat(paste(
   "\nEsperado: n_events_removed=6, n_tracks_affected=5 (R4 conta 1 vez apesar",
   "de 2 eventos), n_with_later_priority=5 (todos exceto R3), pct=83.3%,",
-  "n_unprotected_if_removed=1 (so' R3), pct=16.7%.\n"
+  "n_never_priority=1 (so' R3, genuinamente nunca-prioritario), pct=16.7%.\n"
 ))
 
 cat("\n===== summarise_curtailment_removal_risk()$gap_stats =====\n")
