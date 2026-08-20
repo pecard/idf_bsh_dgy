@@ -745,7 +745,8 @@ if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt")) {
 
 } else {message("track_dt_unfilt/curtl_dt_unfilt nao disponiveis -- curtailment removal risk saltada nesta ronda.")}
 
-
+golden_eagle_cases <- curtailment_removal_case_detail(removal_dt, curtl_dt_unfilt, "Golden-Eagle")
+print(golden_eagle_cases)
 
 ### 3.3. Species-specific curtailment ----
 ## Migrado de scripts_IDF/curtailments_species.R -- ver R/curtailment_species.R
