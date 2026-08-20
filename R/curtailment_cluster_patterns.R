@@ -21,7 +21,7 @@
 ## so' a janela do relatorio) -- ajustavel via curtl_cluster_date_from/to em
 ## userSettings_BSH.R se for preciso restringir.
 ##
-## Depende de: data.table, lubridate
+## Depende de: data.table, lubridate, ggplot2
 ##
 ## Uso:
 ##   source("R/curtailment_cluster_patterns.R")
@@ -31,6 +31,9 @@
 ##   cluster_weekly_dt   <- summarise_cluster_curtailments_weekly(curtl_cl_dt)
 ##   marginal_dt         <- summarise_turbine_marginal_contribution(curtl_cl_dt, fatality_incidents$turbine)
 ##   perm_dt             <- permutation_test_marginal_contribution_all(curtl_cl_dt, fatality_incidents$turbine)
+##
+##   p1 <- plot_cluster_curtailments_total(cluster_summary, highlight_clusters = marginal_dt$cluster_id)
+##   p2 <- plot_cluster_curtailments_weekly(cluster_weekly_dt, highlight_clusters = marginal_dt$cluster_id)
 ##
 
 ## 1. Juntar cluster_id aos curtailments, por turbina ----
@@ -187,4 +190,38 @@ permutation_test_marginal_contribution_all <- function(curtl_cl_dt, turbine_ids,
   data.table::rbindlist(lapply(turbine_ids, function(tb) {
     permutation_test_marginal_contribution(curtl_cl_dt, tb, n_perm = n_perm, seed = seed)
   }))
+}
+
+
+## 6. Plots -- totais por cluster (periodo completo) e evolucao semanal por
+##    cluster, com os clusters das turbinas de interesse destacados a
+##    vermelho (highlight_clusters) para se ver logo a olho onde ficam
+##    dentro da distribuicao geral
+
+plot_cluster_curtailments_total <- function(cluster_summary, highlight_clusters = NULL, title = "Curtailments por cluster (periodo completo)") {
+
+  dt <- data.table::copy(cluster_summary$by_cluster)
+  data.table::setorder(dt, -n_total)
+  dt[, cluster_id := factor(cluster_id, levels = cluster_id)]
+  dt[, highlight := cluster_id %in% highlight_clusters]
+
+  ggplot2::ggplot(dt, ggplot2::aes(x = cluster_id, y = n_total, fill = highlight)) +
+    ggplot2::geom_col() +
+    ggplot2::scale_fill_manual(values = c(`TRUE` = "firebrick", `FALSE` = "steelblue"), guide = "none") +
+    ggplot2::labs(x = "Cluster", y = "Total de curtailments", title = title) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+}
+
+
+plot_cluster_curtailments_weekly <- function(cluster_weekly_dt, highlight_clusters = NULL, title = "Curtailments semanais por cluster") {
+
+  dt <- cluster_weekly_dt[, .(n = sum(n)), by = .(cluster_id, period)]
+  dt[, is_highlight := cluster_id %in% highlight_clusters]
+
+  ggplot2::ggplot(dt, ggplot2::aes(x = period, y = n, color = cluster_id, linewidth = is_highlight, group = cluster_id)) +
+    ggplot2::geom_line() +
+    ggplot2::scale_linewidth_manual(values = c(`TRUE` = 1.3, `FALSE` = 0.5), guide = "none") +
+    ggplot2::labs(x = "Semana", y = "Curtailments", color = "Cluster", title = title) +
+    ggplot2::theme_minimal()
 }

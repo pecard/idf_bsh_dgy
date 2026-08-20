@@ -99,9 +99,9 @@ by_cluster_out <- summarise_track_occurrence_by_cluster(tracks_assigned_dt, clus
 cat("\n===== summarise_track_occurrence_by_cluster()$by_cluster =====\n")
 print(by_cluster_out$by_cluster)
 cat(paste(
-  "\nEsperado: Grupo_X n_tracks=2 (KT1 em T1 + KT4 em T3), 66.7% do total;",
-  "Grupo_Y n_tracks=1 (KT2 em T4), 33.3%. Grupo_Z nao aparece (T6 sem",
-  "tracks atribuidos).\n"
+  "\nEsperado: Grupo_X n_tracks=2 (KT1 em T1 + KT4 em T3), 66.7% do total,",
+  "cluster_rank=1; Grupo_Y n_tracks=1 (KT2 em T4), 33.3%, cluster_rank=2.",
+  "Grupo_Z nao aparece (T6 sem tracks atribuidos).\n"
 ))
 
 cat("\n===== summarise_track_occurrence_by_cluster()$weekly =====\n")
@@ -109,4 +109,26 @@ print(by_cluster_out$weekly)
 cat(paste(
   "\nEsperado: 3 linhas -- Grupo_X/semana-04-01 n=1 (KT1), Grupo_X/semana-04-20",
   "n=1 (KT4), Grupo_Y/semana-04-01 n=1 (KT2).\n"
+))
+
+## ---- summarise_turbine_species_cluster_rank() ----
+## T1 esta no Grupo_X (o cluster mais ativo, n=2, rank=1). T5 esta no
+## Grupo_Y (n=1, rank=2) -- T5 em si nao tem NENHUM track atribuido (so' T4
+## tem, dentro do Grupo_Y), mas o que importa aqui e' a atividade do
+## CLUSTER inteiro, nao da turbina especifica. T6 esta no Grupo_Z, que nao
+## tem NENHUM track atribuido a nenhuma das suas turbinas -- fica um caso
+## a parte (cluster existe, mas ausente de by_cluster).
+
+rank_dt <- summarise_turbine_species_cluster_rank(tracks_assigned_dt, cluster_dt_test, c("T1", "T5", "T6"))
+cat("\n===== summarise_turbine_species_cluster_rank() =====\n")
+print(rank_dt)
+cat(paste(
+  "\nEsperado: T1 -> cluster_id=Grupo_X, track_n_tracks=2,",
+  "track_pct_of_total=66.7, track_cluster_rank=1, track_n_clusters=2.\n",
+  "T5 -> cluster_id=Grupo_Y, track_n_tracks=1, track_pct_of_total=33.3,",
+  "track_cluster_rank=2, track_n_clusters=2 (o track e' do T4, mas conta",
+  "para o cluster do T5 porque estao no mesmo Grupo_Y).\n",
+  "T6 -> cluster_id=Grupo_Z, track_n_tracks=0, track_pct_of_total=0,",
+  "track_cluster_rank=NA (Grupo_Z nao aparece em by_cluster, 0 tracks),",
+  "track_n_clusters=2.\n"
 ))

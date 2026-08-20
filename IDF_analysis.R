@@ -1368,6 +1368,11 @@ if (!exists("track_dt_unfilt")) {
   cluster_sens_dt   <- turbine_cluster_threshold_sensitivity(turbine_dist_mat, thresholds_m = cluster_threshold_sweep_m)
   cluster_dt_manual <- manual_turbine_clusters_dt(manual_turbine_clusters)
 
+  # clusters que contem as turbinas de fatality_incidents -- para destacar
+  # nos plots (a vermelho) em vez de ter de os procurar a olho na legenda
+  highlight_clusters_stat   <- unique(cluster_dt_stat[turbine %in% fatality_incidents$turbine, cluster_id])
+  highlight_clusters_manual <- unique(cluster_dt_manual[turbine %in% fatality_incidents$turbine, cluster_id])
+
 
   ### 10.1. Curtailments por cluster de turbinas (estatistico + manual) ----
 
@@ -1422,10 +1427,47 @@ if (!exists("track_dt_unfilt")) {
     file.path(folder_output, "curtailment_cluster_patterns.xlsx")
   )
 
+  p_curtl_stat_total <- plot_cluster_curtailments_total(
+    cluster_summary_stat, highlight_clusters = highlight_clusters_stat,
+    title = "Curtailments por cluster estatistico (periodo completo)"
+  )
+  ggsave(
+    file.path(folder_output, "cluster_curtailments_stat_total.png"),
+    plot = p_curtl_stat_total, width = 8, height = 5, dpi = 300, bg = "white"
+  )
+
+  p_curtl_stat_weekly <- plot_cluster_curtailments_weekly(
+    cluster_weekly_stat_dt, highlight_clusters = highlight_clusters_stat,
+    title = "Curtailments semanais por cluster estatistico"
+  )
+  ggsave(
+    file.path(folder_output, "cluster_curtailments_stat_weekly.png"),
+    plot = p_curtl_stat_weekly, width = 9, height = 5, dpi = 300, bg = "white"
+  )
+
+  p_curtl_manual_total <- plot_cluster_curtailments_total(
+    cluster_summary_manual, highlight_clusters = highlight_clusters_manual,
+    title = "Curtailments por setor manual (periodo completo)"
+  )
+  ggsave(
+    file.path(folder_output, "cluster_curtailments_manual_total.png"),
+    plot = p_curtl_manual_total, width = 8, height = 5, dpi = 300, bg = "white"
+  )
+
+  p_curtl_manual_weekly <- plot_cluster_curtailments_weekly(
+    cluster_weekly_manual_dt, highlight_clusters = highlight_clusters_manual,
+    title = "Curtailments semanais por setor manual"
+  )
+  ggsave(
+    file.path(folder_output, "cluster_curtailments_manual_weekly.png"),
+    plot = p_curtl_manual_weekly, width = 9, height = 5, dpi = 300, bg = "white"
+  )
+
 
   ### 10.2. Ocorrencia de tracks de especie por cluster de turbinas ----
 
   species_tracks_dt <- assign_tracks_to_nearest_turbine(track_dt_unfilt, wtg, species_sel = cluster_species_sel)
+  species_label_txt  <- paste(cluster_species_sel, collapse = "/")
 
   species_weekly_dt     <- summarise_track_occurrence_weekly(species_tracks_dt)
   species_by_turbine_dt <- summarise_track_occurrence_by_turbine(species_tracks_dt)
@@ -1442,6 +1484,69 @@ if (!exists("track_dt_unfilt")) {
       Species_manual_weekly     = species_by_cluster_manual$weekly
     ),
     file.path(folder_output, "track_species_clusters.xlsx")
+  )
+
+  p_species_weekly <- plot_species_occurrence_weekly(species_weekly_dt, species_label = species_label_txt)
+  ggsave(
+    file.path(folder_output, "species_occurrence_weekly.png"),
+    plot = p_species_weekly, width = 9, height = 4, dpi = 300, bg = "white"
+  )
+
+  p_species_stat_total <- plot_cluster_species_total(
+    species_by_cluster_stat, highlight_clusters = highlight_clusters_stat, species_label = species_label_txt
+  )
+  ggsave(
+    file.path(folder_output, "cluster_species_stat_total.png"),
+    plot = p_species_stat_total, width = 8, height = 5, dpi = 300, bg = "white"
+  )
+
+  p_species_stat_weekly <- plot_cluster_species_weekly(
+    species_by_cluster_stat, highlight_clusters = highlight_clusters_stat, species_label = species_label_txt
+  )
+  ggsave(
+    file.path(folder_output, "cluster_species_stat_weekly.png"),
+    plot = p_species_stat_weekly, width = 9, height = 5, dpi = 300, bg = "white"
+  )
+
+  p_species_manual_total <- plot_cluster_species_total(
+    species_by_cluster_manual, highlight_clusters = highlight_clusters_manual, species_label = species_label_txt
+  )
+  ggsave(
+    file.path(folder_output, "cluster_species_manual_total.png"),
+    plot = p_species_manual_total, width = 8, height = 5, dpi = 300, bg = "white"
+  )
+
+  p_species_manual_weekly <- plot_cluster_species_weekly(
+    species_by_cluster_manual, highlight_clusters = highlight_clusters_manual, species_label = species_label_txt
+  )
+  ggsave(
+    file.path(folder_output, "cluster_species_manual_weekly.png"),
+    plot = p_species_manual_weekly, width = 9, height = 5, dpi = 300, bg = "white"
+  )
+
+
+  ### 10.3. Sumario "zona critica" -- comparacao expedita por turbina de
+  ###       interesse: cluster com muitos curtailments E muito movimento
+  ###       da especie, para estatistico e manual ----
+
+  source("R/turbine_critical_zone_summary.R")
+
+  species_cluster_rank_stat_dt <- summarise_turbine_species_cluster_rank(
+    species_tracks_dt, cluster_dt_stat, fatality_incidents$turbine
+  )
+  species_cluster_rank_manual_dt <- summarise_turbine_species_cluster_rank(
+    species_tracks_dt, cluster_dt_manual, fatality_incidents$turbine
+  )
+
+  critical_zone_stat_dt   <- summarise_turbine_critical_zone(marginal_stat_dt, species_cluster_rank_stat_dt)
+  critical_zone_manual_dt <- summarise_turbine_critical_zone(marginal_manual_dt, species_cluster_rank_manual_dt)
+
+  write_xlsx_local(
+    list(
+      Critical_zone_statistical = critical_zone_stat_dt,
+      Critical_zone_manual      = critical_zone_manual_dt
+    ),
+    file.path(folder_output, "turbine_critical_zone_summary.xlsx")
   )
 
 }

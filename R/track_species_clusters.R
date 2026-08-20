@@ -27,7 +27,7 @@
 ## pratica nao ha tracks noturnos neste projeto, por isso um track quase
 ## nunca atravessa a fronteira de uma semana.
 ##
-## Depende de: data.table, sf, RANN, lubridate
+## Depende de: data.table, sf, RANN, lubridate, ggplot2
 ##
 ## Uso:
 ##   source("R/track_species_clusters.R")
@@ -36,6 +36,11 @@
 ##   weekly_dt           <- summarise_track_occurrence_weekly(tracks_assigned_dt)
 ##   by_turbine_dt        <- summarise_track_occurrence_by_turbine(tracks_assigned_dt)
 ##   by_cluster_out       <- summarise_track_occurrence_by_cluster(tracks_assigned_dt, cluster_dt)
+##   rank_dt              <- summarise_turbine_species_cluster_rank(tracks_assigned_dt, cluster_dt, fatality_incidents$turbine)
+##
+##   p1 <- plot_species_occurrence_weekly(weekly_dt)
+##   p2 <- plot_cluster_species_total(by_cluster_out, highlight_clusters = rank_dt$cluster_id)
+##   p3 <- plot_cluster_species_weekly(by_cluster_out, highlight_clusters = rank_dt$cluster_id)
 ##
 
 ## 1. Atribuir cada track a UMA turbina (mais proxima no ponto de maior
@@ -119,7 +124,8 @@ summarise_track_occurrence_by_turbine <- function(tracks_assigned_dt) {
 summarise_track_occurrence_by_cluster <- function(tracks_assigned_dt, cluster_dt, unit = "week") {
 
   empty_out <- list(
-    by_cluster = data.table::data.table(cluster_id = character(), n_tracks = integer(), pct_of_total = numeric()),
+    by_cluster = data.table::data.table(cluster_id = character(), n_tracks = integer(),
+                                         pct_of_total = numeric(), cluster_rank = integer()),
     weekly     = data.table::data.table(cluster_id = character(), period = as.Date(character()), n_tracks = integer())
   )
   if (nrow(tracks_assigned_dt) == 0L) return(empty_out)
@@ -133,10 +139,99 @@ summarise_track_occurrence_by_cluster <- function(tracks_assigned_dt, cluster_dt
   by_cluster <- dt[, .(n_tracks = .N), by = cluster_id]
   by_cluster[, pct_of_total := round(100 * n_tracks / n_total, 1)]
   data.table::setorder(by_cluster, -n_tracks)
+  by_cluster[, cluster_rank := seq_len(.N)]
 
   dt[, period := lubridate::floor_date(as.Date(start_time, tz = attr(start_time, "tzone")), unit = unit)]
   weekly <- dt[, .(n_tracks = .N), by = .(cluster_id, period)]
   data.table::setorder(weekly, cluster_id, period)
 
   list(by_cluster = by_cluster[], weekly = weekly[])
+}
+
+
+## 5. Ranking do cluster de atividade da especie para turbinas de interesse
+##    -- em que posicao fica o cluster de cada turbina de fatalidade, no
+##    ranking de atividade da especie entre todos os clusters (nao e' o
+##    nº de tracks atribuidos a ESSA turbina especificamente, e' a
+##    atividade do CLUSTER inteiro em que ela esta -- a pergunta e' "esta
+##    turbina fica numa zona de muito movimento desta especie?")
+summarise_turbine_species_cluster_rank <- function(tracks_assigned_dt, cluster_dt, turbines_of_interest) {
+
+  by_cluster_out <- summarise_track_occurrence_by_cluster(tracks_assigned_dt, cluster_dt)
+  by_cluster <- by_cluster_out$by_cluster
+
+  turbine_cluster <- cluster_dt[turbine %in% turbines_of_interest]
+
+  res <- lapply(turbines_of_interest, function(tb) {
+    cl_row <- turbine_cluster[turbine == tb]
+    if (nrow(cl_row) == 0L) {
+      return(data.table::data.table(
+        turbine = tb, cluster_id = NA_character_, track_n_tracks = NA_integer_,
+        track_pct_of_total = NA_real_, track_cluster_rank = NA_integer_, track_n_clusters = NA_integer_
+      ))
+    }
+    cl_id <- cl_row$cluster_id[1]
+    cl_summary <- by_cluster[cluster_id == cl_id]
+    if (nrow(cl_summary) == 0L) {
+      # cluster existe mas sem NENHUM track atribuido -- zona sem atividade
+      # registada da especie, nao e' um erro
+      return(data.table::data.table(
+        turbine = tb, cluster_id = cl_id, track_n_tracks = 0L,
+        track_pct_of_total = 0, track_cluster_rank = NA_integer_, track_n_clusters = nrow(by_cluster)
+      ))
+    }
+    data.table::data.table(
+      turbine = tb, cluster_id = cl_id, track_n_tracks = cl_summary$n_tracks,
+      track_pct_of_total = cl_summary$pct_of_total, track_cluster_rank = cl_summary$cluster_rank,
+      track_n_clusters = nrow(by_cluster)
+    )
+  })
+
+  data.table::rbindlist(res)
+}
+
+
+## 6. Plots -- ocorrencia semanal farm-wide, totais por cluster (periodo
+##    completo) e evolucao semanal por cluster, com os clusters das
+##    turbinas de interesse destacados
+
+plot_species_occurrence_weekly <- function(weekly_dt, species_label = "Kestrel") {
+
+  ggplot2::ggplot(weekly_dt, ggplot2::aes(x = period, y = n_tracks)) +
+    ggplot2::geom_line(color = "steelblue") +
+    ggplot2::geom_point(color = "steelblue") +
+    ggplot2::labs(x = "Semana", y = "Nº de tracks",
+                  title = sprintf("Ocorrencia semanal de tracks -- %s (farm-wide)", species_label)) +
+    ggplot2::theme_minimal()
+}
+
+
+plot_cluster_species_total <- function(by_cluster_out, highlight_clusters = NULL, species_label = "Kestrel") {
+
+  dt <- data.table::copy(by_cluster_out$by_cluster)
+  data.table::setorder(dt, -n_tracks)
+  dt[, cluster_id := factor(cluster_id, levels = cluster_id)]
+  dt[, highlight := cluster_id %in% highlight_clusters]
+
+  ggplot2::ggplot(dt, ggplot2::aes(x = cluster_id, y = n_tracks, fill = highlight)) +
+    ggplot2::geom_col() +
+    ggplot2::scale_fill_manual(values = c(`TRUE` = "firebrick", `FALSE` = "darkgreen"), guide = "none") +
+    ggplot2::labs(x = "Cluster", y = "Nº de tracks",
+                  title = sprintf("Tracks por cluster -- %s (periodo completo)", species_label)) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+}
+
+
+plot_cluster_species_weekly <- function(by_cluster_out, highlight_clusters = NULL, species_label = "Kestrel") {
+
+  dt <- data.table::copy(by_cluster_out$weekly)
+  dt[, is_highlight := cluster_id %in% highlight_clusters]
+
+  ggplot2::ggplot(dt, ggplot2::aes(x = period, y = n_tracks, color = cluster_id, linewidth = is_highlight, group = cluster_id)) +
+    ggplot2::geom_line() +
+    ggplot2::scale_linewidth_manual(values = c(`TRUE` = 1.3, `FALSE` = 0.5), guide = "none") +
+    ggplot2::labs(x = "Semana", y = "Nº de tracks", color = "Cluster",
+                  title = sprintf("Tracks semanais por cluster -- %s", species_label)) +
+    ggplot2::theme_minimal()
 }
