@@ -98,6 +98,7 @@
 ##   # em geral e so' para tracks com curtailment -- ver secção dedicada
 ##   # mais abaixo no ficheiro
 ##   confusion_summary <- summarise_species_confusion(track_dt, richness_dt, curtl_dt, "Kestrel")
+##   print_species_confusion_summary(confusion_summary, "Kestrel")
 ##
 
 ##
@@ -695,4 +696,50 @@ plot_species_confusion_involving <- function(confusion_involving_dt, species_of_
     ggplot2::labs(x = "Other species in the same track", y = "Number of tracks", title = title) +
     ggplot2::theme_minimal() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
+}
+
+
+## 6. Resumo em texto para consola -- leitura rapida do essencial sem abrir
+##    o xlsx (rate geral vs curtailments + top confusoes das 2 vistas).
+##    Nao devolve nada de util (invisible) -- e' so' para o efeito no ecra.
+print_species_confusion_summary <- function(confusion_summary, species_of_interest) {
+
+  rc          <- confusion_summary$rate_compare
+  general_row <- rc[scope == "all_tracks"]
+  curtl_row   <- rc[scope == "curtailment_tracks"]
+
+  cat(sprintf("\n===== Species confusion summary: %s =====\n", species_of_interest))
+
+  cat(sprintf(
+    "\nAll tracks:         %d tracks ever classified as %s -- %d pure, %d confused (%s%% confused)\n",
+    general_row$n_tracks_total, species_of_interest,
+    general_row$n_tracks_pure, general_row$n_tracks_confused,
+    format(general_row$pct_confused, nsmall = 1)
+  ))
+  cat(sprintf(
+    "Curtailment tracks: %d tracks ever classified as %s -- %d pure, %d confused (%s%% confused)\n",
+    curtl_row$n_tracks_total, species_of_interest,
+    curtl_row$n_tracks_pure, curtl_row$n_tracks_confused,
+    format(curtl_row$pct_confused, nsmall = 1)
+  ))
+
+  print_pairs <- function(dt, label) {
+    cat(sprintf("\n%s:\n", label))
+    if (nrow(dt) == 0L) {
+      cat("  (no confusion recorded)\n")
+      return(invisible(NULL))
+    }
+    for (i in seq_len(nrow(dt))) {
+      cat(sprintf(
+        "  %-20s %4d tracks (%s%% of multi-ID tracks in this scope)\n",
+        dt$other_species[i], dt$n_tracks[i], format(dt$pct_of_multi_id_tracks[i], nsmall = 1)
+      ))
+    }
+    invisible(NULL)
+  }
+
+  print_pairs(confusion_summary$confusion_general, "Confused with -- all tracks")
+  print_pairs(confusion_summary$confusion_curtailments, "Confused with -- curtailment tracks")
+
+  invisible(NULL)
 }

@@ -664,6 +664,7 @@ if (exists("track_dt") && exists("curtl_dt")) {
   id_confusion_summary <- summarise_species_confusion(
     track_dt, id_richness_dt, curtl_dt, id_confusion_species_of_interest
   )
+  print_species_confusion_summary(id_confusion_summary, id_confusion_species_of_interest)
 
   write_xlsx_local(
     list(

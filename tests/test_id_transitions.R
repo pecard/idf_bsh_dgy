@@ -493,3 +493,12 @@ cat(paste(
   "que a funcao de conveniencia junta exatamente os resultados ja",
   "verificados em separado nesta Parte F.\n"
 ))
+
+cat("\n===== print_species_confusion_summary() =====\n")
+print_species_confusion_summary(confusion_summary_test, "Kestrel")
+cat(paste(
+  "\nEsperado: os mesmos numeros impressos acima (5/2/3/60.0%, 3/1/2/66.7%),",
+  "so' formatados em texto corrido -- confirmar que nao da erro e que",
+  "Steppe-Eagle/Common-Buzzard aparecem nas 2 listas de 'Confused with'",
+  "com as contagens certas.\n"
+))
