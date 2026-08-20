@@ -44,7 +44,11 @@
 assign_tracks_to_nearest_turbine <- function(track_dt, wtg_sf, species_sel = "Kestrel", wtg_id_col = "InternalNa") {
 
   turbines   <- wtg_sf[[wtg_id_col]]
-  wtg_coords <- sf::st_coordinates(wtg_sf)
+  # st_coordinates() devolve X,Y,Z se a geometria de wtg_sf for 3D (ver nota
+  # em R/turbine_spatial_clusters.R) -- RANN::nn2() exige que data/query
+  # tenham o mesmo nº de colunas, e pts so' tem utm_x/utm_y (2D), por isso
+  # selecionar so' X,Y aqui explicitamente
+  wtg_coords <- sf::st_coordinates(wtg_sf)[, c("X", "Y")]
 
   empty <- data.table::data.table(
     track_id = character(), spec = character(), start_time = as.POSIXct(character()),

@@ -46,7 +46,12 @@
 
 turbine_distance_matrix <- function(wtg_sf, wtg_id_col = "InternalNa") {
 
-  coords   <- sf::st_coordinates(wtg_sf)
+  # st_coordinates() devolve X,Y,Z se a geometria de wtg_sf for 3D (o
+  # shapefile de turbinas tem elevacao, usada na cobertura 3D --
+  # R/coverage_3d_topography.R ja indexa por nome "X"/"Y" pela mesma razao)
+  # -- selecionar so' X,Y explicitamente para garantir distancia horizontal
+  # 2D, nao 3D (que incluiria a diferenca de elevacao entre turbinas)
+  coords   <- sf::st_coordinates(wtg_sf)[, c("X", "Y")]
   turbines <- wtg_sf[[wtg_id_col]]
 
   d <- as.matrix(stats::dist(coords, method = "euclidean"))
