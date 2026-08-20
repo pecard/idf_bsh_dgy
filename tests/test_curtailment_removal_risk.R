@@ -135,3 +135,19 @@ cat(paste(
 cat("\n===== print_curtailment_removal_risk_summary() =====\n")
 print_curtailment_removal_risk_summary(removal_summary, "Kestrel")
 cat("\nEsperado: os mesmos numeros acima, so' formatados em texto corrido -- confirmar que nao da erro.\n")
+
+## ---- curtailment_removal_case_detail() ----
+## Steppe-Eagle so' tem 1 evento (R2) -- mais simples para conferir a mao
+## que a linha COMPLETA de curtl_dt_test volta, com as colunas extra do
+## removal_dt anexadas
+
+case_detail_dt <- curtailment_removal_case_detail(removal_dt, curtl_dt_test, "Steppe-Eagle")
+cat("\n===== curtailment_removal_case_detail('Steppe-Eagle') =====\n")
+print(case_detail_dt)
+cat(paste(
+  "\nEsperado: 1 linha -- track_id=R2, turbine=TESTRM1, species=Kestrel,",
+  "start=t0(10)+20s (a curtailment original completa, com TODAS as colunas",
+  "de curtl_dt_test), mais next_priority_ts=t0(10)+200s,",
+  "next_priority_species=Steppe-Eagle, x2d_at_curtailment=550,",
+  "dist_at_next_priority=100, time_gap_sec=180, dist_gap_m=450.\n"
+))

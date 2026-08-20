@@ -59,6 +59,9 @@
 ##   p1 <- plot_removal_time_gap(removal_dt)
 ##   p2 <- plot_removal_dist_gap(removal_dt, threshold_m = track_proximity_threshold_m)
 ##
+##   # linhas completas de curtl_dt para inspecao/defesa de um caso concreto
+##   golden_eagle_cases <- curtailment_removal_case_detail(removal_dt, curtl_dt, "Golden-Eagle")
+##
 
 ## 1. Evento a evento: distancia no momento do disparo (removed_species) e
 ##    a 1ª deteccao prioritaria a seguir no mesmo track (se houver) ----
@@ -281,4 +284,32 @@ plot_removal_dist_gap <- function(removal_dt, threshold_m = 100, xlim_max = 500)
       title = "Distance gap if curtailment moved to the priority reclassification"
     ) +
     ggplot2::theme_minimal()
+}
+
+
+## 5. Detalhe caso a caso -- linhas COMPLETAS de curtl_dt (todas as colunas
+##    originais, nao so' o subconjunto usado em evaluate_curtailment_removal_risk())
+##    para os eventos filtrados, tipicamente por next_priority_species --
+##    mesmo raciocinio de id_transition_late_cases() em R/id_transitions.R:
+##    ir da contagem agregada para os casos concretos, para inspecao manual
+##    ou para defender um caso especifico perante o cliente/financiadores.
+##    next_priority_species_sel = NULL devolve TODOS os eventos com
+##    protected_by_reclassification == TRUE (nao so' um subconjunto)
+curtailment_removal_case_detail <- function(removal_dt, curtl_dt, next_priority_species_sel = NULL) {
+
+  curtl_dt <- data.table::as.data.table(curtl_dt)
+
+  cases <- removal_dt[protected_by_reclassification == TRUE]
+  if (!is.null(next_priority_species_sel)) {
+    cases <- cases[next_priority_species %in% next_priority_species_sel]
+  }
+  if (nrow(cases) == 0L) return(curtl_dt[0])
+
+  out <- merge(
+    curtl_dt, cases[, .(track_id, curtailment_start, next_priority_ts, next_priority_species,
+                         x2d_at_curtailment, dist_at_next_priority, time_gap_sec, dist_gap_m)],
+    by.x = c("track_id", "start"), by.y = c("track_id", "curtailment_start")
+  )
+  data.table::setorder(out, -time_gap_sec)
+  out[]
 }

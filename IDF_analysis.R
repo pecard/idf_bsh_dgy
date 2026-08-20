@@ -714,12 +714,19 @@ if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt")) {
   removal_summary <- summarise_curtailment_removal_risk(removal_dt)
   print_curtailment_removal_risk_summary(removal_summary, curtailment_removal_species_of_interest)
 
+  # linhas COMPLETAS de curtl_dt_unfilt (todas as colunas originais) para os
+  # eventos protegidos por reclassificacao -- pronto para inspecao/defesa de
+  # um caso concreto sem ter de correr nada manualmente (ver
+  # curtailment_removal_case_detail() em R/curtailment_removal_risk.R)
+  removal_case_detail_dt <- curtailment_removal_case_detail(removal_dt, curtl_dt_unfilt)
+
   write_xlsx_local(
     list(
       Removal_overview          = removal_summary$overview,
       Removal_by_next_species   = removal_summary$by_next_priority_species,
       Removal_gap_stats         = removal_summary$gap_stats,
-      Removal_events_detail     = removal_dt
+      Removal_events_detail     = removal_dt,
+      Removal_case_detail_full  = removal_case_detail_dt
     ),
     file.path(folder_output, sprintf("curtailment_removal_risk_%s.xlsx", curtailment_removal_species_of_interest))
   )
