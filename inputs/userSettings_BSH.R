@@ -168,6 +168,13 @@ idf_availability_top_n    <- 12L # nº de unidades (com mais tempo offline) most
 
 id_transition_late_time_sec <- 50 # segundos; mesmo valor de shutdown_time_high_cut (3.6) como ponto de partida, a rever
 
+# especie(s) a analisar na matriz de confusao de especies (que outras
+# especies aparecem no mesmo track, em geral e para tracks com curtailment
+# -- ver summarise_species_confusion() em R/id_transitions.R). Kestrel por
+# omissao (pedido do Paulo, 2026-08); reutilizavel para outra especie so'
+# mudando este parametro
+id_confusion_species_of_interest <- "Kestrel"
+
 
 ## -- 3.4. Short-track curtailment --
 

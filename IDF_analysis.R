@@ -658,6 +658,40 @@ if (exists("track_dt") && exists("curtl_dt")) {
     plot = p_late_dist, width = 7, height = 4, dpi = 300, bg = "white"
   )
 
+  ## Species confusion matrix -- que outras especies aparecem no mesmo
+  ## track que id_confusion_species_of_interest (Kestrel por omissao), em
+  ## geral e restrito a tracks que dispararam curtailment
+  id_confusion_summary <- summarise_species_confusion(
+    track_dt, id_richness_dt, curtl_dt, id_confusion_species_of_interest
+  )
+
+  write_xlsx_local(
+    list(
+      Confusion_rate_compare  = id_confusion_summary$rate_compare,
+      Confusion_general       = id_confusion_summary$confusion_general,
+      Confusion_curtailments  = id_confusion_summary$confusion_curtailments
+    ),
+    file.path(folder_output, sprintf("id_confusion_%s.xlsx", id_confusion_species_of_interest))
+  )
+
+  p_confusion_general <- plot_species_confusion_involving(
+    id_confusion_summary$confusion_general, id_confusion_species_of_interest,
+    title = sprintf("Species confused with %s (all tracks)", id_confusion_species_of_interest)
+  )
+  ggsave(
+    file.path(folder_output, sprintf("id_confusion_%s_general.png", id_confusion_species_of_interest)),
+    plot = p_confusion_general, width = 7, height = 4, dpi = 300, bg = "white"
+  )
+
+  p_confusion_curtailments <- plot_species_confusion_involving(
+    id_confusion_summary$confusion_curtailments, id_confusion_species_of_interest,
+    title = sprintf("Species confused with %s (curtailment tracks)", id_confusion_species_of_interest)
+  )
+  ggsave(
+    file.path(folder_output, sprintf("id_confusion_%s_curtailments.png", id_confusion_species_of_interest)),
+    plot = p_confusion_curtailments, width = 7, height = 4, dpi = 300, bg = "white"
+  )
+
 } else {message("track_dt/curtl_dt nao disponiveis -- 3.2 (ID transitions) saltada nesta ronda.")}
 
 

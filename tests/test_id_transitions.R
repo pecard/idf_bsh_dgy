@@ -368,3 +368,128 @@ cat(paste(
   "da distribuicao real (bom sinal) ou a meio de uma nuvem sem quebra clara",
   "(limiar mais arbitrario, mas nao necessariamente errado).\n"
 ))
+
+
+##
+## PARTE F -- matriz de confusao de especies (que outras especies aparecem
+## no mesmo track), em geral e restrita a tracks com curtailment, com foco
+## em Kestrel (pedido do Paulo, 2026-08)
+##
+## Dataset PROPRIO desta parte (track_dt_confusion_test/curtl_dt_confusion_test,
+## nao reutiliza track_dt_test/curtl_dt_test das Partes A-E) -- inclui de
+## proposito um track Kestrel "puro" (K1, nunca confundido) para nao dar um
+## resultado degenerado de 100% confuso em toda a parte, o que aconteceria
+## se reutilizasse o dataset das Partes A-E tal como esta (la' todos os
+## tracks com Kestrel sao multi-ID).
+##
+
+t0f <- function(base_min) as.POSIXct("2026-05-01 00:00:00", tz = "UTC") + base_min * 60
+
+## K1 -- Kestrel puro, SEM curtailment (nunca confundido)
+## K2 -- Kestrel puro, COM curtailment (confirma que "puro" nao exige
+##       ausencia de curtailment -- sao perguntas independentes)
+## K3 -- Kestrel + Steppe-Eagle, SEM curtailment
+## K4 -- Kestrel + Steppe-Eagle, COM curtailment
+## K5 -- Kestrel + Common-Buzzard, COM curtailment
+## K6 -- so' Steppe-Eagle (nunca Kestrel), COM curtailment -- "decoy": deve
+##       ficar de fora de qualquer resultado especifico de Kestrel
+
+track_dt_confusion_test <- data.table(
+  track_id = c(rep("K1", 3), rep("K2", 2), rep("K3", 2), rep("K4", 2), rep("K5", 2), rep("K6", 2)),
+  spec = c(
+    rep("Kestrel", 3),                    # K1
+    rep("Kestrel", 2),                    # K2
+    c("Kestrel", "Steppe-Eagle"),         # K3
+    c("Kestrel", "Steppe-Eagle"),         # K4
+    c("Kestrel", "Common-Buzzard"),       # K5
+    rep("Steppe-Eagle", 2)                # K6
+  ),
+  timestamp = c(
+    t0f(0)  + c(0, 10, 20),
+    t0f(10) + c(0, 10),
+    t0f(20) + c(0, 10),
+    t0f(30) + c(0, 10),
+    t0f(40) + c(0, 10),
+    t0f(50) + c(0, 10)
+  )
+)
+
+curtl_dt_confusion_test <- data.table(
+  track_id = c("K2", "K4", "K5", "K6"),
+  turbine  = "TESTCONF",
+  species  = c("Kestrel", "Steppe-Eagle", "Common-Buzzard", "Steppe-Eagle"),
+  start    = c(t0f(10) + 5, t0f(30) + 5, t0f(40) + 5, t0f(50) + 5)
+)
+
+richness_dt_confusion_test <- track_species_summary(track_dt_confusion_test)
+
+general_pairs_dt <- species_confusion_pairs(track_dt_confusion_test)
+cat("\n\n===== PARTE F: species_confusion_pairs() -- geral =====\n")
+print(general_pairs_dt)
+cat(paste(
+  "\nEsperado: n_multi_id_tracks=3 (K3,K4,K5 -- K1,K2,K6 sao single-species,",
+  "ficam de fora). (Kestrel,Steppe-Eagle): n_tracks=2 (K3,K4), pct=66.7%.",
+  "(Common-Buzzard,Kestrel): n_tracks=1 (K5), pct=33.3% (ordem alfabetica",
+  "dentro do par, Common-Buzzard < Kestrel).\n"
+))
+
+curtl_track_ids_f <- unique(as.character(curtl_dt_confusion_test$track_id))
+curtl_pairs_dt <- species_confusion_pairs(track_dt_confusion_test, track_ids = curtl_track_ids_f)
+cat("\n===== species_confusion_pairs() -- so' tracks com curtailment (K2,K4,K5,K6) =====\n")
+print(curtl_pairs_dt)
+cat(paste(
+  "\nEsperado: dentro deste subconjunto so' K4/K5 sao multi-ID (K2 e' Kestrel",
+  "puro, K6 nao tem Kestrel) -- n_multi_id_tracks=2. (Kestrel,Steppe-Eagle):",
+  "n_tracks=1 (K4), pct=50.0%. (Common-Buzzard,Kestrel): n_tracks=1 (K5),",
+  "pct=50.0% (empate -- ordem entre as 2 linhas pode variar, os valores e'",
+  "que importam).\n"
+))
+
+involving_general_dt <- species_confusion_involving(general_pairs_dt, "Kestrel")
+cat("\n===== species_confusion_involving() -- Kestrel, geral =====\n")
+print(involving_general_dt)
+cat(paste(
+  "\nEsperado: 2 linhas -- Steppe-Eagle n_tracks=2 (66.7%), Common-Buzzard",
+  "n_tracks=1 (33.3%), por esta ordem (ordenado por n_tracks decrescente).\n"
+))
+
+involving_curtl_dt <- species_confusion_involving(curtl_pairs_dt, "Kestrel")
+cat("\n===== species_confusion_involving() -- Kestrel, so' curtailment tracks =====\n")
+print(involving_curtl_dt)
+cat("\nEsperado: 2 linhas -- Steppe-Eagle e Common-Buzzard, ambas n_tracks=1 (50.0%).\n")
+
+rate_general_dt <- species_confusion_rate(track_dt_confusion_test, richness_dt_confusion_test, "Kestrel")
+cat("\n===== species_confusion_rate() -- Kestrel, geral =====\n")
+print(rate_general_dt)
+cat(paste(
+  "\nEsperado: tracks com Kestrel em algum momento = K1,K2,K3,K4,K5 (K6 fica",
+  "de fora, nunca teve Kestrel) -> n_tracks_total=5. Puros (n_species==1):",
+  "K1,K2 -> n_tracks_pure=2. Confusos: K3,K4,K5 -> n_tracks_confused=3,",
+  "pct_confused=60.0%.\n"
+))
+
+rate_curtl_dt <- species_confusion_rate(
+  track_dt_confusion_test, richness_dt_confusion_test, "Kestrel", track_ids = curtl_track_ids_f
+)
+cat("\n===== species_confusion_rate() -- Kestrel, so' curtailment tracks =====\n")
+print(rate_curtl_dt)
+cat(paste(
+  "\nEsperado: dentro de K2,K4,K5,K6, so' K2/K4/K5 tem Kestrel (K6 fica de",
+  "fora mesmo estando no subconjunto de curtailment, porque nunca teve",
+  "Kestrel) -> n_tracks_total=3. Puro: K2 -> n_tracks_pure=1. Confusos:",
+  "K4,K5 -> n_tracks_confused=2, pct_confused=66.7% -- MAIOR do que o geral",
+  "(60.0%), sinal (neste exemplo sintetico) de que a confusao pesa mais",
+  "precisamente nos tracks que dispararam curtailment.\n"
+))
+
+confusion_summary_test <- summarise_species_confusion(
+  track_dt_confusion_test, richness_dt_confusion_test, curtl_dt_confusion_test, "Kestrel"
+)
+cat("\n===== summarise_species_confusion() -- rate_compare =====\n")
+print(confusion_summary_test$rate_compare)
+cat(paste(
+  "\nEsperado: 2 linhas (scope='all_tracks' com os valores gerais acima,",
+  "scope='curtailment_tracks' com os valores restritos acima) -- confirma",
+  "que a funcao de conveniencia junta exatamente os resultados ja",
+  "verificados em separado nesta Parte F.\n"
+))

@@ -94,6 +94,11 @@
 ##   p_late_time <- plot_late_time_distribution(risk_dt, threshold_sec = id_transition_late_time_sec)
 ##   p_late_dist <- plot_late_dist_distribution(risk_dt, threshold_m = track_proximity_threshold_m)
 ##
+##   # matriz de confusao de especies -- que pares aparecem no mesmo track,
+##   # em geral e so' para tracks com curtailment -- ver secção dedicada
+##   # mais abaixo no ficheiro
+##   confusion_summary <- summarise_species_confusion(track_dt, richness_dt, curtl_dt, "Kestrel")
+##
 
 ##
 ## Especies distintas por track_id (riqueza), sequencia e entropia ----
@@ -521,4 +526,173 @@ plot_late_dist_distribution <- function(risk_dt, threshold_m = 100, xlim_max = 1
       y = "Number of tracks"
     ) +
     ggplot2::theme_minimal()
+}
+
+
+##
+## Species confusion matrix -- que pares de especies aparecem no MESMO track
+## (evidencia direta de confusao do algoritmo, nao so' "mudou de opiniao"
+## generico) -- pedido do Paulo (2026-08) para comparar confusoes
+## especificas, com foco inicial em Kestrel. species_of_interest e'
+## parametro em todas as funcoes abaixo (nao hardcoded), reutilizavel para
+## qualquer outra especie mais tarde.
+##
+## Reutiliza id_richness_dt (track_species_summary()) so' para a taxa
+## pura/confusa; a matriz de pares em si recalcula a sequencia diretamente
+## de track_dt (id_richness_dt$species e' uma string concatenada, nao um
+## list-column -- reprocessar o texto seria mais fragil, ex: "Eagle" e'
+## substring de "Eagle-Unknown"/"Eagle-Sp" no vocabulario deste projeto).
+##
+## "Em geral" vs "para curtailments em particular": a MESMA funcao aceita
+## track_ids opcional -- NULL = todos os tracks farm-wide, ou
+## unique(curtl_dt$track_id) = so' tracks que dispararam pelo menos 1
+## curtailment. Sao 2 chamadas da mesma funcao, nao 2 funcoes separadas.
+##
+## Depende de: data.table, ggplot2
+##
+## Uso:
+##   source("R/id_transitions.R")
+##
+##   confusion_summary <- summarise_species_confusion(track_dt, id_richness_dt, curtl_dt, "Kestrel")
+##   confusion_summary$rate_compare
+##   confusion_summary$confusion_general
+##   confusion_summary$confusion_curtailments
+##
+##   p1 <- plot_species_confusion_involving(confusion_summary$confusion_general, "Kestrel")
+##   p2 <- plot_species_confusion_involving(confusion_summary$confusion_curtailments, "Kestrel", title = "Kestrel confusion -- curtailment tracks")
+##
+
+## 1. Matriz de pares de especies co-ocorrendo no mesmo track (multi-ID) --
+##    track_ids = NULL usa TODOS os tracks; passar unique(curtl_dt$track_id)
+##    para restringir a tracks que dispararam curtailment
+species_confusion_pairs <- function(track_dt, track_ids = NULL) {
+
+  dt <- track_dt[!is.na(spec), .(track_id, spec)]
+  if (!is.null(track_ids)) dt <- dt[as.character(track_id) %in% as.character(track_ids)]
+
+  empty <- data.table::data.table(
+    species_a = character(), species_b = character(),
+    n_tracks = integer(), pct_of_multi_id_tracks = numeric()
+  )
+  if (nrow(dt) == 0L) return(empty)
+
+  pairs <- dt[, {
+    sp <- unique(spec)
+    if (length(sp) >= 2) {
+      cmb <- utils::combn(sort(sp), 2)
+      .(species_a = cmb[1, ], species_b = cmb[2, ])
+    } else {
+      .(species_a = character(), species_b = character())
+    }
+  }, by = track_id]
+
+  if (nrow(pairs) == 0L) return(empty)
+
+  n_multi_id_tracks <- data.table::uniqueN(pairs$track_id)
+
+  out <- pairs[, .(n_tracks = .N), by = .(species_a, species_b)]
+  out[, pct_of_multi_id_tracks := round(100 * n_tracks / n_multi_id_tracks, 1)]
+  data.table::setorder(out, -n_tracks)
+  out[]
+}
+
+
+## 2. Vista de UMA especie -- filtra a matriz de pares para as linhas que
+##    envolvem species_of_interest, normalizando para "other_species" (em
+##    vez de ter de olhar para species_a/species_b em qualquer ordem)
+species_confusion_involving <- function(confusion_dt, species_of_interest) {
+
+  empty <- data.table::data.table(
+    species = character(), other_species = character(),
+    n_tracks = integer(), pct_of_multi_id_tracks = numeric()
+  )
+  if (nrow(confusion_dt) == 0L) return(empty)
+
+  dt <- confusion_dt[species_a == species_of_interest | species_b == species_of_interest]
+  if (nrow(dt) == 0L) return(empty)
+
+  dt <- data.table::copy(dt)
+  dt[, other_species := data.table::fifelse(species_a == species_of_interest, species_b, species_a)]
+  out <- dt[, .(species = species_of_interest, other_species, n_tracks, pct_of_multi_id_tracks)]
+  data.table::setorder(out, -n_tracks)
+  out[]
+}
+
+
+## 3. Taxa de confusao para UMA especie -- de entre os tracks onde
+##    species_of_interest apareceu em ALGUM momento da sequencia, que
+##    fraccao ficou "pura" (n_species==1, nunca mudou) vs "confusa"
+##    (n_species>=2, species_of_interest partilhou o track com outra
+##    especie). track_ids = NULL (farm-wide) ou
+##    unique(curtl_dt$track_id) (so' tracks com curtailment)
+species_confusion_rate <- function(track_dt, richness_dt, species_of_interest, track_ids = NULL) {
+
+  tdt <- track_dt[!is.na(spec)]
+  if (!is.null(track_ids)) tdt <- tdt[as.character(track_id) %in% as.character(track_ids)]
+
+  base_ids <- unique(tdt[spec == species_of_interest, as.character(track_id)])
+  richness_sub <- richness_dt[as.character(track_id) %in% base_ids]
+
+  n_total    <- nrow(richness_sub)
+  n_pure     <- if (n_total > 0L) richness_sub[, sum(n_species == 1)] else 0L
+  n_confused <- n_total - n_pure
+
+  data.table::data.table(
+    species           = species_of_interest,
+    n_tracks_total    = n_total,
+    n_tracks_pure     = n_pure,
+    n_tracks_confused = n_confused,
+    pct_confused      = if (n_total > 0L) round(100 * n_confused / n_total, 1) else NA_real_
+  )
+}
+
+
+## 4. Sumario completo para UMA especie de interesse -- junta as 3 funcoes
+##    acima, em geral e para curtailments, pronto a exportar/reportar
+summarise_species_confusion <- function(track_dt, richness_dt, curtl_dt, species_of_interest) {
+
+  curtl_track_ids <- unique(as.character(curtl_dt$track_id))
+
+  general_pairs <- species_confusion_pairs(track_dt)
+  curtl_pairs   <- species_confusion_pairs(track_dt, track_ids = curtl_track_ids)
+
+  confusion_general       <- species_confusion_involving(general_pairs, species_of_interest)
+  confusion_curtailments  <- species_confusion_involving(curtl_pairs, species_of_interest)
+
+  general_rate <- species_confusion_rate(track_dt, richness_dt, species_of_interest)
+  curtl_rate   <- species_confusion_rate(track_dt, richness_dt, species_of_interest, track_ids = curtl_track_ids)
+
+  # scope adicionado com := (nao data.table(scope=, existing_dt) -- esse
+  # construtor nao faz splice das colunas do 2º argumento, ficaria uma
+  # coluna aninhada em vez de scope+species+... lado a lado)
+  general_rate[, scope := "all_tracks"]
+  curtl_rate[, scope := "curtailment_tracks"]
+
+  rate_compare <- data.table::rbindlist(list(general_rate, curtl_rate))
+  data.table::setcolorder(rate_compare, c("scope", "species"))
+
+  list(
+    rate_compare            = rate_compare[],
+    confusion_general        = confusion_general,
+    confusion_curtailments   = confusion_curtailments
+  )
+}
+
+
+## 5. Barras -- nº de tracks partilhados com cada outra especie, para uma
+##    das 2 vistas (confusion_general OU confusion_curtailments) de
+##    summarise_species_confusion()
+plot_species_confusion_involving <- function(confusion_involving_dt, species_of_interest, title = NULL) {
+
+  if (is.null(title)) title <- sprintf("Species confused with %s", species_of_interest)
+
+  dt <- data.table::copy(confusion_involving_dt)
+  data.table::setorder(dt, -n_tracks)
+  dt[, other_species := factor(other_species, levels = other_species)]
+
+  ggplot2::ggplot(dt, ggplot2::aes(x = other_species, y = n_tracks)) +
+    ggplot2::geom_col(fill = "steelblue") +
+    ggplot2::labs(x = "Other species in the same track", y = "Number of tracks", title = title) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 }
