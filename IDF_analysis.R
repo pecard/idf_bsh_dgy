@@ -1094,6 +1094,8 @@ if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
 
 } else {message("run_sections$coverage_3d = FALSE ou DEM nao disponivel -- 5.2 saltada nesta ronda.")}
 
+
+
 plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
                              coverage_cylinder_height)
 
