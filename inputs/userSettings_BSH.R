@@ -19,7 +19,7 @@
 run_sections <- list(
   curtailment_response   = TRUE,  # 3.5-3.7 (resposta a curtailments, shutdown time, safe distance) -- so corre se scada_dt tambem existir
   fatality_investigation = TRUE,  # 4 (tracks + disponibilidade + resposta na janela de cada incidente)
-  coverage_3d             = TRUE,  # 5.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
+  coverage_3d             = FALSE,  # 5.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
   min_individuals          = TRUE   # 6.4 (contagem minima de individuos por bin, farm-wide)
 )
 
@@ -79,6 +79,7 @@ end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
 ## Usadas nas seccoes 3.3 (curtailments por especie) e 5 (biologico)
 ##
 
+# 11
 prioritysp <- c(
   'Steppe-Eagle',
   'Bearded-Vulture',
@@ -90,27 +91,32 @@ prioritysp <- c(
   'Saker-Falcon',
   'Peregrine-Or-Saker-Falcon',
   'White-Tailed-Eagle',
-  'Protected'
+  'Protected',
+  'Booted-Eagle',
+  'Short-Toed-Snake-Eagle'
 )
 
+# 18
 nonprioritysp <- c(
+  'Accipiter',
   'Kestrel',
-  'Booted-Eagle',
   'Common-Buzzard',
   'Greater-Spotted-Eagle',
+  "Harrier",
   'Honey-Buzzard',
   'Long-Legged-Buzzard',
   'Merlin',
   'Osprey',
   'Peregrine-Falcon',
   'Red-Or-Black-Kite',
-  'Short-Toed-Snake-Eagle',
   'Sparrow-Hawk',
   'Harrier',
-  'Eagle-Unknown'
-  
+  "Eagle",
+  'Eagle-Unknown',
+  'Eagle-Sp'
 )
 
+# 17
 othersp <- c(
   'Common-Crane',
   'White-Stork',
@@ -126,7 +132,9 @@ othersp <- c(
   'Other',
   'Pelican',
   'Swan',
-  'Not-Eagle'
+  'Not-Eagle',
+  "Lark",
+  "Turbine-Blade" 
 )
 
 
