@@ -668,7 +668,43 @@ monthly_report_params <- list(
   flight_metrics_plot      = if (exists("p_monthly_flight_metrics")) p_monthly_flight_metrics else NULL,
 
   min_indiv_summary = if (exists("monthly_min_indiv_summary_dt")) monthly_min_indiv_summary_dt else NULL,
-  min_indiv_daily_plot = if (exists("p_monthly_min_indiv_daily")) p_monthly_min_indiv_daily else NULL
+  min_indiv_daily_plot = if (exists("p_monthly_min_indiv_daily")) p_monthly_min_indiv_daily else NULL,
+
+  ## Literais de configuracao (monthlyReportSettings.R) -- so' para texto
+  ## descritivo no Rmd (ver report/monthly_report_template.rmd), NAO
+  ## controlam nenhum calculo aqui. Sempre definidos independentemente dos
+  ## switches de run_sections_monthly (sao literais de settings, nao
+  ## objetos calculados).
+  heartbeat_interval_min    = heartbeat_interval_min,
+  heartbeat_offline_gap_min = heartbeat_offline_gap_min,
+  idf_availability_top_n    = idf_availability_top_n,
+
+  shorttrack_min_points   = shorttrack_min_points,
+  shorttrack_eval_range_m = shorttrack_eval_range,
+
+  curtailment_start_end_gap_sec  = curtailment_start_end_gap_sec,
+  curtailment_max_next_gap_sec   = curtailment_max_next_gap_sec,
+  curtailment_drop_pct_threshold = curtailment_drop_pct_threshold,
+  safe_shutdown_rpm               = safe_shutdown_rpm,
+
+  shutdown_time_low_cut  = shutdown_time_low_cut,
+  shutdown_time_high_cut = shutdown_time_high_cut,
+
+  safe_dist_reference_line_m    = safe_dist_reference_line_m,
+  safe_dist_rpm_threshold        = safe_dist_rpm_threshold,
+  safe_dist_already_slowing_rpm  = safe_dist_already_slowing_rpm,
+
+  id_transition_late_time_sec = id_transition_late_time_sec,
+  track_proximity_threshold_m = track_proximity_threshold_m,
+
+  flight_min_track_points = flight_min_track_points,
+  flight_speed_ms_min     = flight_speed_ms_min,
+  flight_speed_ms_max     = flight_speed_ms_max,
+  riskHeight_lower         = riskHeight_lower,
+  riskHeight_upper         = riskHeight_upper,
+
+  min_individuals_bin_min       = min_individuals_bin_min,
+  min_individuals_merge_dist_m  = min_individuals_merge_dist_m
 )
 
 build_idf_report(

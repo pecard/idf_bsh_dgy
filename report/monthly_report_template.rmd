@@ -52,6 +52,40 @@ params:
 
   min_indiv_summary: !r NULL
   min_indiv_daily_plot: !r NULL
+
+  # Literais de configuracao (monthlyReportSettings.R) usados so' para
+  # texto descritivo -- cada secção que aplica um threshold/cut-off mostra
+  # o VALOR concreto usado nesse mes, nao so' o nome do parametro.
+  heartbeat_interval_min: !r NULL
+  heartbeat_offline_gap_min: !r NULL
+  idf_availability_top_n: !r NULL
+
+  shorttrack_min_points: !r NULL
+  shorttrack_eval_range_m: !r NULL
+
+  curtailment_start_end_gap_sec: !r NULL
+  curtailment_max_next_gap_sec: !r NULL
+  curtailment_drop_pct_threshold: !r NULL
+  safe_shutdown_rpm: !r NULL
+
+  shutdown_time_low_cut: !r NULL
+  shutdown_time_high_cut: !r NULL
+
+  safe_dist_reference_line_m: !r NULL
+  safe_dist_rpm_threshold: !r NULL
+  safe_dist_already_slowing_rpm: !r NULL
+
+  id_transition_late_time_sec: !r NULL
+  track_proximity_threshold_m: !r NULL
+
+  flight_min_track_points: !r NULL
+  flight_speed_ms_min: !r NULL
+  flight_speed_ms_max: !r NULL
+  riskHeight_lower: !r NULL
+  riskHeight_upper: !r NULL
+
+  min_individuals_bin_min: !r NULL
+  min_individuals_merge_dist_m: !r NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -112,6 +146,8 @@ if (!is.null(params$data_summary)) report_table(params$data_summary)
 
 # 2. System Availability (Heartbeats)
 
+Heartbeats are expected every `r params$heartbeat_interval_min` minutes; an IDF unit is considered offline once the gap since its last heartbeat exceeds `r params$heartbeat_offline_gap_min` minutes (at least 2 consecutive heartbeats missed).
+
 ## 2.1 Availability by IDF Unit
 
 Total offline time and daylight-availability category for each IDF unit, this month.
@@ -123,7 +159,7 @@ if (!is.null(params$availability_by_idf)) report_table(params$availability_by_id
 
 ## 2.2 Availability Calendar
 
-Daily offline percentage per IDF unit, laid out as a calendar (top units by offline time only, to stay legible).
+Daily offline percentage per IDF unit, laid out as a calendar (top `r params$idf_availability_top_n` units by offline time only, to stay legible).
 
 <!-- Source: plot_availability_calendar(), R/availability_daylight.R -->
 ```{r availability-cal, fig.width=9, fig.height=4}
@@ -190,7 +226,7 @@ if (!is.null(params$curtl_by_group_dt)) report_table(params$curtl_by_group_dt)
 
 # 5. Short-Track Curtailments
 
-Curtailments triggered by tracks with few recorded points, within the evaluation distance range agreed for this metric.
+Curtailments triggered by tracks with fewer than `r params$shorttrack_min_points` recorded points, considered only within `r params$shorttrack_eval_range_m` m of the turbine.
 
 <!-- Source: summarise_short_track_curtailments(), R/curtailment_short_track.R (built on classify_short_track_curtailments()) -->
 ```{r short-track-table}
@@ -199,7 +235,7 @@ if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_sum
 
 # 6. Curtailment Response Assessment
 
-Whether SCADA-recorded RPM dropped as expected in response to curtailment signals (tight baseline tolerance), for the turbines and window with SCADA coverage this month.
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, for the turbines and window with SCADA coverage this month. The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s; an immediate response is recorded when RPM drops by at least `r params$curtailment_drop_pct_threshold * 100`% within `r params$curtailment_max_next_gap_sec` s of the signal; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`.
 
 ## 6.1 By Status
 
@@ -250,7 +286,7 @@ officer::block_section(
 
 ## 7.2 Time to Threshold Bands
 
-Same events, grouped into bands below/above the agreed cut-offs (shutdown_time_low_cut / shutdown_time_high_cut).
+Same events, grouped into bands below/above the agreed cut-offs (`r params$shutdown_time_low_cut` s / `r params$shutdown_time_high_cut` s).
 
 <!-- Source: summarise_time_to_threshold_bands(tt_dt), R/curtailment_shutdown_time.R -->
 ```{r shutdown-bands-table}
@@ -266,7 +302,7 @@ if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
 
 # 8. Safe Distance (KNE Methodology)
 
-Distance between the triggering track and the turbine at the moment of curtailment, compared against the KNE reference line, by priority species.
+Distance between the triggering track and the turbine at the moment of curtailment, compared against the KNE reference line (`r params$safe_dist_reference_line_m` m), by priority species. A turbine's estimated time-to-stop-safely uses `r params$safe_dist_rpm_threshold` rpm as the "stopped" threshold; a turbine already below `r params$safe_dist_already_slowing_rpm` rpm at the moment of the signal is treated as already slowing from a previous curtailment, not at full operating speed.
 
 ## 8.1 Overall
 
@@ -291,7 +327,7 @@ if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
 
 # 9. Bi-Directional ID Transitions
 
-Curtailments triggered by a species reclassification within the same track, in both directions (priority-to-nonpriority and nonpriority-to-priority) -- global, across all non-priority species together, not any single species.
+Curtailments triggered by a species reclassification within the same track, in both directions (priority-to-nonpriority and nonpriority-to-priority) -- global, across all non-priority species together, not any single species. A reclassification is considered "late" when it happens more than `r params$id_transition_late_time_sec` s after the curtailment start, or when the track was already within `r params$track_proximity_threshold_m` m of the turbine at the moment of reclassification.
 
 ## 9.1 Risk by Direction
 
@@ -326,7 +362,7 @@ if (!is.null(params$id_confusion_general)) report_table(params$id_confusion_gene
 
 # 10. Biological Flight Metrics
 
-Flight speed and flight height per species, for tracks meeting the quality filters agreed for this metric.
+Flight speed and flight height per species, for tracks with at least `r params$flight_min_track_points` recorded points and a flight speed between `r params$flight_speed_ms_min` and `r params$flight_speed_ms_max` m/s. The shaded band in the height distribution (10.3) marks the `r params$riskHeight_lower`-`r params$riskHeight_upper` m risk zone.
 
 ## 10.1 Flight Speed by Species
 
@@ -351,7 +387,7 @@ if (!is.null(params$flight_metrics_plot)) print(params$flight_metrics_plot)
 
 # 11. Minimum Individuals per Time Bin
 
-Minimum number of distinct individuals per priority species detected in the same time bin, farm-wide, summarised by day.
+Minimum number of distinct individuals per priority species detected in the same `r params$min_individuals_bin_min`-minute time bin (2 tracks count as 1 individual when within `r params$min_individuals_merge_dist_m` m of each other), farm-wide, summarised by day.
 
 ## 11.1 Summary
 
