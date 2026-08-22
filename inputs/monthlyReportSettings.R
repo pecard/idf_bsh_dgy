@@ -206,7 +206,13 @@ shorttrack_eval_range <- 300
 scada_ini <- as.POSIXct('2025-10-15 00:00:00', tz = proj_timezone)
 scada_end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
 
-turbinas_scada <- c('BSH54', 'BSH62', 'BSH14')
+# "all" -- usa TODAS as turbinas com dados de SCADA na janela do relatorio
+# (resolvido a cada corrida por resolve_turbinas_scada(), R/monthly_report_utils.R
+# -- acompanha automaticamente se mais turbinas passarem a ter SCADA
+# instalado, sem precisar de editar este literal). Alternativa: um vetor
+# explicito (ex: c('BSH54', 'BSH62', 'BSH14')) para restringir a um
+# subconjunto especifico -- usado tal e qual, sem verificar se tem dados.
+turbinas_scada <- "all"
 
 safe_shutdown_rpm <- 1
 

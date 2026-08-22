@@ -34,3 +34,24 @@ month_bounds <- function(report_month, tz) {
     end = next_month - 1
   )
 }
+
+
+## Resolve `turbinas_scada` (monthlyReportSettings.R) para o vetor real de
+## turbinas a usar nas seccoes de resposta/shutdown-time/safe-distance --
+## "all" e' recalculado a cada corrida a partir do scada_dt REAL da janela
+## do relatorio (nao uma lista fixa), para acompanhar automaticamente se
+## mais turbinas passarem a ter SCADA instalado; um vetor explicito
+## (ex: c('BSH54','BSH62','BSH14')) e' devolvido tal e qual, sem verificar
+## se essas turbinas tem mesmo dados no periodo (mesmo comportamento de
+## sempre, antes de existir a opcao "all").
+##
+## scada_dt: NAO filtrado por ini/end (ver "0. Filter data" em
+## IDF_monthly_report.R -- scada_dt <- scada_dt_unfilt) -- por isso window_ini/
+## window_end sao passados aqui explicitamente, para "all" refletir so' as
+## turbinas com dados DENTRO da janela do relatorio, nao em todo o historico.
+resolve_turbinas_scada <- function(turbinas_scada, scada_dt, window_ini, window_end) {
+
+  if (!identical(turbinas_scada, "all")) return(turbinas_scada)
+
+  sort(unique(scada_dt[datetime >= window_ini & datetime <= window_end, turbinelabel]))
+}

@@ -17,6 +17,8 @@ params:
   username: ""
 
   data_summary: !r NULL
+  coverage_summary: !r NULL
+  coverage_plot: !r NULL
 
   availability_by_idf: !r NULL
   availability_plot_cal: !r NULL
@@ -137,11 +139,26 @@ This report is descriptive: it presents the metrics produced by the IDF analysis
 
 # 1. Data Universe and Time Span
 
+## 1.1 Row Counts and Date Range
+
 Row counts and date range of each dataset used in this report, restricted to the month above (SCADA row count restricted to the SCADA-availability window intersected with the month).
 
 <!-- Source: monthly_data_summary_dt <- summarise_dataset_extent(), R/dataset_summary.R (called from IDF_monthly_report.R, section "0. Data extent / quantities table") -->
 ```{r data-summary-table}
 if (!is.null(params$data_summary)) report_table(params$data_summary)
+```
+
+## 1.2 Temporal Coverage
+
+Day-by-day data presence for each dataset within the month -- complements 1.1, which only gives the overall min/max/row count and does not show whether there are gaps within that range.
+
+<!-- Source: monthly_coverage_summary_dt <- data_coverage_summary(); p_monthly_coverage <- plot_data_coverage(monthly_coverage_calendar_dt <- data_coverage_calendar()), all R/data_coverage.R -->
+```{r coverage-summary-table}
+if (!is.null(params$coverage_summary)) report_table(params$coverage_summary)
+```
+
+```{r coverage-plot, fig.width=7, fig.height=4}
+if (!is.null(params$coverage_plot)) print(params$coverage_plot)
 ```
 
 # 2. System Availability (Heartbeats)

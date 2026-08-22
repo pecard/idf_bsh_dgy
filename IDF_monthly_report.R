@@ -219,6 +219,40 @@ write_xlsx_local(
 
 
 ##
+## 0b. Temporal coverage of the 4 main datasets (gaps WITHIN the month) ----
+##
+## Complementa a tabela acima -- essa so' da min/max/n_rows (nao mostra SE ha
+## dias sem dados dentro do periodo); este plot torna as lacunas visiveis
+## dia a dia. Ver R/data_coverage.R (ja usado, de forma mais detalhada por
+## turbina/unidade IDF, em IDF_analysis.R).
+##
+
+source("R/data_coverage.R")
+
+# scada_dt NAO e' filtrado por ini/end (ver "0. Filter data", acima) -- copia
+# local so' para este plot, na mesma janela SCADA-disponivel-x-mes usada na
+# tabela de quantidades acima (scada_ini_monthly/scada_end_monthly)
+scada_dt_month <- scada_dt[datetime >= scada_ini_monthly & datetime <= scada_end_monthly]
+
+monthly_coverage_summary_dt <- data_coverage_summary(track_dt, curtl_dt, scada_dt_month, heartb_dt)
+
+write_xlsx_local(
+  list(Coverage_summary = monthly_coverage_summary_dt),
+  file.path(folder_output, sprintf("data_coverage_%s.xlsx", report_month))
+)
+
+monthly_coverage_calendar_dt <- data_coverage_calendar(track_dt, curtl_dt, scada_dt_month, heartb_dt)
+
+# breaks finos (o periodo e' so' 1 mes, "1 month" -- o default da funcao,
+# pensado para o historico completo -- deixaria o eixo x com 1 unica marca)
+p_monthly_coverage <- plot_data_coverage(monthly_coverage_calendar_dt, date_breaks = "2 days", date_labels = "%d %b")
+ggsave(
+  file.path(folder_output, sprintf("data_coverage_%s.png", report_month)),
+  plot = p_monthly_coverage, width = 15, height = 8, units = "cm", dpi = 300, bg = "white"
+)
+
+
+##
 ## 1. System availability (heartbeats) ----
 ##
 
@@ -382,8 +416,17 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   source("R/curtailment_shutdown_time.R")
   source("R/curtailment_safe_distance.R")
 
+  # turbinas_scada = "all" (monthlyReportSettings.R) e' resolvido aqui contra
+  # o scada_dt REAL da janela do mes -- ver resolve_turbinas_scada(),
+  # R/monthly_report_utils.R. Um vetor explicito passa tal e qual.
+  turbinas_scada_resolved <- resolve_turbinas_scada(turbinas_scada, scada_dt, scada_ini_monthly, scada_end_monthly)
+  message(sprintf(
+    "Turbinas SCADA usadas nesta ronda (%d): %s",
+    length(turbinas_scada_resolved), paste(turbinas_scada_resolved, collapse = ", ")
+  ))
+
   curtl_scada_dt <- curtl_dt[
-    turbine %in% turbinas_scada & start >= scada_ini_monthly & start <= scada_end_monthly
+    turbine %in% turbinas_scada_resolved & start >= scada_ini_monthly & start <= scada_end_monthly
   ]
 
   ### 5.1 Avaliacao principal (baseline apertado + resposta imediata + delta start->end)
@@ -634,6 +677,8 @@ monthly_report_params <- list(
   username      = username,
 
   data_summary = if (exists("monthly_data_summary_dt")) monthly_data_summary_dt else NULL,
+  coverage_summary = if (exists("monthly_coverage_summary_dt")) monthly_coverage_summary_dt else NULL,
+  coverage_plot    = if (exists("p_monthly_coverage")) p_monthly_coverage else NULL,
 
   availability_by_idf   = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
   availability_plot_cal = if (exists("p_availability_cal")) p_availability_cal else NULL,
