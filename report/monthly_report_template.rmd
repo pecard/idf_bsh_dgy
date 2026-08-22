@@ -15,6 +15,7 @@ params:
   availability_by_idf: !r NULL
   availability_plot_cal: !r NULL
   availability_plot_freq: !r NULL
+  availability_plot_spatial: !r NULL
 
   richness_dt: !r NULL
   richness_plot: !r NULL
@@ -99,6 +100,12 @@ if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
 
 ```{r availability-freq, fig.width=6, fig.height=3}
 if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq)
+```
+
+Spatial distribution of unavailability, by turbine (point size/colour = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit).
+
+```{r availability-spatial, fig.width=9, fig.height=7}
+if (!is.null(params$availability_plot_spatial)) print(params$availability_plot_spatial)
 ```
 
 # 3. Observed Species
@@ -219,4 +226,4 @@ if (!is.null(params$min_indiv_daily_plot)) print(params$min_indiv_daily_plot)
 
 # Annexes
 
-The full detail behind each table above (including all rows, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: data summary, system availability, observed species, curtailments by species, short-track curtailments, curtailment response assessment, shutdown time, safe distance, ID transitions and species confusion, biological flight metrics, and minimum individuals per bin.
+The full detail behind each table above (including all rows, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: data summary, system availability (including the turbine-level spatial availability table), observed species, curtailments by species, short-track curtailments, curtailment response assessment, shutdown time, safe distance, ID transitions and species confusion, biological flight metrics, and minimum individuals per bin.

@@ -31,11 +31,13 @@ options(error = function() message("Skipping failed step"))
 ## PACKAGES ----
 ##
 
-## Subconjunto do IDF_analysis.R -- este script nao usa sf/terra/RANN/plotly/
-## cluster (coverage 3D e turbine clustering ficam fora do relatorio mensal)
+## Subconjunto do IDF_analysis.R -- este script nao usa terra/RANN/plotly/
+## cluster (coverage 3D e turbine clustering ficam fora do relatorio
+## mensal); sf e' usado so' para localizar as turbinas no plot espacial de
+## disponibilidade (secção 1)
 packages <- c('purrr', 'rstudioapi',
               'tidyverse', 'lubridate', 'ggplot2',
-              'scales', 'readxl', 'janitor',
+              'scales', 'readxl', 'janitor', 'sf',
               'flextable', 'systemfonts',
               'openxlsx', 'writexl', 'rmarkdown',
               'data.table', 'suncalc',
@@ -130,6 +132,20 @@ heartb_dt_unfilt <- load_or_read_cache(
   force_reread = force_reread_cache_monthly, tz = proj_timezone
 )
 
+## Localizacao das turbinas + matriz manual turbina<->IDF -- so' para o plot
+## espacial de disponibilidade (secção 1); nenhuma outra seccao do relatorio
+## mensal precisa do shapefile ou da matriz
+wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
+wtg <- sf::st_transform(wtg, crs_projection_plannar)
+
+turbine_idf_matrix_file <- file.path(folder_input, turbine_idf_matrix_filename)
+if (file.exists(turbine_idf_matrix_file)) {
+  turbine_idf_manual_dt <- readxl::read_xlsx(turbine_idf_matrix_file)
+} else {
+  message("Matriz turbina<->IDF nao disponivel -- plot espacial de disponibilidade (secção 1) sera saltado.")
+  turbine_idf_manual_dt <- NULL
+}
+
 
 ##
 ## 0. Filter data for the report month (ini/end vem de monthlyReportSettings.R) ----
@@ -148,8 +164,11 @@ track_dt <- data.table::as.data.table(track_dt)
 # mesma correcao de IDF_analysis.R (0. Filter data), ver R/read_tracks.R
 track_dt[, count := .N, by = track_id]
 
+## Sem filtro por unidade IDF -- ao contrario de IDF_analysis.R
+## (heartbeat_idf_units, um subconjunto historico com cobertura parcial), o
+## relatorio mensal quer a disponibilidade de TODAS as unidades (heartbeats
+## disponiveis para as 79 turbinas)
 heartb_dt <- heartb_dt_unfilt %>%
-  filter(idf %in% heartbeat_idf_units) %>%
   filter(timestamp >= ini & timestamp <= end)
 
 # janela de SCADA disponivel para este mes -- interseccao entre a janela fixa
@@ -219,6 +238,30 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
     list(By_idf = idf_availability_summary$by_idf, By_month = idf_availability_summary$by_month),
     file.path(folder_output, sprintf("idf_availability_%s.xlsx", report_month))
   )
+
+  ## 1b. Spatial unavailability -- 1 ponto por turbina (localizacao real),
+  ## tamanho/cor = % offline da sua unidade IDF primaria neste mes (ver
+  ## R/availability_daylight.R, join_availability_to_turbine()/
+  ## plot_availability_spatial()). So' corre se a matriz manual
+  ## turbina<->IDF estiver disponivel (ver "0. Import data").
+  if (!is.null(turbine_idf_manual_dt)) {
+
+    turbine_availability_dt <- join_availability_to_turbine(
+      idf_availability_summary$by_idf, wtg, turbine_idf_manual_dt, wtg_id_col = "InternalNa"
+    )
+
+    write_xlsx_local(
+      list(Turbine_availability = turbine_availability_dt),
+      file.path(folder_output, sprintf("idf_availability_spatial_%s.xlsx", report_month))
+    )
+
+    p_availability_spatial <- plot_availability_spatial(turbine_availability_dt)
+    ggsave(
+      file.path(folder_output, sprintf("idf_availability_spatial_%s.png", report_month)),
+      plot = p_availability_spatial, width = 220, height = 180, units = "mm", dpi = 300, bg = "white"
+    )
+
+  } else {message("Matriz turbina<->IDF nao disponivel -- 1b (spatial unavailability) saltada nesta ronda.")}
 
 } else {message("heartb_dt nao disponivel ou run_sections_monthly$system_availability = FALSE -- 1 (system availability) saltada nesta ronda.")}
 
@@ -543,6 +586,7 @@ monthly_report_params <- list(
   availability_by_idf   = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
   availability_plot_cal = if (exists("p_availability_cal")) p_availability_cal else NULL,
   availability_plot_freq = if (exists("p_availability_freq")) p_availability_freq else NULL,
+  availability_plot_spatial = if (exists("p_availability_spatial")) p_availability_spatial else NULL,
 
   richness_dt         = if (exists("monthly_richness_summary")) monthly_richness_summary$by_n_species else NULL,
   richness_plot        = if (exists("p_monthly_richness")) p_monthly_richness else NULL,

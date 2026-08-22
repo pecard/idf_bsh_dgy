@@ -53,17 +53,22 @@ run_sections_monthly <- list(
 ## Project inputs
 ##
 ## So os literais realmente usados pelas seccoes acima -- NAO inclui
-## wtg_filename/idf_filename/tier*_filename/turbine_idf_matrix_filename/
-## crs_projection_plannar (nenhuma seccao do relatorio mensal usa o
-## shapefile de turbinas, o poligono IDF, ou os esquemas de tier -- ver
-## IDF_monthly_report.R, seccao "0. Import data").
+## idf_filename/tier*_filename (nenhuma seccao do relatorio mensal usa o
+## poligono IDF ou os esquemas de tier). wtg_filename e
+## turbine_idf_matrix_filename SAO usados (secção 1, plot espacial de
+## disponibilidade -- ver IDF_monthly_report.R, seccao "0. Import data").
 ##
 
 project_ref <- "Bash WPP"
 
+wtg_filename                <- "Bash_Turbines_UTM.shp"
+turbine_idf_matrix_filename <- "ACWA_IDF_Coverage_Matrix.xlsx"
+
 proj_lat      <- 40.65
 proj_lon      <- 64.67
 proj_timezone <- "Asia/Samarkand"
+
+crs_projection_plannar <- 32641 # codigo CRS da projecao planar a usar (plot espacial de disponibilidade)
 
 
 ##
@@ -80,9 +85,10 @@ trackreport_pattern  <- "TrackReport_"
 curtailments_pattern <- "curtail_orders|Curtailments"
 scada_pattern        <- "SCADA_.+csv"
 heartbeats_pattern   <- "Bash_Heartbeats.+csv"
-heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11",
-                         "BSH64-04", "BSH62-05", "BSH61-06",
-                         'BSH14-41', 'BSH12-40')
+
+# Sem heartbeat_idf_units (subconjunto manual de userSettings_BSH.R) -- o
+# relatorio mensal usa TODAS as unidades IDF com heartbeat, sem filtro
+# (cobertura farm-wide, 79 turbinas)
 
 
 ##
