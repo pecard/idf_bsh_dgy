@@ -67,7 +67,25 @@ for (p in packages) {
 
 
 ##SET INPUT/OUTPUT FOLDERS##
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) #Automatically set wd to the folder where the script is located
+## rstudioapi::getActiveDocumentContext()$path so' resolve de forma fiavel
+## quando o codigo corre via "Source" ou um source("...") explicito escrito
+## na consola -- selecionar TODO o ficheiro (Ctrl+A) e correr como bloco
+## envia o texto para a consola sem passar por source(), e o path devolvido
+## pode vir vazio/invalido, fazendo o setwd() abaixo falhar com "cannot
+## change working directory". Como isso aconteceria dentro do source() que
+## carrega este ficheiro, um erro aqui aborta o script INTEIRO (nao so' esta
+## linha), mesmo com options(error=...) definido acima -- por isso o
+## try/aviso, em vez de deixar falhar (ver mesmo problema/correcao em
+## IDF_monthly_report.R, 2026-08).
+tryCatch({
+  active_doc_path <- rstudioapi::getActiveDocumentContext()$path
+  if (isTRUE(nzchar(active_doc_path))) setwd(dirname(active_doc_path))
+}, error = function(e) {
+  message(sprintf(
+    "Aviso: nao foi possivel mudar para a pasta do script via rstudioapi (%s) -- a usar a working directory atual: %s",
+    conditionMessage(e), getwd()
+  ))
+})
 folder_input <- "inputs"
 folder_output <- file.path("outputs",format(Sys.time(), "%Y%m%d"))
 folder_output_DC <- file.path("outputs",format(Sys.time(), "%Y%m%d"),"DC")

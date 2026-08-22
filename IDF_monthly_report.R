@@ -67,7 +67,30 @@ if (!exists("report_month")) {
   stop('Definir report_month (formato "YYYY-MM", ex: "2026-07") antes de correr IDF_monthly_report.R')
 }
 
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+## rstudioapi::getActiveDocumentContext()$path so' resolve de forma fiavel
+## quando o codigo corre via "Source" ou um source("...") explicito escrito
+## na consola -- selecionar TODO o ficheiro (Ctrl+A) e correr como bloco
+## envia o texto para a consola sem passar por source(), e o path devolvido
+## pode vir vazio. dirname("") ainda daria "." (inofensivo), mas nalguns
+## casos o path vem mesmo NULL/vazio de outra forma e faz o setwd() abaixo
+## falhar com "cannot change working directory" -- como esse erro acontece
+## ja dentro do source() que carrega este ficheiro, e options(error=...)
+## acima nao intercepta localmente, um erro aqui aborta o resto do script
+## INTEIRO (nao so' esta linha) -- por isso o try/aviso, em vez de deixar
+## falhar: correr via source("IDF_monthly_report.R") escrito na consola
+## continua a ser a forma recomendada (ver comentario acima), mas um Ctrl+A
+## acidental agora so' avisa e continua com a working directory atual, em
+## vez de abortar tudo silenciosamente.
+tryCatch({
+  active_doc_path <- rstudioapi::getActiveDocumentContext()$path
+  if (isTRUE(nzchar(active_doc_path))) setwd(dirname(active_doc_path))
+}, error = function(e) {
+  message(sprintf(
+    "Aviso: nao foi possivel mudar para a pasta do script via rstudioapi (%s) -- a usar a working directory atual: %s",
+    conditionMessage(e), getwd()
+  ))
+})
+
 folder_input  <- "inputs"
 folder_output <- file.path("outputs", "monthly", report_month)
 

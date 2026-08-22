@@ -153,6 +153,11 @@ plot_flight_metrics_distribution <- function(flight_base_dt, risk_height_lower =
   dt <- data.table::copy(flight_base_dt)
   dt[, spec_abbr := make_abbr(spec)]
 
+  # height pode ser lido como integer por fread() quando todos os valores do
+  # ficheiro sao inteiros (speed_ms e' sempre double, calculado por divisao)
+  # -- sem isto, melt() avisa (nao erro, so' aviso) que vai coagir a double
+  dt[, `:=`(speed_ms = as.double(speed_ms), height = as.double(height))]
+
   long_dt <- data.table::melt(
     dt, id.vars = c("spec_abbr", "track_id"), measure.vars = c("speed_ms", "height"),
     variable.name = "metric", value.name = "value"
