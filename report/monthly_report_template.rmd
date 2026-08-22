@@ -1,0 +1,222 @@
+---
+title: "`r params$title`"
+output: word_document
+params:
+  title: ""
+  project_ref: ""
+  report_month: ""
+  report_start: ""
+  report_end: ""
+  analysis_date: ""
+  username: ""
+
+  data_summary: !r NULL
+
+  availability_by_idf: !r NULL
+  availability_plot_cal: !r NULL
+  availability_plot_freq: !r NULL
+
+  richness_dt: !r NULL
+  richness_plot: !r NULL
+
+  curtl_by_species_dt: !r NULL
+  curtl_by_group_dt: !r NULL
+
+  short_track_summary_dt: !r NULL
+
+  assess_by_status: !r NULL
+  assess_by_turbine: !r NULL
+
+  shutdown_by_turbine: !r NULL
+  shutdown_bands: !r NULL
+  shutdown_plot: !r NULL
+
+  safe_dist_overall: !r NULL
+  safe_dist_by_species: !r NULL
+  safe_dist_plot: !r NULL
+
+  id_risk_by_direction: !r NULL
+  id_confusion_general: !r NULL
+
+  flight_speed_by_species: !r NULL
+  flight_height_by_species: !r NULL
+  flight_metrics_plot: !r NULL
+
+  min_indiv_summary: !r NULL
+  min_indiv_daily_plot: !r NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# Mesmo helper de formatacao de tabelas do report_template.rmd, para manter
+# o estilo visual consistente entre o relatorio geral e o mensal.
+report_table <- function(x, caption = NULL) {
+  ft <- flextable::flextable(as.data.frame(x)) |>
+    flextable::theme_box() |>
+    flextable::bg(part = "header", bg = "gray85") |>
+    flextable::bold(part = "header") |>
+    flextable::fontsize(size = 9, part = "header") |>
+    flextable::fontsize(size = 9, part = "body") |>
+    flextable::align(align = "center", part = "header") |>
+    flextable::valign(valign = "center", part = "all") |>
+    flextable::autofit()
+  if (!is.null(caption)) ft <- flextable::set_caption(ft, caption)
+  ft
+}
+```
+
+**`r params$project_ref`**
+
+Monthly report: `r params$report_month`
+Report period: `r params$report_start` to `r params$report_end`
+Analysis date: `r params$analysis_date`
+Technician: `r params$username`
+
+This report is descriptive: it presents the metrics produced by the IDF analysis pipeline for the month above, without further interpretation, except where an explicit threshold (KNE safe-distance reference line, shutdown-time bands) is already part of the agreed methodology.
+
+---
+
+# 1. Data Universe and Time Span
+
+Row counts and date range of each dataset used in this report, restricted to the month above (SCADA row count restricted to the SCADA-availability window intersected with the month).
+
+```{r data-summary-table}
+if (!is.null(params$data_summary)) report_table(params$data_summary)
+```
+
+# 2. System Availability (Heartbeats)
+
+Daylight-time availability of IDF units, based on heartbeat signals.
+
+```{r availability-table}
+if (!is.null(params$availability_by_idf)) report_table(params$availability_by_idf)
+```
+
+```{r availability-cal, fig.width=9, fig.height=4}
+if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
+```
+
+```{r availability-freq, fig.width=6, fig.height=3}
+if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq)
+```
+
+# 3. Observed Species
+
+Number of distinct species classifications recorded within the same track (species richness per track), for tracks recorded in this month.
+
+```{r richness-table}
+if (!is.null(params$richness_dt)) report_table(params$richness_dt)
+```
+
+```{r richness-plot, fig.width=6, fig.height=4}
+if (!is.null(params$richness_plot)) print(params$richness_plot)
+```
+
+# 4. Curtailments by Species
+
+Curtailment events triggered in this month, by species and by species group (priority / nonpriority / other / uncategorized).
+
+```{r curtl-species-table}
+if (!is.null(params$curtl_by_species_dt)) report_table(params$curtl_by_species_dt)
+```
+
+```{r curtl-group-table}
+if (!is.null(params$curtl_by_group_dt)) report_table(params$curtl_by_group_dt)
+```
+
+# 5. Short-Track Curtailments
+
+Curtailments triggered by tracks with few recorded points, within the evaluation distance range agreed for this metric.
+
+```{r short-track-table}
+if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_summary_dt)
+```
+
+# 6. Curtailment Response Assessment
+
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals (tight baseline tolerance), for the turbines and window with SCADA coverage this month.
+
+```{r assess-status-table}
+if (!is.null(params$assess_by_status)) report_table(params$assess_by_status)
+```
+
+```{r assess-turbine-table}
+if (!is.null(params$assess_by_turbine)) report_table(params$assess_by_turbine)
+```
+
+# 7. Shutdown Time
+
+Time from curtailment signal to reaching each RPM threshold, by turbine. Bands below/above the agreed cut-offs are reported as-is, without further interpretation.
+
+```{r shutdown-turbine-table}
+if (!is.null(params$shutdown_by_turbine)) report_table(params$shutdown_by_turbine)
+```
+
+```{r shutdown-bands-table}
+if (!is.null(params$shutdown_bands)) report_table(params$shutdown_bands)
+```
+
+```{r shutdown-plot, fig.width=7, fig.height=6}
+if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
+```
+
+# 8. Safe Distance (KNE Methodology)
+
+Distance between the triggering track and the turbine at the moment of curtailment, compared against the KNE reference line, by priority species.
+
+```{r safe-dist-overall-table}
+if (!is.null(params$safe_dist_overall)) report_table(params$safe_dist_overall)
+```
+
+```{r safe-dist-species-table}
+if (!is.null(params$safe_dist_by_species)) report_table(params$safe_dist_by_species)
+```
+
+```{r safe-dist-plot, fig.width=8, fig.height=8}
+if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
+```
+
+# 9. Bi-Directional ID Transitions
+
+Curtailments triggered by a species reclassification within the same track, in both directions (priority-to-nonpriority and nonpriority-to-priority), and the species most frequently confused with the species of interest within the same track.
+
+```{r id-risk-table}
+if (!is.null(params$id_risk_by_direction)) report_table(params$id_risk_by_direction)
+```
+
+```{r id-confusion-table}
+if (!is.null(params$id_confusion_general)) report_table(params$id_confusion_general)
+```
+
+# 10. Biological Flight Metrics
+
+Flight speed and flight height per species, for tracks meeting the quality filters agreed for this metric.
+
+```{r flight-speed-table}
+if (!is.null(params$flight_speed_by_species)) report_table(params$flight_speed_by_species)
+```
+
+```{r flight-height-table}
+if (!is.null(params$flight_height_by_species)) report_table(params$flight_height_by_species)
+```
+
+```{r flight-metrics-plot, fig.width=8, fig.height=6}
+if (!is.null(params$flight_metrics_plot)) print(params$flight_metrics_plot)
+```
+
+# 11. Minimum Individuals per Time Bin
+
+Minimum number of distinct individuals per priority species detected in the same time bin, farm-wide, summarised by day.
+
+```{r min-indiv-summary-table}
+if (!is.null(params$min_indiv_summary)) report_table(params$min_indiv_summary)
+```
+
+```{r min-indiv-daily-plot, fig.width=8, fig.height=6}
+if (!is.null(params$min_indiv_daily_plot)) print(params$min_indiv_daily_plot)
+```
+
+# Annexes
+
+The full detail behind each table above (including all rows, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: data summary, system availability, observed species, curtailments by species, short-track curtailments, curtailment response assessment, shutdown time, safe distance, ID transitions and species confusion, biological flight metrics, and minimum individuals per bin.
