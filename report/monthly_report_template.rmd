@@ -67,6 +67,22 @@ report_table <- function(x, caption = NULL) {
 }
 ```
 
+<!--
+Cada tabela/plot abaixo tem, imediatamente acima do chunk que a produz, um
+comentario "Source: ..." a apontar para a funcao R (e ficheiro) que calcula
+o objeto correspondente em IDF_monthly_report.R -- usar isso para encontrar
+rapidamente onde ajustar cada tabela/plot (colunas, arredondamento, filtros,
+etc.) sem ter de procurar pelo nome do param em todo o script. Estes
+comentarios HTML nao aparecem no .docx gerado.
+
+Cada tabela/plot tem tambem a sua propria subsecção (##), com 1 frase a
+identificar o objeto, mesmo quando 2 tabelas pertencem à mesma secção
+(ex: 6.1/6.2) -- isto e' deliberado: 2 flextables em chunks consecutivos
+sem nenhum paragrafo de texto a separa-los tendem a sair "coladas" no docx
+(dificeis de selecionar/mover/editar independentemente no Word). Uma frase
+de texto entre elas garante uma quebra de paragrafo real a separa-las.
+-->
+
 **`r params$project_ref`**
 
 Monthly report: `r params$report_month`
@@ -82,52 +98,85 @@ This report is descriptive: it presents the metrics produced by the IDF analysis
 
 Row counts and date range of each dataset used in this report, restricted to the month above (SCADA row count restricted to the SCADA-availability window intersected with the month).
 
+<!-- Source: monthly_data_summary_dt <- summarise_dataset_extent(), R/dataset_summary.R (called from IDF_monthly_report.R, section "0. Data extent / quantities table") -->
 ```{r data-summary-table}
 if (!is.null(params$data_summary)) report_table(params$data_summary)
 ```
 
 # 2. System Availability (Heartbeats)
 
-Daylight-time availability of IDF units, based on heartbeat signals.
+## 2.1 Availability by IDF Unit
 
+Total offline time and daylight-availability category for each IDF unit, this month.
+
+<!-- Source: idf_availability_summary$by_idf <- summarise_availability(idf_availability_dt), R/availability_daylight.R (idf_availability_dt itself from daylight_availability()) -->
 ```{r availability-table}
 if (!is.null(params$availability_by_idf)) report_table(params$availability_by_idf)
 ```
 
+## 2.2 Availability Calendar
+
+Daily offline percentage per IDF unit, laid out as a calendar (top units by offline time only, to stay legible).
+
+<!-- Source: plot_availability_calendar(), R/availability_daylight.R -->
 ```{r availability-cal, fig.width=9, fig.height=4}
 if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
 ```
 
+## 2.3 Availability Frequency
+
+Count of IDF units per daylight-availability category.
+
+<!-- Source: plot_availability_frequency(), R/availability_daylight.R -->
 ```{r availability-freq, fig.width=6, fig.height=3}
 if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq)
 ```
 
+## 2.4 Spatial Distribution of Unavailability
+
 Spatial distribution of unavailability, by turbine (point size/colour = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit).
 
+<!-- Source: turbine_availability_dt <- join_availability_to_turbine(); plot_availability_spatial(), both R/availability_daylight.R -->
 ```{r availability-spatial, fig.width=9, fig.height=7}
 if (!is.null(params$availability_plot_spatial)) print(params$availability_plot_spatial)
 ```
 
 # 3. Observed Species
 
-Number of distinct species classifications recorded within the same track (species richness per track), for tracks recorded in this month.
+## 3.1 Species Richness Summary
 
+Number of tracks by count of distinct species classifications recorded within the same track, for tracks recorded in this month.
+
+<!-- Source: monthly_richness_summary <- summarise_species_richness(monthly_richness_dt), R/id_transitions.R (monthly_richness_dt from track_species_summary()) -->
 ```{r richness-table}
 if (!is.null(params$richness_dt)) report_table(params$richness_dt)
 ```
 
+## 3.2 Species Richness Distribution
+
+Same data as 3.1, as a histogram.
+
+<!-- Source: plot_species_richness_hist(), R/id_transitions.R -->
 ```{r richness-plot, fig.width=6, fig.height=4}
 if (!is.null(params$richness_plot)) print(params$richness_plot)
 ```
 
 # 4. Curtailments by Species
 
-Curtailment events triggered in this month, by species and by species group (priority / nonpriority / other / uncategorized).
+## 4.1 Curtailments by Species
 
+Curtailment events triggered in this month, one row per species.
+
+<!-- Source: summarise_curtailment_species(), R/curtailment_species.R (built on classify_curtailment_species()) -->
 ```{r curtl-species-table}
 if (!is.null(params$curtl_by_species_dt)) report_table(params$curtl_by_species_dt)
 ```
 
+## 4.2 Curtailments by Species Group
+
+Same events, rolled up by species group (priority / nonpriority / other / uncategorized).
+
+<!-- Source: summarise_curtailment_species_group(), R/curtailment_species.R -->
 ```{r curtl-group-table}
 if (!is.null(params$curtl_by_group_dt)) report_table(params$curtl_by_group_dt)
 ```
@@ -136,6 +185,7 @@ if (!is.null(params$curtl_by_group_dt)) report_table(params$curtl_by_group_dt)
 
 Curtailments triggered by tracks with few recorded points, within the evaluation distance range agreed for this metric.
 
+<!-- Source: summarise_short_track_curtailments(), R/curtailment_short_track.R (built on classify_short_track_curtailments()) -->
 ```{r short-track-table}
 if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_summary_dt)
 ```
@@ -144,10 +194,18 @@ if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_sum
 
 Whether SCADA-recorded RPM dropped as expected in response to curtailment signals (tight baseline tolerance), for the turbines and window with SCADA coverage this month.
 
+## 6.1 By Status
+
+<!-- Source: summary_assess$by_status <- summarise_curtailment_assessment(assess_dt)$by_status, R/curtailment_response.R (assess_dt from assess_curtailment_response()) -->
 ```{r assess-status-table}
 if (!is.null(params$assess_by_status)) report_table(params$assess_by_status)
 ```
 
+## 6.2 By Turbine
+
+Same assessment, broken down by turbine.
+
+<!-- Source: summary_assess$by_turbine <- summarise_curtailment_assessment(assess_dt)$by_turbine, R/curtailment_response.R -->
 ```{r assess-turbine-table}
 if (!is.null(params$assess_by_turbine)) report_table(params$assess_by_turbine)
 ```
@@ -156,14 +214,25 @@ if (!is.null(params$assess_by_turbine)) report_table(params$assess_by_turbine)
 
 Time from curtailment signal to reaching each RPM threshold, by turbine. Bands below/above the agreed cut-offs are reported as-is, without further interpretation.
 
+## 7.1 Time to Threshold by Turbine
+
+<!-- Source: summarise_time_to_threshold(tt_dt), R/curtailment_shutdown_time.R (tt_dt from time_to_rpm_thresholds()) -->
 ```{r shutdown-turbine-table}
 if (!is.null(params$shutdown_by_turbine)) report_table(params$shutdown_by_turbine)
 ```
 
+## 7.2 Time to Threshold Bands
+
+Same events, grouped into bands below/above the agreed cut-offs (shutdown_time_low_cut / shutdown_time_high_cut).
+
+<!-- Source: summarise_time_to_threshold_bands(tt_dt), R/curtailment_shutdown_time.R -->
 ```{r shutdown-bands-table}
 if (!is.null(params$shutdown_bands)) report_table(params$shutdown_bands)
 ```
 
+## 7.3 Time to Threshold Distribution
+
+<!-- Source: plot_time_to_threshold(), R/curtailment_shutdown_time.R -->
 ```{r shutdown-plot, fig.width=7, fig.height=6}
 if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
 ```
@@ -172,14 +241,23 @@ if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
 
 Distance between the triggering track and the turbine at the moment of curtailment, compared against the KNE reference line, by priority species.
 
+## 8.1 Overall
+
+<!-- Source: summary_safe_dist$overall <- summarise_safe_distance(safe_dist_dt, prioritysp)$overall, R/curtailment_safe_distance.R (safe_dist_dt from compute_safe_distance()) -->
 ```{r safe-dist-overall-table}
 if (!is.null(params$safe_dist_overall)) report_table(params$safe_dist_overall)
 ```
 
+## 8.2 By Species
+
+<!-- Source: summary_safe_dist$by_species <- summarise_safe_distance(safe_dist_dt, prioritysp)$by_species, R/curtailment_safe_distance.R -->
 ```{r safe-dist-species-table}
 if (!is.null(params$safe_dist_by_species)) report_table(params$safe_dist_by_species)
 ```
 
+## 8.3 Distribution
+
+<!-- Source: plot_safe_distance_hist(), R/curtailment_safe_distance.R -->
 ```{r safe-dist-plot, fig.width=8, fig.height=8}
 if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
 ```
@@ -188,10 +266,18 @@ if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
 
 Curtailments triggered by a species reclassification within the same track, in both directions (priority-to-nonpriority and nonpriority-to-priority), and the species most frequently confused with the species of interest within the same track.
 
+## 9.1 Risk by Direction
+
+<!-- Source: monthly_id_risk_summary$by_direction <- summarise_id_transition_risk(monthly_id_risk_dt, curtl_dt)$by_direction, R/id_transitions.R (monthly_id_risk_dt from classify_id_transition_risk()) -->
 ```{r id-risk-table}
 if (!is.null(params$id_risk_by_direction)) report_table(params$id_risk_by_direction)
 ```
 
+## 9.2 Species Confusion
+
+Other species recorded within the same track as id_confusion_species_of_interest, all tracks (not only curtailment-triggering ones).
+
+<!-- Source: monthly_id_confusion_summary$confusion_general <- summarise_species_confusion(), R/id_transitions.R -->
 ```{r id-confusion-table}
 if (!is.null(params$id_confusion_general)) report_table(params$id_confusion_general)
 ```
@@ -200,14 +286,23 @@ if (!is.null(params$id_confusion_general)) report_table(params$id_confusion_gene
 
 Flight speed and flight height per species, for tracks meeting the quality filters agreed for this metric.
 
+## 10.1 Flight Speed by Species
+
+<!-- Source: summarise_flight_speed(monthly_flight_base_dt), R/bio_flight_metrics.R (monthly_flight_base_dt from flight_metrics_base()) -->
 ```{r flight-speed-table}
 if (!is.null(params$flight_speed_by_species)) report_table(params$flight_speed_by_species)
 ```
 
+## 10.2 Flight Height by Species
+
+<!-- Source: summarise_flight_height(monthly_flight_base_dt), R/bio_flight_metrics.R -->
 ```{r flight-height-table}
 if (!is.null(params$flight_height_by_species)) report_table(params$flight_height_by_species)
 ```
 
+## 10.3 Distribution
+
+<!-- Source: plot_flight_metrics_distribution(), R/bio_flight_metrics.R -->
 ```{r flight-metrics-plot, fig.width=8, fig.height=6}
 if (!is.null(params$flight_metrics_plot)) print(params$flight_metrics_plot)
 ```
@@ -216,10 +311,16 @@ if (!is.null(params$flight_metrics_plot)) print(params$flight_metrics_plot)
 
 Minimum number of distinct individuals per priority species detected in the same time bin, farm-wide, summarised by day.
 
+## 11.1 Summary
+
+<!-- Source: summarise_min_individuals(monthly_min_indiv_bins_dt), R/track_min_individuals.R (monthly_min_indiv_bins_dt from count_min_individuals_per_bin()) -->
 ```{r min-indiv-summary-table}
 if (!is.null(params$min_indiv_summary)) report_table(params$min_indiv_summary)
 ```
 
+## 11.2 Daily Peak, by Species
+
+<!-- Source: plot_daily_max_individuals(monthly_min_indiv_daily_dt, species_sel = prioritysp), R/track_min_individuals.R (monthly_min_indiv_daily_dt from summarise_daily_max_individuals()) -->
 ```{r min-indiv-daily-plot, fig.width=8, fig.height=6}
 if (!is.null(params$min_indiv_daily_plot)) print(params$min_indiv_daily_plot)
 ```
