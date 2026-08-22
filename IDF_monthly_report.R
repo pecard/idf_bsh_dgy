@@ -156,7 +156,22 @@ report_end   <- as.Date(end)
 
 scada_dt <- scada_dt_unfilt # NAO FILTRAR -- mesma logica de IDF_analysis.R
 
-curtl_dt <- as.data.table(curtl_dt_unfilt)[start >= ini & start <= end]
+# NOTA (bug real, encontrado 2026-08 via monthly_data_summary_dt a mostrar
+# Curtailments date_to muito alem do mes do relatorio): curtl_dt_unfilt TEM
+# uma coluna chamada "end" (fim do proprio curtailment, ver
+# R/read_curtailments.R). Dentro de DT[...], nomes de coluna tomam
+# precedencia sobre variaveis do ambiente com o mesmo nome -- por isso
+# "start <= end" estava a comparar com a COLUNA end (o fim do proprio
+# curtailment, sempre >= o seu start -- quase sempre TRUE), nao com a
+# variavel global `end` (o limite superior do periodo do relatorio). O
+# filtro superior era um no-op silencioso; so' o limite inferior (`ini`,
+# sem coluna colidente) filtrava mesmo alguma coisa. Variaveis renomeadas
+# aqui para nao colidir com NENHUMA coluna de curtl_dt_unfilt -- CUIDADO:
+# nao usar "report_ini"/"report_end" (ja existem acima, com outro
+# significado: as versoes Date de ini/end, usadas em nomes de ficheiro).
+curtl_filter_ini <- ini
+curtl_filter_end <- end
+curtl_dt <- as.data.table(curtl_dt_unfilt)[start >= curtl_filter_ini & start <= curtl_filter_end]
 
 track_dt <- track_dt_unfilt %>% filter(timestamp >= ini & timestamp <= end)
 track_dt <- data.table::as.data.table(track_dt)

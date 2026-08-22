@@ -392,8 +392,25 @@ scada_dt[, .(
 )]
 
 #Curtail data
+# NOTA (bug real, encontrado 2026-08 a partir do relatorio mensal): curtl_dt_unfilt
+# TEM uma coluna chamada "end" (fim do proprio curtailment, ver
+# R/read_curtailments.R). Dentro de DT[...], nomes de coluna tomam
+# precedencia sobre variaveis do ambiente com o mesmo nome -- por isso
+# "start <= end" estava a comparar com a COLUNA end (o fim do proprio
+# curtailment, sempre >= o seu start -- quase sempre TRUE), nao com a
+# variavel global `end` (o limite superior do periodo do relatorio, definido
+# em userSettings_BSH.R). O filtro superior era um no-op silencioso; so' o
+# limite inferior (`ini`, sem coluna colidente) filtrava mesmo alguma coisa
+# -- curtl_dt incluia todos os curtailments desde `ini` ate ao fim de TODO o
+# historico em cache, nao so' ate `end`. Variaveis renomeadas aqui para nao
+# colidir com NENHUMA coluna de curtl_dt_unfilt -- CUIDADO: nao usar
+# "report_ini"/"report_end" (ja existem acima, com outro significado:
+# report_start/report_end sao as versoes Date de ini/end, usadas em nomes
+# de ficheiro).
+curtl_filter_ini <- ini
+curtl_filter_end <- end
 curtl_dt <- as.data.table(curtl_dt_unfilt)[
-  start >= ini & start <= end
+  start >= curtl_filter_ini & start <= curtl_filter_end
 ]
 #check 
 curtl_dt[, .(
