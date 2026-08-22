@@ -51,6 +51,16 @@ for (p in packages) {
 ## SETTINGS ----
 ##
 
+## report_month: definir ANTES de dar source a este script, ex:
+##   report_month <- "2026-07"
+##   source("IDF_monthly_report.R")
+## Verificado ja aqui, antes de qualquer uso de report_month abaixo (ex:
+## folder_output) -- monthlyReportSettings.R confia que ja esta definido e
+## nao repete esta verificacao.
+if (!exists("report_month")) {
+  stop('Definir report_month (formato "YYYY-MM", ex: "2026-07") antes de correr IDF_monthly_report.R')
+}
+
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 folder_input  <- "inputs"
 folder_output <- file.path("outputs", "monthly", report_month)
@@ -61,13 +71,6 @@ dir.create(folder_input,  showWarnings = FALSE, recursive = TRUE)
 folder_script <- "scripts\\"
 Rfiles <- list.files(folder_script, pattern = '.R', full.names = TRUE)
 lapply(Rfiles, function(x) source(x))
-
-## report_month: definir ANTES de dar source a este script, ex:
-##   report_month <- "2026-07"
-##   source("IDF_monthly_report.R")
-if (!exists("report_month")) {
-  stop('Definir report_month (formato "YYYY-MM", ex: "2026-07") antes de correr IDF_monthly_report.R')
-}
 
 source(file.path(folder_input, "monthlyReportSettings.R"))
 

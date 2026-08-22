@@ -88,10 +88,10 @@ heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11",
 ##
 ## Report period -- 1 calendar month, computed from report_month
 ##
-
-if (!exists("report_month")) {
-  stop("Definir report_month (formato \"YYYY-MM\", ex: \"2026-07\") antes de dar source a monthlyReportSettings.R")
-}
+## report_month e' verificado em IDF_monthly_report.R, antes deste ficheiro
+## ser carregado (este ficheiro so' e' pensado para ser sourced a partir
+## dali -- ver "Uso" no topo) -- nao repetir a verificacao aqui.
+##
 
 source("R/monthly_report_utils.R")
 
