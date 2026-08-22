@@ -150,9 +150,9 @@ heartb_dt <- heartb_dt_unfilt %>%
   filter(timestamp >= ini & timestamp <= end)
 
 # janela de SCADA disponivel para este mes -- interseccao entre a janela fixa
-# de disponibilidade de SCADA (scada_ini/scada_end, userSettings_BSH.R) e o
-# mes do relatorio, para nao incluir historico fora do mes nem assumir SCADA
-# antes de scada_ini
+# de disponibilidade de SCADA (scada_ini/scada_end, monthlyReportSettings.R)
+# e o mes do relatorio, para nao incluir historico fora do mes nem assumir
+# SCADA antes de scada_ini
 scada_ini_monthly <- max(scada_ini, ini)
 scada_end_monthly <- min(scada_end, end)
 
