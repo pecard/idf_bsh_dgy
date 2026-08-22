@@ -707,7 +707,7 @@ if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt")) {
   source("R/curtailment_removal_risk.R")
 
   removal_dt <- evaluate_curtailment_removal_risk(
-    curtl_dt_unfilt, track_dt_unfilt, prioritysp,
+    curtl_dt_unfilt, track_dt_unfilt, prioritysp, wtg,
     removed_species = curtailment_removal_species_of_interest,
     max_trigger_match_sec = curtailment_removal_max_trigger_match_sec
   )

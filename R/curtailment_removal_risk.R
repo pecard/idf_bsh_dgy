@@ -47,12 +47,31 @@
 ## curtailment sob a nova politica. E' o caso mais critico, sinalizado
 ## separadamente (nao se confunde com "gap pequeno").
 ##
-## Depende de: data.table, ggplot2
+## CORRECAO (2026-08, ver caso real Golden-Eagle inspecionado pelo Paulo):
+## x2d_at_curtailment/dist_at_next_priority eram calculados a partir de
+## track_dt$dist3d (NearestTurbineDistance3d do proprio IdentiFlight) -- mas
+## um MESMO track pode disparar curtailment em VARIAS turbinas ao MESMO
+## tempo (curtl_dt tem 1 linha por turbina afetada, mesmo track_id+start
+## repetido), e dist3d e' uma propriedade do PONTO do track (distancia a'
+## turbina mais proxima NESSE momento), nao da turbina especifica de cada
+## linha de curtailment. Isso fazia com que todas as linhas desse track
+## partilhassem o MESMO valor de distancia, mesmo quando a turbina real de
+## cada linha estava a distancias muito diferentes (caso real: 3 turbinas,
+## curtl_dt$x2d original = 682m/21m/544m, mas as 3 linhas saiam todas com
+## ~23m/~31m porque dist3d so' "sabia" da turbina fisicamente mais proxima).
+## Mesmo raciocinio de cautela ja documentado em
+## R/fatality_track_investigation.R e R/coverage_3d_topography.R -- agora
+## corrigido aqui tambem: x2d_at_curtailment/dist_at_next_priority sao
+## recalculados a partir de utm_x/utm_y do ponto do track mais proximo,
+## ATE A TURBINA ESPECIFICA de cada linha de curtailment (via wtg), nao a
+## turbina "mais proxima" generica do momento.
+##
+## Depende de: data.table, ggplot2, sf
 ##
 ## Uso:
 ##   source("R/curtailment_removal_risk.R")
 ##
-##   removal_dt <- evaluate_curtailment_removal_risk(curtl_dt, track_dt, prioritysp, removed_species = "Kestrel")
+##   removal_dt <- evaluate_curtailment_removal_risk(curtl_dt, track_dt, prioritysp, wtg, removed_species = "Kestrel")
 ##   removal_summary <- summarise_curtailment_removal_risk(removal_dt, proximity_threshold_m = track_proximity_threshold_m)
 ##   print_curtailment_removal_risk_summary(removal_summary, "Kestrel")
 ##
@@ -66,13 +85,32 @@
 ## 1. Evento a evento: distancia no momento do disparo (removed_species) e
 ##    a 1ª deteccao prioritaria a seguir no mesmo track (se houver) ----
 
-evaluate_curtailment_removal_risk <- function(curtl_dt, track_dt, prioritysp,
-                                              removed_species = "Kestrel", max_trigger_match_sec = 30) {
+evaluate_curtailment_removal_risk <- function(curtl_dt, track_dt, prioritysp, wtg,
+                                              removed_species = "Kestrel", max_trigger_match_sec = 30,
+                                              wtg_id_col = "InternalNa") {
 
   curtl_dt <- data.table::as.data.table(curtl_dt) # curtl_dt_unfilt pode nao ser data.table (ver R/curtailment_cluster_patterns.R)
 
+  # coordenadas por turbina -- para recalcular distancia a' turbina
+  # ESPECIFICA de cada linha de curtailment (ver nota no cabecalho: um
+  # track pode disparar curtailment em varias turbinas ao mesmo tempo,
+  # track_dt$dist3d nao distingue entre elas)
+  wtg_coords <- sf::st_coordinates(wtg)
+  wtg_xy <- data.table::data.table(
+    turbine = wtg[[wtg_id_col]], wtg_x = wtg_coords[, "X"], wtg_y = wtg_coords[, "Y"]
+  )
+
   removed_curtl <- curtl_dt[species == removed_species, .(track_id, turbine, start)]
   removed_curtl[, event_id := .I]
+  removed_curtl <- merge(removed_curtl, wtg_xy, by = "turbine", all.x = TRUE)
+
+  unmatched_turbines <- unique(removed_curtl[is.na(wtg_x), turbine])
+  if (length(unmatched_turbines) > 0L) {
+    message(sprintf(
+      "evaluate_curtailment_removal_risk: %d turbina(s) de curtl_dt nao encontrada(s) em wtg -- distancias ficam NA para: %s",
+      length(unmatched_turbines), paste(unmatched_turbines, collapse = ", ")
+    ))
+  }
 
   empty <- data.table::data.table(
     event_id = integer(), track_id = character(), turbine = character(), curtailment_start = as.POSIXct(character()),
@@ -82,13 +120,13 @@ evaluate_curtailment_removal_risk <- function(curtl_dt, track_dt, prioritysp,
   )
   if (nrow(removed_curtl) == 0L) return(empty)
 
-  track_pts <- track_dt[!is.na(spec), .(track_id, timestamp, spec, dist3d)]
+  track_pts <- track_dt[!is.na(spec), .(track_id, timestamp, spec, utm_x, utm_y)]
   data.table::setorder(track_pts, track_id, timestamp)
 
   # distancia no momento do disparo -- ponto de track mais proximo no tempo
   # (antes OU depois, tolerancia max_trigger_match_sec -- mesma logica de
-  # match_nearest_rpm() em R/curtailment_response.R), nao so "antes" porque
-  # o intervalo entre pontos do track pode ser maior que o gap real
+  # match_nearest_rpm() em R/curtailment_response.R), recalculada a partir
+  # de utm_x/utm_y ATE A TURBINA ESPECIFICA deste evento
   at_trigger <- track_pts[
     removed_curtl,
     on = .(track_id, timestamp = start),
@@ -99,17 +137,23 @@ evaluate_curtailment_removal_risk <- function(curtl_dt, track_dt, prioritysp,
       turbine             = i.turbine,
       curtailment_start   = i.start,
       matched_track_time  = x.timestamp,
-      x2d_at_curtailment  = x.dist3d
+      matched_utm_x       = x.utm_x,
+      matched_utm_y       = x.utm_y,
+      wtg_x               = i.wtg_x,
+      wtg_y               = i.wtg_y
     )
   ]
   at_trigger[, trigger_match_gap_sec := as.numeric(abs(difftime(matched_track_time, curtailment_start, units = "secs")))]
+  at_trigger[, x2d_at_curtailment := sqrt((matched_utm_x - wtg_x)^2 + (matched_utm_y - wtg_y)^2)]
   at_trigger[!is.na(trigger_match_gap_sec) & trigger_match_gap_sec > max_trigger_match_sec, x2d_at_curtailment := NA_real_]
-  at_trigger[, c("matched_track_time", "trigger_match_gap_sec") := NULL]
+  at_trigger[, c("matched_track_time", "matched_utm_x", "matched_utm_y", "trigger_match_gap_sec") := NULL]
 
   # 1ª deteccao de especie prioritaria DEPOIS do disparo, no mesmo track --
   # nao exige que seja a classificacao final (pedido do Paulo: abordagem
-  # conservadora, conta qualquer prioritaria a seguir, nao so' a ultima)
-  priority_pts <- track_dt[!is.na(spec) & spec %in% prioritysp, .(track_id, timestamp, spec, dist3d)]
+  # conservadora, conta qualquer prioritaria a seguir, nao so' a ultima).
+  # Distancia recalculada ate' a MESMA turbina especifica deste evento
+  # (wtg_x/wtg_y vem de removed_curtl, nao muda entre at_trigger e aqui)
+  priority_pts <- track_dt[!is.na(spec) & spec %in% prioritysp, .(track_id, timestamp, spec, utm_x, utm_y)]
   data.table::setorder(priority_pts, track_id, timestamp)
 
   next_priority <- priority_pts[
@@ -120,9 +164,14 @@ evaluate_curtailment_removal_risk <- function(curtl_dt, track_dt, prioritysp,
       event_id                = i.event_id,
       next_priority_ts        = x.timestamp,
       next_priority_species   = x.spec,
-      dist_at_next_priority   = x.dist3d
+      next_utm_x              = x.utm_x,
+      next_utm_y              = x.utm_y,
+      wtg_x                   = i.wtg_x,
+      wtg_y                   = i.wtg_y
     )
   ]
+  next_priority[, dist_at_next_priority := sqrt((next_utm_x - wtg_x)^2 + (next_utm_y - wtg_y)^2)]
+  next_priority[, c("next_utm_x", "next_utm_y", "wtg_x", "wtg_y") := NULL]
 
   out <- merge(at_trigger, next_priority, by = "event_id", all.x = TRUE)
 
@@ -348,10 +397,14 @@ curtailment_removal_case_detail <- function(removal_dt, curtl_dt, next_priority_
   }
   if (nrow(cases) == 0L) return(curtl_dt[0])
 
+  # junta tambem por "turbine" -- um track pode disparar curtailment em
+  # VARIAS turbinas na mesma start (ver nota no cabecalho do ficheiro);
+  # sem "turbine" no join, essas linhas dariam um match many-to-many
+  # (cartesiano) em vez do pareamento 1-para-1 correto por turbina
   out <- merge(
-    curtl_dt, cases[, .(track_id, curtailment_start, next_priority_ts, next_priority_species,
+    curtl_dt, cases[, .(track_id, turbine, curtailment_start, next_priority_ts, next_priority_species,
                          x2d_at_curtailment, dist_at_next_priority, time_gap_sec, dist_gap_m)],
-    by.x = c("track_id", "start"), by.y = c("track_id", "curtailment_start")
+    by.x = c("track_id", "turbine", "start"), by.y = c("track_id", "turbine", "curtailment_start")
   )
   data.table::setorder(out, -time_gap_sec)
   out[]
