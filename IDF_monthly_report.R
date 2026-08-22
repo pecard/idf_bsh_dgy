@@ -54,8 +54,8 @@ for (p in packages) {
 ##
 
 ## report_month: definir ANTES de dar source a este script, ex:
-##   report_month <- "2026-07"
-##   source("IDF_monthly_report.R")
+report_month <- "2026-01"
+source("IDF_monthly_report.R")
 ## Verificado ja aqui, antes de qualquer uso de report_month abaixo (ex:
 ## folder_output) -- monthlyReportSettings.R confia que ja esta definido e
 ## nao repete esta verificacao.
