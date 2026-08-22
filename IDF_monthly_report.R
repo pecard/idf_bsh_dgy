@@ -456,7 +456,13 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
 
 
 ##
-## 6. Bi-directional ID transitions (P<->NP) + species confusion matrix ----
+## 6. Bi-directional ID transitions (P<->NP), global (todas as especies) ----
+##
+## So' o risco global de transicao P<->NP (direcao, atraso, numeros gerais) --
+## NAO inclui matriz de confusao por especie (essa e' a secção 6b, abaixo,
+## desligada por omissao). O metodo e' o mesmo usado na analise de remocao
+## do Kestrel (R/curtailment_removal_risk.R), aqui aplicado ao conjunto
+## completo de especies nao-prioritarias, nao a uma unica especie.
 ##
 
 if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_transitions)) {
@@ -498,6 +504,26 @@ if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_t
     plot = p_monthly_late_dist, width = 7, height = 4, dpi = 300, bg = "white"
   )
 
+} else {message("track_dt/curtl_dt nao disponiveis ou run_sections_monthly$id_transitions = FALSE -- 6 (ID transitions) saltada nesta ronda.")}
+
+
+##
+## 6b. Species confusion matrix (opcional, DESLIGADA por omissao) ----
+##
+## Que outras especies aparecem no mesmo track que
+## id_confusion_species_of_interest (ver inputs/monthlyReportSettings.R) --
+## analise pontual para uma especie especifica (ex: Kestrel, no contexto da
+## discussao de remocao do curtailment trigger), nao uma metrica mensal de
+## rotina. Ligar via run_sections_monthly$id_confusion = TRUE e ajustar
+## id_confusion_species_of_interest quando for preciso.
+##
+
+if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_confusion)) {
+
+  source("R/id_transitions.R")
+
+  if (!exists("monthly_richness_dt")) monthly_richness_dt <- track_species_summary(track_dt)
+
   monthly_id_confusion_summary <- summarise_species_confusion(
     track_dt, monthly_richness_dt, curtl_dt, id_confusion_species_of_interest
   )
@@ -511,7 +537,7 @@ if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_t
     file.path(folder_output, sprintf("id_confusion_%s_%s.xlsx", id_confusion_species_of_interest, report_month))
   )
 
-} else {message("track_dt/curtl_dt nao disponiveis ou run_sections_monthly$id_transitions = FALSE -- 6 (ID transitions) saltada nesta ronda.")}
+} else {message("run_sections_monthly$id_confusion = FALSE (por omissao) -- 6b (species confusion matrix) saltada nesta ronda.")}
 
 
 ##
@@ -630,6 +656,7 @@ monthly_report_params <- list(
   safe_dist_plot        = if (exists("p_safe_dist_hist")) p_safe_dist_hist else NULL,
 
   id_risk_by_direction = if (exists("monthly_id_risk_summary")) monthly_id_risk_summary$by_direction else NULL,
+  id_confusion_species = if (exists("monthly_id_confusion_summary")) id_confusion_species_of_interest else NULL,
   id_confusion_general = if (exists("monthly_id_confusion_summary")) monthly_id_confusion_summary$confusion_general else NULL,
 
   flight_speed_by_species  = if (exists("monthly_flight_speed_summary_dt")) monthly_flight_speed_summary_dt else NULL,

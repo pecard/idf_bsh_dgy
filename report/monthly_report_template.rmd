@@ -37,6 +37,7 @@ params:
   safe_dist_plot: !r NULL
 
   id_risk_by_direction: !r NULL
+  id_confusion_species: !r NULL
   id_confusion_general: !r NULL
 
   flight_speed_by_species: !r NULL
@@ -264,7 +265,7 @@ if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
 
 # 9. Bi-Directional ID Transitions
 
-Curtailments triggered by a species reclassification within the same track, in both directions (priority-to-nonpriority and nonpriority-to-priority), and the species most frequently confused with the species of interest within the same track.
+Curtailments triggered by a species reclassification within the same track, in both directions (priority-to-nonpriority and nonpriority-to-priority) -- global, across all non-priority species together, not any single species.
 
 ## 9.1 Risk by Direction
 
@@ -273,9 +274,24 @@ Curtailments triggered by a species reclassification within the same track, in b
 if (!is.null(params$id_risk_by_direction)) report_table(params$id_risk_by_direction)
 ```
 
-## 9.2 Species Confusion
-
-Other species recorded within the same track as id_confusion_species_of_interest, all tracks (not only curtailment-triggering ones).
+<!--
+9.2 e' opcional (run_sections_monthly$id_confusion, DESLIGADA por omissao
+em monthlyReportSettings.R) -- analise pontual para UMA especie
+(id_confusion_species_of_interest), nao uma metrica de rotina mensal.
+Quando desligada, params$id_confusion_general fica NULL e todo o
+subsection (titulo, texto e tabela) desaparece do documento -- nao so' a
+tabela -- por isso o titulo/texto tambem estao dentro deste chunk
+condicional (results='asis'), nao como markdown normal.
+-->
+```{r id-confusion-heading, results='asis'}
+if (!is.null(params$id_confusion_general)) {
+  cat(sprintf("## 9.2 Species Confusion (%s)\n\n", params$id_confusion_species))
+  cat(sprintf(
+    "Other species recorded within the same track as %s, all tracks (not only curtailment-triggering ones).\n\n",
+    params$id_confusion_species
+  ))
+}
+```
 
 <!-- Source: monthly_id_confusion_summary$confusion_general <- summarise_species_confusion(), R/id_transitions.R -->
 ```{r id-confusion-table}

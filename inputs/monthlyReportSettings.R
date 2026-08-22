@@ -43,7 +43,8 @@ run_sections_monthly <- list(
   curtailment_by_species        = TRUE,  # 4
   short_track_curtailment       = TRUE,  # 5
   curtailment_response_delays   = TRUE,  # 6-8 (resposta, shutdown time, safe distance) -- so corre se scada_dt tambem existir
-  id_transitions                = TRUE,  # 9 (risco de transicao bi-direcional P<->NP + matriz de confusao)
+  id_transitions                = TRUE,  # 9 (risco de transicao bi-direcional P<->NP, GLOBAL -- todas as especies nao-prioritarias em conjunto; direcao + numeros gerais, sem detalhe por especie)
+  id_confusion                   = FALSE, # 9b (matriz de confusao para UMA especie -- id_confusion_species_of_interest, abaixo. DESLIGADA por omissao: e' uma analise pontual, tipo a feita para o Kestrel na discussao de remocao do curtailment trigger, nao uma metrica de rotina mensal. Ligar so' quando for preciso investigar uma especie especifica.)
   bio_flight_metrics             = TRUE,  # 10 (velocidade/altura de voo por especie)
   min_individuals                = TRUE   # 11
 )
@@ -239,7 +240,9 @@ id_transition_late_time_sec <- 50
 track_proximity_threshold_m <- 100
 
 # especie a analisar na matriz de confusao (que outras especies aparecem no
-# mesmo track) -- Kestrel por omissao, igual a userSettings_BSH.R
+# mesmo track) -- so' tem efeito quando run_sections_monthly$id_confusion =
+# TRUE (secção 6b, desligada por omissao -- ver acima). Ajustar este literal
+# manualmente para a especie que se quer investigar antes de ligar o switch.
 id_confusion_species_of_interest <- "Kestrel"
 
 
