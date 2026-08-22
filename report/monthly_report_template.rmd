@@ -1,6 +1,12 @@
 ---
 title: "`r params$title`"
-output: word_document
+output:
+  officedown::rdocx_document:
+    page_size:
+      width: 8.27
+      height: 11.69
+      orient: "portrait"
+      unit: "in"
 params:
   title: ""
   project_ref: ""
@@ -220,6 +226,26 @@ Time from curtailment signal to reaching each RPM threshold, by turbine. Bands b
 <!-- Source: summarise_time_to_threshold(tt_dt), R/curtailment_shutdown_time.R (tt_dt from time_to_rpm_thresholds()) -->
 ```{r shutdown-turbine-table}
 if (!is.null(params$shutdown_by_turbine)) report_table(params$shutdown_by_turbine)
+```
+
+<!--
+7.1's table is wide (1 row per turbine, many columns) and does not fit a
+portrait A4 page -- this section break makes JUST the page(s) up to this
+point (i.e. 7.1's table) render landscape; everything from 7.2 onward
+reverts to the document's default portrait page_size (set in the YAML
+header above). Requires the officedown package (output format changed
+from word_document to officedown::rdocx_document above) -- officer is
+already a dependency via flextable, officedown adds the block_section()/
+prop_section() Word section-break support that plain rmarkdown::word_document
+does not have.
+-->
+```{r shutdown-turbine-landscape, echo=FALSE}
+officer::block_section(
+  officer::prop_section(
+    page_size = officer::page_size(orient = "landscape", width = 11.69, height = 8.27),
+    type = "continuous"
+  )
+)
 ```
 
 ## 7.2 Time to Threshold Bands

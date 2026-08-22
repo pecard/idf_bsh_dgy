@@ -34,12 +34,16 @@ options(error = function() message("Skipping failed step"))
 ## Subconjunto do IDF_analysis.R -- este script nao usa terra/RANN/plotly/
 ## cluster (coverage 3D e turbine clustering ficam fora do relatorio
 ## mensal); sf e' usado so' para localizar as turbinas no plot espacial de
-## disponibilidade (secção 1)
+## disponibilidade (secção 1); officedown/officer suportam a secção em
+## landscape da tabela 7.1 (report/monthly_report_template.rmd) -- nao sao
+## precisos por IDF_analysis.R (usa rmarkdown::word_document simples, sem
+## secções landscape)
 packages <- c('purrr', 'rstudioapi',
               'tidyverse', 'lubridate', 'ggplot2',
               'scales', 'readxl', 'janitor', 'sf',
               'flextable', 'systemfonts',
               'openxlsx', 'writexl', 'rmarkdown',
+              'officedown', 'officer',
               'data.table', 'suncalc',
               'fst')
 
