@@ -241,13 +241,13 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   )
   ggsave(
     file.path(folder_output, sprintf("idf_availability_calendar_%s.png", report_month)),
-    plot = p_availability_cal, width = 200, height = 90, units = "mm", dpi = 300, bg = "white"
+    plot = p_availability_cal, width = 15, height = 20, units = "cm", dpi = 300, bg = "white"
   )
 
   p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
   ggsave(
     file.path(folder_output, sprintf("idf_availability_frequency_%s.png", report_month)),
-    plot = p_availability_freq, width = 6, height = 3, units = "in", dpi = 300, bg = "white"
+    plot = p_availability_freq, width = 8, height = 8, units = "cm", dpi = 300, bg = "white"
   )
 
   write_xlsx_local(
@@ -306,7 +306,7 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$observed_species)) {
   p_monthly_richness <- plot_species_richness_hist(monthly_richness_dt)
   ggsave(
     file.path(folder_output, sprintf("observed_species_richness_hist_%s.png", report_month)),
-    plot = p_monthly_richness, width = 6, height = 4, dpi = 300, bg = "white"
+    plot = p_monthly_richness, width = 8, height = 8, units = "cm", dpi = 300, bg = "white"
   )
 
 } else {message("track_dt nao disponivel ou run_sections_monthly$observed_species = FALSE -- 2 (observed species) saltada nesta ronda.")}
@@ -539,9 +539,11 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$bio_flight_metrics)) {
 
   n_species_flight_monthly <- length(unique(monthly_flight_base_dt$spec))
   p_monthly_flight_metrics <- plot_flight_metrics_distribution(monthly_flight_base_dt, riskHeight_lower, riskHeight_upper)
+  # 8x8cm por painel (1 especie x 1 metrica) -- facet_grid(spec_abbr ~ metric)
+  # tem sempre 2 colunas (speed_ms, height) e 1 linha por especie
   ggsave(
     file.path(folder_output, sprintf("bio_flight_metrics_distribution_%s.png", report_month)),
-    plot = p_monthly_flight_metrics, width = 8, height = max(4, 2.2 * n_species_flight_monthly), dpi = 300, bg = "white"
+    plot = p_monthly_flight_metrics, width = 2 * 8, height = n_species_flight_monthly * 8, units = "cm", dpi = 300, bg = "white"
   )
 
 } else {message("track_dt nao disponivel ou run_sections_monthly$bio_flight_metrics = FALSE -- 7 (bio flight metrics) saltada nesta ronda.")}
@@ -573,10 +575,14 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$min_individuals)) {
 
   n_species_min_indiv_monthly <- length(unique(monthly_min_indiv_bins_dt$spec))
 
-  p_monthly_min_indiv_daily <- plot_daily_max_individuals(monthly_min_indiv_daily_dt)
+  # species_sel = prioritysp (nao o default da funcao, so' 2 especies) --
+  # mostrar todas as especies prioritarias, 1 painel por especie
+  p_monthly_min_indiv_daily <- plot_daily_max_individuals(monthly_min_indiv_daily_dt, species_sel = prioritysp)
+  # 15cm de largura (facet_wrap ncol=1 -- so' 1 coluna) x 8cm de altura por
+  # especie/painel
   ggsave(
     file.path(folder_output, sprintf("min_individuals_daily_max_%s.png", report_month)),
-    plot = p_monthly_min_indiv_daily, width = 8, height = max(4, 2.2 * n_species_min_indiv_monthly), dpi = 300, bg = "white"
+    plot = p_monthly_min_indiv_daily, width = 15, height = n_species_min_indiv_monthly * 8, units = "cm", dpi = 300, bg = "white"
   )
 
 } else {message("track_dt nao disponivel ou run_sections_monthly$min_individuals = FALSE -- 8 (min individuals) saltada nesta ronda.")}

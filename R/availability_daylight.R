@@ -415,12 +415,13 @@ plot_availability_spatial <- function(turbine_availability_dt, value_col = "moni
   ggplot() +
     geom_point(
       data = dt[has_data == TRUE],
-      aes(x = x, y = y, size = value, color = value)
+      aes(x = x, y = y, size = value, color = value),
+      alpha = 0.8 # 20% transparencia -- ajuda a ver turbinas sobrepostas/proximas
     ) +
     geom_point(
       data = dt[has_data == FALSE],
       aes(x = x, y = y),
-      size = 2, colour = "grey60", shape = 4
+      size = 2, colour = "grey60", shape = 4, alpha = 0.8
     ) +
     scale_size_continuous(name = "Offline (%)", range = c(2, 10)) +
     scale_color_gradient(name = "Offline (%)", low = "#e0f3db", high = "#0868ac") +

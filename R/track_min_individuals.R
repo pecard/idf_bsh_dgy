@@ -259,6 +259,7 @@ plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vultu
       date_breaks = "15 days",
       date_labels = "%d/%m/%Y" # Altera o formato conforme preferires (ex: "%d %b")
     ) +
+    expand_limits(y = 0) + # cada painel (scales="free_y") comeca em 0, mesmo com free_y
     labs(
       x = "Date",
       y = "Daily peak (max individuals in any 2-min bin)",
