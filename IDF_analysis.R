@@ -391,37 +391,36 @@ scada_dt[, .(
   max_start = max(datetime , na.rm = TRUE)
 )]
 
+## Todos os filtros de data abaixo (curtl_dt/track_dt/heartb_dt) usam a
+## MESMA sintaxe (data.table `[...]`, nao dplyr::filter()) e as MESMAS 2
+## variaveis auxiliares (filter_ini/filter_end), nunca `ini`/`end`
+## diretamente dentro de um `DT[...]` -- curtl_dt_unfilt TEM uma coluna
+## chamada "end" (fim do proprio curtailment, ver R/read_curtailments.R), e
+## dentro de DT[...] nomes de coluna tomam precedencia sobre variaveis do
+## ambiente com o mesmo nome. Usar `ini`/`end` bare dentro do filtro de
+## curtl_dt_unfilt fazia "start <= end" comparar com a COLUNA end (sempre
+## >= o seu proprio start -- quase sempre TRUE), nao com o limite do
+## periodo do relatorio -- bug real, encontrado 2026-08 a partir do
+## relatorio mensal (curtl_dt incluia todos os curtailments desde `ini` ate
+## ao fim de TODO o historico em cache, nao so' ate `end`). filter_ini/
+## filter_end nao colidem com nenhuma coluna de curtl_dt_unfilt/
+## track_dt_unfilt/heartb_dt_unfilt, nem com report_start/report_end (Date,
+## definidos acima, usados em nomes de ficheiro) -- usados por omissao em
+## TODOS os filtros, mesmo nos que hoje nao tem risco de colisao, para nao
+## depender de confirmar caso a caso.
+filter_ini <- ini
+filter_end <- end
+
 #Curtail data
-# NOTA (bug real, encontrado 2026-08 a partir do relatorio mensal): curtl_dt_unfilt
-# TEM uma coluna chamada "end" (fim do proprio curtailment, ver
-# R/read_curtailments.R). Dentro de DT[...], nomes de coluna tomam
-# precedencia sobre variaveis do ambiente com o mesmo nome -- por isso
-# "start <= end" estava a comparar com a COLUNA end (o fim do proprio
-# curtailment, sempre >= o seu start -- quase sempre TRUE), nao com a
-# variavel global `end` (o limite superior do periodo do relatorio, definido
-# em userSettings_BSH.R). O filtro superior era um no-op silencioso; so' o
-# limite inferior (`ini`, sem coluna colidente) filtrava mesmo alguma coisa
-# -- curtl_dt incluia todos os curtailments desde `ini` ate ao fim de TODO o
-# historico em cache, nao so' ate `end`. Variaveis renomeadas aqui para nao
-# colidir com NENHUMA coluna de curtl_dt_unfilt -- CUIDADO: nao usar
-# "report_ini"/"report_end" (ja existem acima, com outro significado:
-# report_start/report_end sao as versoes Date de ini/end, usadas em nomes
-# de ficheiro).
-curtl_filter_ini <- ini
-curtl_filter_end <- end
-curtl_dt <- as.data.table(curtl_dt_unfilt)[
-  start >= curtl_filter_ini & start <= curtl_filter_end
-]
-#check 
+curtl_dt <- as.data.table(curtl_dt_unfilt)[start >= filter_ini & start <= filter_end]
+#check
 curtl_dt[, .(
   min_start = min(start, na.rm = TRUE),
   max_start = max(start, na.rm = TRUE)
 )]
 
 #Track data
-track_dt <- track_dt_unfilt %>%
-  filter(timestamp >= ini & timestamp <= end)
-track_dt <- data.table::as.data.table(track_dt)
+track_dt <- as.data.table(track_dt_unfilt)[timestamp >= filter_ini & timestamp <= filter_end]
 # count (nº de pontos por track) foi calculado em R/read_tracks.R sobre
 # track_dt_unfilt (NAO filtrado) -- o filtro de datas acima so remove
 # LINHAS, nao recalcula count, por isso um track que atravessa a fronteira
@@ -437,9 +436,9 @@ track_dt[, .(
 )]
 
 #Heartbeat data
-heartb_dt <- heartb_dt_unfilt %>%
-  filter(idf %in% heartbeat_idf_units) %>%
-  filter(timestamp >= ini & timestamp <= end)
+heartb_dt <- as.data.table(heartb_dt_unfilt)[
+  idf %in% heartbeat_idf_units & timestamp >= filter_ini & timestamp <= filter_end
+]
 #check
 heartb_dt[, .(
   min_datetime = min(timestamp, na.rm = TRUE),
