@@ -122,19 +122,38 @@ cat(paste(
   "mas continua a contar no denominador de 5 eventos protegidos).\n"
 ))
 
+cat("\n===== summarise_curtailment_removal_risk()$proximity_check =====\n")
+print(removal_summary$proximity_check)
+cat(paste(
+  "\nEsperado: proximity_threshold_m=100 (omissao), n_protected_events=5.",
+  "dist_at_next_priority: R1=300, R2=100, R4a=400, R4b=400, R5=200 -- so' R2",
+  "fica <=100 (igual conta como dentro) -> n_within_threshold=1, pct=20.0%.",
+  "Nota: isto e' DIFERENTE do dist_gap_m visto acima -- aqui e' a distancia",
+  "ABSOLUTA no momento da reclassificacao, nao a variacao face ao momento",
+  "do disparo original.\n"
+))
+
 cat("\n===== summarise_curtailment_removal_risk()$by_next_priority_species =====\n")
 print(removal_summary$by_next_priority_species)
 cat(paste(
   "\nEsperado 2 linhas, ordenadas por n_events decrescente:\n",
   "Saker-Falcon: n_events=4 (R1,R4a,R4b,R5) -- time_gap=[60,90,60,350] -> mean=140.0,",
-  "median=75.0; dist_gap (3 nao-NA: 150,350,300) -> mean=266.7, median=300.0\n",
+  "median=75.0; dist_gap (3 nao-NA: 150,350,300) -> mean=266.7, median=300.0;",
+  "dist_at_next_priority=[300,400,400,200], nenhum <=100 ->",
+  "n_within_proximity_threshold=0, pct=0.0%\n",
   "Steppe-Eagle: n_events=1 (R2) -- mean_time_gap=180.0, median_time_gap=180.0,",
-  "mean_dist_gap=450.0, median_dist_gap=450.0\n"
+  "mean_dist_gap=450.0, median_dist_gap=450.0; dist_at_next_priority=100 <=100 ->",
+  "n_within_proximity_threshold=1, pct=100.0%\n"
 ))
 
 cat("\n===== print_curtailment_removal_risk_summary() =====\n")
 print_curtailment_removal_risk_summary(removal_summary, "Kestrel")
-cat("\nEsperado: os mesmos numeros acima, so' formatados em texto corrido -- confirmar que nao da erro.\n")
+cat(paste(
+  "\nEsperado: os mesmos numeros acima, so' formatados em texto corrido -- confirmar que nao da erro.",
+  "Confirmar tambem a nova linha do proximity check (1 de 5 eventos, 20.0%,",
+  "dentro de 100m) e a coluna extra por especie (Saker-Falcon 0 de 4, 0.0%;",
+  "Steppe-Eagle 1 de 1, 100.0%).\n"
+))
 
 ## ---- curtailment_removal_case_detail() ----
 ## Steppe-Eagle so' tem 1 evento (R2) -- mais simples para conferir a mao

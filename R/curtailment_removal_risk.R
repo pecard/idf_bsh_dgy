@@ -53,7 +53,7 @@
 ##   source("R/curtailment_removal_risk.R")
 ##
 ##   removal_dt <- evaluate_curtailment_removal_risk(curtl_dt, track_dt, prioritysp, removed_species = "Kestrel")
-##   removal_summary <- summarise_curtailment_removal_risk(removal_dt)
+##   removal_summary <- summarise_curtailment_removal_risk(removal_dt, proximity_threshold_m = track_proximity_threshold_m)
 ##   print_curtailment_removal_risk_summary(removal_summary, "Kestrel")
 ##
 ##   p1 <- plot_removal_time_gap(removal_dt)
@@ -137,9 +137,22 @@ evaluate_curtailment_removal_risk <- function(curtl_dt, track_dt, prioritysp,
 
 
 ## 2. Sumario para relatorio -- panorama geral, quebra por especie
-##    prioritaria seguinte, e estatisticas do gap (so' onde ha' proteccao
-##    de substituicao -- gap nao esta definido quando NAO ha')
-summarise_curtailment_removal_risk <- function(removal_dt) {
+##    prioritaria seguinte, estatisticas do gap (so' onde ha' proteccao de
+##    substituicao -- gap nao esta definido quando NAO ha'), e o check de
+##    proximidade absoluta (ver nota abaixo).
+##
+## proximity_threshold_m: dist_gap_m e' uma DIFERENCA entre 2 distancias,
+## nao uma distancia absoluta -- um gap pequeno nao diz se a ave ja estava
+## DENTRO da zona de risco (rotor-swept, ~100m) no momento da reclassificacao
+## correta, so' diz que a distancia mudou pouco entre os 2 momentos (podia
+## ter ido de 1000m para 910m, sem risco nenhum, ou de 150m para 60m, ja
+## dentro da zona). O check que responde a pergunta de seguranca -- "a ave
+## ja estava perto demais quando finalmente ficou corretamente classificada?"
+## -- e' sobre dist_at_next_priority em si, comparado ao limiar de
+## proximidade ja estabelecido no projeto (track_proximity_threshold_m,
+## usado da mesma forma -- distancia absoluta -- em
+## R/fatality_track_investigation.R e no late_by_dist de R/id_transitions.R).
+summarise_curtailment_removal_risk <- function(removal_dt, proximity_threshold_m = 100) {
 
   n_total <- nrow(removal_dt)
 
@@ -168,15 +181,18 @@ summarise_curtailment_removal_risk <- function(removal_dt) {
       mean_time_gap_sec   = round(mean(time_gap_sec, na.rm = TRUE), 1),
       median_time_gap_sec = round(median(time_gap_sec, na.rm = TRUE), 1),
       mean_dist_gap_m     = round(mean(dist_gap_m, na.rm = TRUE), 1),
-      median_dist_gap_m   = round(median(dist_gap_m, na.rm = TRUE), 1)
+      median_dist_gap_m   = round(median(dist_gap_m, na.rm = TRUE), 1),
+      n_within_proximity_threshold = sum(dist_at_next_priority <= proximity_threshold_m, na.rm = TRUE)
     ), by = next_priority_species]
+    tmp[, pct_within_proximity_threshold := round(100 * n_within_proximity_threshold / n_events, 1)]
     data.table::setorder(tmp, -n_events)
     tmp[]
   } else {
     data.table::data.table(
       next_priority_species = character(), n_events = integer(),
       mean_time_gap_sec = numeric(), median_time_gap_sec = numeric(),
-      mean_dist_gap_m = numeric(), median_dist_gap_m = numeric()
+      mean_dist_gap_m = numeric(), median_dist_gap_m = numeric(),
+      n_within_proximity_threshold = integer(), pct_within_proximity_threshold = numeric()
     )
   }
 
@@ -199,7 +215,23 @@ summarise_curtailment_removal_risk <- function(removal_dt) {
     )
   }
 
-  list(overview = overview[], by_next_priority_species = by_next_priority_species, gap_stats = gap_stats)
+  # check de proximidade absoluta (ver nota acima) sobre TODOS os eventos
+  # protegidos, independente da especie -- a resposta direta a "quantos
+  # destes 104 ja estavam dentro da zona de risco quando finalmente
+  # corretamente classificados?"
+  n_protected <- nrow(protected)
+  n_within <- if (n_protected > 0L) protected[, sum(dist_at_next_priority <= proximity_threshold_m, na.rm = TRUE)] else 0L
+  proximity_check <- data.table::data.table(
+    proximity_threshold_m = proximity_threshold_m,
+    n_protected_events    = n_protected,
+    n_within_threshold    = n_within,
+    pct_within_threshold  = if (n_protected > 0L) round(100 * n_within / n_protected, 1) else NA_real_
+  )
+
+  list(
+    overview = overview[], by_next_priority_species = by_next_priority_species,
+    gap_stats = gap_stats, proximity_check = proximity_check[]
+  )
 }
 
 
@@ -234,14 +266,25 @@ print_curtailment_removal_risk_summary <- function(removal_summary, removed_spec
     ))
   }
 
+  pc <- removal_summary$proximity_check
+  if (nrow(pc) > 0L && pc$n_protected_events > 0L) {
+    cat(sprintf(
+      "\nAbsolute proximity check (not the gap -- was the bird already within the %dm risk zone AT the moment of correct reclassification?):\n  %d of %d protected events (%s%%) were within %dm at that moment.\n",
+      pc$proximity_threshold_m, pc$n_within_threshold, pc$n_protected_events,
+      format(pc$pct_within_threshold, nsmall = 1), pc$proximity_threshold_m
+    ))
+  }
+
   bs <- removal_summary$by_next_priority_species
   if (nrow(bs) > 0L) {
     cat("\nBy the species that showed up afterwards:\n")
     for (i in seq_len(nrow(bs))) {
       cat(sprintf(
-        "  %-25s %4d events -- median time gap %ss, median dist gap %sm\n",
+        "  %-25s %4d events -- median time gap %ss, median dist gap %sm, %d within %dm at reclassification (%s%%)\n",
         bs$next_priority_species[i], bs$n_events[i],
-        format(bs$median_time_gap_sec[i], nsmall = 1), format(bs$median_dist_gap_m[i], nsmall = 1)
+        format(bs$median_time_gap_sec[i], nsmall = 1), format(bs$median_dist_gap_m[i], nsmall = 1),
+        bs$n_within_proximity_threshold[i], removal_summary$proximity_check$proximity_threshold_m,
+        format(bs$pct_within_proximity_threshold[i], nsmall = 1)
       ))
     }
   }

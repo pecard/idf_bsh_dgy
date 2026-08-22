@@ -711,7 +711,7 @@ if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt")) {
     removed_species = curtailment_removal_species_of_interest,
     max_trigger_match_sec = curtailment_removal_max_trigger_match_sec
   )
-  removal_summary <- summarise_curtailment_removal_risk(removal_dt)
+  removal_summary <- summarise_curtailment_removal_risk(removal_dt, proximity_threshold_m = track_proximity_threshold_m)
   print_curtailment_removal_risk_summary(removal_summary, curtailment_removal_species_of_interest)
 
   # linhas COMPLETAS de curtl_dt_unfilt (todas as colunas originais) para os
@@ -725,6 +725,7 @@ if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt")) {
       Removal_overview          = removal_summary$overview,
       Removal_by_next_species   = removal_summary$by_next_priority_species,
       Removal_gap_stats         = removal_summary$gap_stats,
+      Removal_proximity_check   = removal_summary$proximity_check,
       Removal_events_detail     = removal_dt,
       Removal_case_detail_full  = removal_case_detail_dt
     ),
