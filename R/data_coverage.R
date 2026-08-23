@@ -123,8 +123,9 @@ plot_data_coverage <- function(coverage_dt, date_breaks = "1 month", date_labels
     ) +
     theme_minimal() +
     theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      panel.grid = element_blank()
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      panel.grid = element_blank(),
+      legend.position = "bottom"
     )
 }
 

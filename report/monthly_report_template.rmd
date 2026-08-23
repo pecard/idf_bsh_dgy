@@ -13,6 +13,7 @@ params:
   data_summary: !r NULL
   coverage_summary: !r NULL
   coverage_plot: !r NULL
+  coverage_incomplete_turbines_text: !r NULL
 
   availability_by_idf: !r NULL
   availability_plot_cal: !r NULL
@@ -172,9 +173,12 @@ em vez de mexer na orientacao da pagina.
 **`r params$project_ref`**
 
 Monthly report: `r params$report_month`
+
 Report period: `r params$report_start` to `r params$report_end`
+
 Analysis date: `r params$analysis_date`
-Technician: `r params$username`
+
+Responsible: `r params$username`
 
 This report is descriptive: it presents the metrics produced by the IDF analysis pipeline for the month above, without further interpretation, except where an explicit threshold (KNE safe-distance reference line, shutdown-time bands) is already part of the agreed methodology.
 
@@ -188,16 +192,27 @@ Row counts and date range of each dataset used in this report, restricted to the
 
 <!-- Source: monthly_data_summary_dt <- summarise_dataset_extent(), R/dataset_summary.R (called from IDF_monthly_report.R, section "0. Data extent / quantities table") -->
 ```{r data-summary-table}
-if (!is.null(params$data_summary)) report_table(params$data_summary)
+if (!is.null(params$data_summary)) {
+  report_table(rename_display(
+    params$data_summary,
+    c(dataset = "Dataset", n_rows = "Rows", date_from = "From", date_to = "To", n_days = "Days")
+  ))
+}
 ```
 
 ## 1.2 Temporal Coverage
 
-Day-by-day data presence for each dataset within the month -- complements 1.1, which only gives the overall min/max/row count and does not show whether there are gaps within that range.
+Day-by-day data presence for each dataset within the month -- complements 1.1, which only gives the overall min/max/row count and does not show whether there are gaps within that range. Turbines with incomplete overlap between Curtailments and SCADA this month (i.e. days with one but not the other): `r params$coverage_incomplete_turbines_text`. The full day-by-day breakdown per turbine is in the accompanying workbook and plot (data_coverage_turbine_overlap\_*.xlsx/.png), not reproduced here.
 
-<!-- Source: monthly_coverage_summary_dt <- data_coverage_summary(); p_monthly_coverage <- plot_data_coverage(monthly_coverage_calendar_dt <- data_coverage_calendar()), all R/data_coverage.R -->
+<!-- Source: monthly_coverage_summary_dt <- data_coverage_summary(); p_monthly_coverage <- plot_data_coverage(monthly_coverage_calendar_dt <- data_coverage_calendar()), all R/data_coverage.R. Turbine-level overlap (coverage_incomplete_turbines_text): monthly_coverage_overlap_summary_dt <- overlap_summary_by_turbine(daily_overlap_by_turbine()), same file -- annex only (plot_daily_overlap_by_turbine(), too tall to embed with turbinas_scada="all") -->
 ```{r coverage-summary-table}
-if (!is.null(params$coverage_summary)) report_table(params$coverage_summary)
+if (!is.null(params$coverage_summary)) {
+  report_table(rename_display(
+    params$coverage_summary,
+    c(dataset = "Dataset", start = "From", end = "To", total_days = "Total Days",
+      days_with_data = "Days with Data", days_missing = "Days Missing", pct_missing = "% Missing")
+  ))
+}
 ```
 
 ```{r coverage-plot, fig.width=7, fig.height=4}
@@ -235,7 +250,7 @@ if (!is.null(params$availability_by_idf)) {
 Daily offline percentage per IDF unit, laid out as a calendar (top `r params$idf_availability_top_n` units by offline time only, to stay legible).
 
 <!-- Source: plot_availability_calendar(), R/availability_daylight.R -->
-```{r availability-cal, fig.width=6.30, fig.height=4.72}
+```{r availability-cal, fig.width=6.30, fig.height=6.30}
 if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
 ```
 
@@ -261,11 +276,17 @@ if (!is.null(params$availability_plot_spatial)) print(params$availability_plot_s
 
 ## 3.1 Species Richness Summary
 
-Number of tracks by count of distinct species classifications recorded within the same track, for tracks recorded in this month.
+Number of tracks by count of distinct species classifications recorded within the same track, for tracks recorded in this month, with the most frequent exact species combination for each count.
 
-<!-- Source: monthly_richness_summary <- summarise_species_richness(monthly_richness_dt), R/id_transitions.R (monthly_richness_dt from track_species_summary()) -->
+<!-- Source: monthly_richness_summary <- summarise_species_richness(monthly_richness_dt), R/id_transitions.R (monthly_richness_dt from track_species_summary()) -- most_common_combo/most_common_combo_n added at source -->
 ```{r richness-table}
-if (!is.null(params$richness_dt)) report_table(params$richness_dt)
+if (!is.null(params$richness_dt)) {
+  report_table(rename_display(
+    params$richness_dt,
+    c(n_species = "N Species", n_tracks = "Tracks", pct = "%",
+      most_common_combo = "Most Common Combination", most_common_combo_n = "Tracks with Combination")
+  ))
+}
 ```
 
 <!-- 3.2 (richness histogram) removida do docx por pedido -- a figura
@@ -565,10 +586,10 @@ if (!is.null(params$min_indiv_summary)) {
 ## 11.2 Daily Peak, by Species
 
 <!-- Source: plot_daily_max_individuals(monthly_min_indiv_daily_dt, species_sel = prioritysp, date_breaks = "1 week"), R/track_min_individuals.R (monthly_min_indiv_daily_dt from summarise_daily_max_individuals()) -->
-```{r min-indiv-daily-plot, fig.width=6.30, fig.height=7.87}
+```{r min-indiv-daily-plot, fig.width=6.30, fig.height=8.66}
 if (!is.null(params$min_indiv_daily_plot)) print(params$min_indiv_daily_plot)
 ```
 
 # Annexes
 
-The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: data summary, system availability (including the turbine-level spatial availability table), observed species, curtailments by species, short-track curtailments, curtailment response assessment (including the curtailment-duration-by-status breakdown, section 6), shutdown time, safe distance, ID transitions and species confusion, biological flight metrics, and minimum individuals per bin.
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: data summary, temporal coverage (including the turbine-level Curtailments/SCADA overlap workbook and plot, section 1.2), system availability (including the turbine-level spatial availability table), observed species, curtailments by species, short-track curtailments, curtailment response assessment (including the curtailment-duration-by-status breakdown, section 6), shutdown time, safe distance, ID transitions and species confusion, biological flight metrics, and minimum individuals per bin.

@@ -288,6 +288,48 @@ ggsave(
   plot = p_monthly_coverage, width = 15, height = 8, units = "cm", dpi = 300, bg = "white"
 )
 
+## Cobertura combinada Curtailments x SCADA, POR TURBINA -- reusa as mesmas
+## funcoes ja usadas (de forma identica) em IDF_analysis.R, secção "Data
+## coverage: Curtailments vs SCADA". So' vai para outputs/ (annex) -- nao
+## e' embutida no corpo do docx (tantas turbinas quantas turbinas_scada
+## resolver, facet_wrap ncol=1 fica demasiado alta para uma pagina). O
+## texto da secção 1.2 identifica so' as turbinas com sobreposicao
+## incompleta (overlap_summary_by_turbine() abaixo).
+monthly_coverage_overlap_dt <- daily_overlap_by_turbine(
+  curtl_dt, "start", "turbine", "Curtailments",
+  scada_dt_month, "datetime", "turbinelabel", "SCADA"
+)
+monthly_coverage_overlap_summary_dt <- overlap_summary_by_turbine(monthly_coverage_overlap_dt, "Curtailments", "SCADA")
+
+write_xlsx_local(
+  list(Overlap = monthly_coverage_overlap_dt, Overlap_summary = monthly_coverage_overlap_summary_dt),
+  file.path(folder_output, sprintf("data_coverage_turbine_overlap_%s.xlsx", report_month))
+)
+
+p_monthly_coverage_overlap <- plot_daily_overlap_by_turbine(monthly_coverage_overlap_dt, "Curtailments", "SCADA")
+ggsave(
+  file.path(folder_output, sprintf("data_coverage_turbine_overlap_%s.png", report_month)),
+  plot = p_monthly_coverage_overlap,
+  width = 250, height = max(60, data.table::uniqueN(monthly_coverage_overlap_dt$turbine) * 25),
+  units = "mm", dpi = 300, bg = "white", limitsize = FALSE
+)
+
+# turbinas com sobreposicao incompleta (< 100% num dos dois lados) --
+# formatado para o texto da secção 1.2 do Rmd
+monthly_coverage_incomplete_dt <- monthly_coverage_overlap_summary_dt[
+  pct_a_with_overlap < 100 | pct_b_with_overlap < 100
+]
+coverage_incomplete_turbines_text <- if (nrow(monthly_coverage_incomplete_dt) == 0L) {
+  "none"
+} else {
+  paste(sprintf(
+    "%s (Curtailments %.0f%%, SCADA %.0f%%)",
+    monthly_coverage_incomplete_dt$turbine,
+    monthly_coverage_incomplete_dt$pct_a_with_overlap,
+    monthly_coverage_incomplete_dt$pct_b_with_overlap
+  ), collapse = "; ")
+}
+
 
 ##
 ## 1. System availability (heartbeats) ----
@@ -316,7 +358,7 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   )
   ggsave(
     file.path(folder_output, sprintf("idf_availability_calendar_%s.png", report_month)),
-    plot = p_availability_cal, width = 16, height = 12, units = "cm", dpi = 300, bg = "white"
+    plot = p_availability_cal, width = 16, height = 16, units = "cm", dpi = 300, bg = "white"
   )
 
   p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
@@ -709,7 +751,7 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$min_individuals)) {
   )
   ggsave(
     file.path(folder_output, sprintf("min_individuals_daily_max_%s.png", report_month)),
-    plot = p_monthly_min_indiv_daily, width = 16, height = 20, units = "cm", dpi = 300, bg = "white"
+    plot = p_monthly_min_indiv_daily, width = 16, height = 22, units = "cm", dpi = 300, bg = "white"
   )
 
 } else {message("track_dt nao disponivel ou run_sections_monthly$min_individuals = FALSE -- 8 (min individuals) saltada nesta ronda.")}
@@ -733,6 +775,7 @@ monthly_report_params <- list(
   data_summary = if (exists("monthly_data_summary_dt")) monthly_data_summary_dt else NULL,
   coverage_summary = if (exists("monthly_coverage_summary_dt")) monthly_coverage_summary_dt else NULL,
   coverage_plot    = if (exists("p_monthly_coverage")) p_monthly_coverage else NULL,
+  coverage_incomplete_turbines_text = if (exists("coverage_incomplete_turbines_text")) coverage_incomplete_turbines_text else NULL,
 
   availability_by_idf   = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
   availability_plot_cal = if (exists("p_availability_cal")) p_availability_cal else NULL,

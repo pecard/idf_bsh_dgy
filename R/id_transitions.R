@@ -144,7 +144,10 @@ summarise_species_richness <- function(richness_dt) {
 
   if (nrow(richness_dt) == 0L) {
     return(list(
-      by_n_species = data.table::data.table(n_species = integer(), n_tracks = integer(), pct = numeric()),
+      by_n_species = data.table::data.table(
+        n_species = integer(), n_tracks = integer(), pct = numeric(),
+        most_common_combo = character(), most_common_combo_n = integer()
+      ),
       rate = data.table::data.table(
         total_tracks = integer(), tracks_with_transition = integer(),
         id_transition_rate = numeric(), id_transition_rate_pct = numeric()
@@ -159,6 +162,19 @@ summarise_species_richness <- function(richness_dt) {
   by_n_species <- richness_dt[, .(n_tracks = .N), by = n_species]
   data.table::setorder(by_n_species, n_species)
   by_n_species[, pct := round(100 * n_tracks / sum(n_tracks), 1)]
+
+  # combinacao de especies (richness_dt$species -- ja e' o CONJUNTO de
+  # especies distintas do track, sem repetidos, ver track_species_summary())
+  # mais frequente, para cada n_species -- ex: para n_species=2, qual o par
+  # concreto (ex: "Kestrel, Steppe-Eagle") que mais se repete, nao so'
+  # quantos tracks tem 2 especies
+  combo_counts <- richness_dt[, .(combo_n = .N), by = .(n_species, species)]
+  data.table::setorder(combo_counts, n_species, -combo_n)
+  top_combo <- combo_counts[, .SD[1], by = n_species][
+    , .(n_species, most_common_combo = species, most_common_combo_n = combo_n)
+  ]
+  by_n_species <- merge(by_n_species, top_combo, by = "n_species", all.x = TRUE)
+  data.table::setorder(by_n_species, n_species)
 
   rate <- richness_dt[, .(
     total_tracks           = .N,
