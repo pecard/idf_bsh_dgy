@@ -169,7 +169,7 @@ turbine_idf_coverage_wide_dt <- pivot_turbine_idf_coverage_wide(turbine_idf_cove
 turbine_idf_matrix_file <- file.path(folder_input, turbine_idf_matrix_filename)
 if (file.exists(turbine_idf_matrix_file)) {
 
-  turbine_idf_manual_dt <- read_xlsx(turbine_idf_matrix_file)
+  turbine_idf_manual_dt <- readxl::read_xlsx(turbine_idf_matrix_file)
   turbine_idf_comparison_dt <- compare_turbine_idf_matrix(turbine_idf_manual_dt, turbine_idf_coverage_dt)
 
   write_xlsx_local(
@@ -191,11 +191,11 @@ if (file.exists(turbine_idf_matrix_file)) {
 }
 
 #Tier scheme
-tier <- read_xlsx(file.path(folder_input, tier_start_scheme_filename))
+tier <- readxl::read_xlsx(file.path(folder_input, tier_start_scheme_filename))
 
 
 #Tier3 scheme - Starting date
-tier3 <- read_xlsx(file.path(folder_input, tier3_start_scheme_filename),
+tier3 <- readxl::read_xlsx(file.path(folder_input, tier3_start_scheme_filename),
                    sheet = 'tier3')
 
 
