@@ -1783,9 +1783,13 @@ report_params <- list(
   coverage3d_by_turbine = if (exists("summary_cov")) summary_cov$by_turbine else NULL
 )
 
+## Reutiliza o template Word da empresa (estilos, cabecalho/rodape com
+## numeracao de pagina) -- mesmo template ja aplicado ao relatorio mensal
+## (ver comentario em R/report.R, build_idf_report()).
 build_idf_report(
-  output_file   = file.path(folder_output, paste0("IDF_report_", report_start, "to", report_end, ".docx")),
-  report_params = report_params
+  output_file    = file.path(folder_output, paste0("IDF_report_", report_start, "to", report_end, ".docx")),
+  report_params  = report_params,
+  reference_docx = file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")
 )
 
 

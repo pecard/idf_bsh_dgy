@@ -54,7 +54,7 @@ Technician: `r params$username`
 
 ---
 
-# 1. System Availability (Heartbeats)
+# System Availability (Heartbeats)
 
 Daylight-time availability of IDF units, based on heartbeat signals.
 
@@ -70,7 +70,7 @@ if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
 if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq)
 ```
 
-# 2. Data Coverage
+# Data Coverage
 
 Temporal overlap between Curtailments and SCADA (by turbine), and Heartbeats coverage (by IDF unit). Full download history, not limited to the report period above.
 
@@ -82,7 +82,7 @@ if (!is.null(params$coverage_turbine_summary)) report_table(params$coverage_turb
 if (!is.null(params$coverage_idf_summary)) report_table(params$coverage_idf_summary)
 ```
 
-# 3. Curtailment Response Assessment
+# Curtailment Response Assessment
 
 Whether SCADA-recorded RPM dropped as expected in response to curtailment signals (tight 2s baseline tolerance).
 
@@ -94,7 +94,7 @@ if (!is.null(params$assess_by_status)) report_table(params$assess_by_status)
 if (!is.null(params$assess_by_turbine)) report_table(params$assess_by_turbine)
 ```
 
-# 4. Shutdown Time
+# Shutdown Time
 
 Time from curtailment signal to reaching 2 / 1 / 0 rpm, by turbine.
 
@@ -110,7 +110,7 @@ if (!is.null(params$shutdown_bands)) report_table(params$shutdown_bands)
 if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
 ```
 
-# 5. 3D Coverage (Topography-corrected)
+# 3D Coverage (Topography-corrected)
 
 Coverage of the risk airspace around each turbine, corrected for terrain, based on IDF bird track detections.
 
