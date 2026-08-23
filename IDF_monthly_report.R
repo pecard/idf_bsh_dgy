@@ -174,7 +174,18 @@ source("R/data_cache.R")
 databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
 
 folder_cache <- "cache"
-force_reread_cache_monthly <- FALSE # -> TRUE so depois de descarregar dados novos (a cache e' partilhada com IDF_analysis.R)
+
+## force_reread_cache_monthly: FALSE (por omissao) reutiliza a cache
+## existente sem reler os ficheiros brutos -- rapido, mas NAO deteta
+## ficheiros novos (ex: SCADA de turbinas recem-descarregadas) sozinho,
+## porque so' olha para o cache_file existir ou nao (ver
+## load_or_read_cache(), R/data_cache.R), nunca para o conteudo da pasta de
+## dados. Definir TRUE (aqui, na consola, ou em run_monthly_report.R --
+## tem sempre prioridade sobre este valor por omissao) so' na 1a corrida
+## depois de descarregar dados novos, para forcar a releitura e regravar a
+## cache com o conteudo atualizado -- a cache e' partilhada com
+## IDF_analysis.R, por isso essa releitura tambem beneficia esse script.
+if (!exists("force_reread_cache_monthly")) force_reread_cache_monthly <- FALSE
 
 track_dt_unfilt <- load_or_read_cache(
   file.path(folder_cache, "track_dt_unfilt.fst"),

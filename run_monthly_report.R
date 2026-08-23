@@ -17,8 +17,18 @@
 ## LANCADOR SEPARADO -- so' faz a chamada uma vez, nunca a partir de dentro
 ## do proprio IDF_monthly_report.R.
 ##
-## NUNCA copiar as 2 linhas abaixo para dentro de IDF_monthly_report.R.
+## NUNCA copiar as linhas abaixo para dentro de IDF_monthly_report.R.
 ##
 
 report_month <- "2026-01"
+
+## Deixar FALSE na maioria das corridas -- so' mudar para TRUE na 1a corrida
+## a seguir a descarregar dados novos (ex: SCADA de turbinas recem-
+## -adicionadas, como BSH01/BSH33 em 2026-08), para forcar a releitura dos
+## ficheiros brutos e regravar a cache com o conteudo atualizado (ver
+## comentario em IDF_monthly_report.R, secção "0. Import data"). Voltar a
+## FALSE depois dessa corrida -- deixar TRUE religa sempre os ficheiros
+## brutos, mais lento sem necessidade.
+force_reread_cache_monthly <- FALSE
+
 source("IDF_monthly_report.R")
