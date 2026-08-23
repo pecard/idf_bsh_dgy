@@ -116,7 +116,11 @@ plot_data_coverage <- function(coverage_dt, date_breaks = "1 month", date_labels
       labels = c(`TRUE` = "Data available", `FALSE` = "No data"),
       name = NULL
     ) +
-    scale_x_date(date_breaks = date_breaks, date_labels = date_labels) +
+    # expand = c(0,0) -- sem isto o ggplot acrescenta ~5% de folga de cada
+    # lado do eixo x por omissao, mostrando dias fora do periodo coberto
+    # pelos dados (ex: 31 Dez antes do inicio de Janeiro, 2 Fev depois do
+    # fim) sem terem qualquer significado
+    scale_x_date(date_breaks = date_breaks, date_labels = date_labels, expand = c(0, 0)) +
     labs(
       title = "Data coverage timeline",
       x = NULL, y = NULL

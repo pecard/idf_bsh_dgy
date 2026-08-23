@@ -415,8 +415,8 @@ plot_availability_spatial <- function(turbine_availability_dt, value_col = "moni
   ggplot() +
     geom_point(
       data = dt[has_data == TRUE],
-      aes(x = x, y = y, size = value, color = value),
-      alpha = 0.8 # 20% transparencia -- ajuda a ver turbinas sobrepostas/proximas
+      aes(x = x, y = y, size = value),
+      colour = "steelblue", alpha = 0.8 # so' tamanho varia -- sem escala de cor, 20% transparencia (ajuda a ver turbinas sobrepostas/proximas)
     ) +
     geom_point(
       data = dt[has_data == FALSE],
@@ -424,12 +424,11 @@ plot_availability_spatial <- function(turbine_availability_dt, value_col = "moni
       size = 2, colour = "grey60", shape = 4, alpha = 0.8
     ) +
     scale_size_continuous(name = "Offline (%)", range = c(2, 10)) +
-    scale_color_gradient(name = "Offline (%)", low = "#e0f3db", high = "#0868ac") +
     coord_equal() +
     labs(
       x = NULL, y = NULL,
       title = "Spatial distribution of IDF unavailability by turbine",
-      subtitle = "Point size/colour = % of daylight monitoring period offline (primary IDF unit); x = no data"
+      subtitle = "Point size = % of daylight monitoring period offline (primary IDF unit); x = no data"
     ) +
     theme_minimal(base_size = 9) +
     theme(

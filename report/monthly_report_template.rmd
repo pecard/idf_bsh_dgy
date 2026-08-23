@@ -13,6 +13,7 @@ params:
   data_summary: !r NULL
   coverage_summary: !r NULL
   coverage_plot: !r NULL
+  coverage_considered_turbines_text: !r NULL
   coverage_incomplete_turbines_text: !r NULL
 
   availability_by_idf: !r NULL
@@ -202,9 +203,11 @@ if (!is.null(params$data_summary)) {
 
 ## 1.2 Temporal Coverage
 
-Day-by-day data presence for each dataset within the month -- complements 1.1, which only gives the overall min/max/row count and does not show whether there are gaps within that range. Turbines with incomplete overlap between Curtailments and SCADA this month (i.e. days with one but not the other): `r params$coverage_incomplete_turbines_text`. The full day-by-day breakdown per turbine is in the accompanying workbook and plot (data_coverage_turbine_overlap\_*.xlsx/.png), not reproduced here.
+Day-by-day data presence for each dataset within the month -- complements 1.1, which only gives the overall min/max/row count and does not show whether there are gaps within that range.
 
-<!-- Source: monthly_coverage_summary_dt <- data_coverage_summary(); p_monthly_coverage <- plot_data_coverage(monthly_coverage_calendar_dt <- data_coverage_calendar()), all R/data_coverage.R. Turbine-level overlap (coverage_incomplete_turbines_text): monthly_coverage_overlap_summary_dt <- overlap_summary_by_turbine(daily_overlap_by_turbine()), same file -- annex only (plot_daily_overlap_by_turbine(), too tall to embed with turbinas_scada="all") -->
+Turbines with data on both curtailments and SCADA this month, considered for further analysis (turbines with data on only one side, or neither, are omitted here -- otherwise most of the farm would show up with 0%/undefined overlap, since only a subset of turbines has SCADA installed): `r params$coverage_considered_turbines_text`. Of these, turbines with incomplete overlap (days with one but not the other): `r params$coverage_incomplete_turbines_text`. The full day-by-day breakdown per turbine, including turbines outside the considered set, is in the accompanying workbook and plot (data_coverage_turbine_overlap\_*.xlsx/.png), not reproduced here.
+
+<!-- Source: monthly_coverage_summary_dt <- data_coverage_summary(); p_monthly_coverage <- plot_data_coverage(monthly_coverage_calendar_dt <- data_coverage_calendar()), all R/data_coverage.R. Turbine-level overlap (coverage_considered_turbines_text/coverage_incomplete_turbines_text): monthly_coverage_overlap_summary_dt <- overlap_summary_by_turbine(daily_overlap_by_turbine()), same file, filtered to days_a>0 & days_b>0 -- annex has the unfiltered version (plot_daily_overlap_by_turbine(), too tall to embed with turbinas_scada="all") -->
 ```{r coverage-summary-table}
 if (!is.null(params$coverage_summary)) {
   report_table(rename_display(
@@ -265,7 +268,7 @@ if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq
 
 ## 2.4 Spatial Distribution of Unavailability
 
-Spatial distribution of unavailability, by turbine (point size/colour = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit).
+Spatial distribution of unavailability, by turbine (point size = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit).
 
 <!-- Source: turbine_availability_dt <- join_availability_to_turbine(); plot_availability_spatial(), both R/availability_daylight.R -->
 ```{r availability-spatial, fig.width=6.30, fig.height=4.72}
@@ -315,7 +318,12 @@ Same events, rolled up by species group (priority / nonpriority / other / uncate
 
 <!-- Source: summarise_curtailment_species_group(), R/curtailment_species.R -->
 ```{r curtl-group-table}
-if (!is.null(params$curtl_by_group_dt)) report_table(params$curtl_by_group_dt)
+if (!is.null(params$curtl_by_group_dt)) {
+  report_table(rename_display(
+    params$curtl_by_group_dt,
+    c(species_group = "Group", n = "N", pct_of_total = "% of Total")
+  ))
+}
 ```
 
 # 5. Short-Track Curtailments
@@ -352,14 +360,15 @@ if (!is.null(params$assess_by_status)) {
 
 ## 6.2 By Turbine
 
-Same assessment, broken down by turbine.
+Same assessment, broken down by turbine. The table below shows only turbines with a computable Missed % this month (i.e. at least one SCADA-validated curtailment); turbines with no valid SCADA match this month (no_data for every curtailment -- typically a turbine with SCADA installed but no readings this specific month, see 1.2) are omitted here. The complete table, including those turbines, is in the accompanying workbook (curtailment_response_assessment\_*.xlsx).
 
-<!-- Source: summary_assess$by_turbine <- summarise_curtailment_assessment(assess_dt)$by_turbine, R/curtailment_response.R -->
+<!-- Source: summary_assess$by_turbine <- summarise_curtailment_assessment(assess_dt)$by_turbine, R/curtailment_response.R -- filtered here to !is.na(missed_pct), the xlsx annex keeps the full table -->
 ```{r assess-turbine-table}
 if (!is.null(params$assess_by_turbine)) {
+  dt <- params$assess_by_turbine[!is.na(params$assess_by_turbine$missed_pct), ]
   report_table(
     rename_display(
-      params$assess_by_turbine,
+      dt,
       c(
         turbine = "Turbine", n_curtailments = "Curtailments",
         n_no_immediate_response = "No Immed. Resp.", n_already_stopped = "Already Stopped",

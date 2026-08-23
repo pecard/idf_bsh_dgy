@@ -314,9 +314,23 @@ ggsave(
   units = "mm", dpi = 300, bg = "white", limitsize = FALSE
 )
 
-# turbinas com sobreposicao incompleta (< 100% num dos dois lados) --
-# formatado para o texto da secção 1.2 do Rmd
-monthly_coverage_incomplete_dt <- monthly_coverage_overlap_summary_dt[
+# "Consideradas para analise" = turbinas com ALGUMA leitura de AMBOS os
+# lados neste mes (days_a > 0 & days_b > 0) -- excluir aqui as turbinas so'
+# com curtailments e ZERO SCADA (a maioria da quinta, turbinas sem SCADA
+# instalado) evita a tabela/texto ficarem cheios de 0%/NaN% sem
+# significado (pedido do Paulo, 2026-08)
+monthly_coverage_considered_dt <- monthly_coverage_overlap_summary_dt[days_a > 0 & days_b > 0]
+
+coverage_considered_turbines_text <- if (nrow(monthly_coverage_considered_dt) == 0L) {
+  "none"
+} else {
+  paste(sort(monthly_coverage_considered_dt$turbine), collapse = ", ")
+}
+
+# dentro do universo "considerado" (acima), turbinas com sobreposicao
+# incompleta (< 100% num dos dois lados) -- formatado para o texto da
+# secção 1.2 do Rmd
+monthly_coverage_incomplete_dt <- monthly_coverage_considered_dt[
   pct_a_with_overlap < 100 | pct_b_with_overlap < 100
 ]
 coverage_incomplete_turbines_text <- if (nrow(monthly_coverage_incomplete_dt) == 0L) {
@@ -775,6 +789,7 @@ monthly_report_params <- list(
   data_summary = if (exists("monthly_data_summary_dt")) monthly_data_summary_dt else NULL,
   coverage_summary = if (exists("monthly_coverage_summary_dt")) monthly_coverage_summary_dt else NULL,
   coverage_plot    = if (exists("p_monthly_coverage")) p_monthly_coverage else NULL,
+  coverage_considered_turbines_text = if (exists("coverage_considered_turbines_text")) coverage_considered_turbines_text else NULL,
   coverage_incomplete_turbines_text = if (exists("coverage_incomplete_turbines_text")) coverage_incomplete_turbines_text else NULL,
 
   availability_by_idf   = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
