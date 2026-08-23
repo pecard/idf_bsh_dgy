@@ -214,6 +214,26 @@ heartb_dt_unfilt <- load_or_read_cache(
 wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
 wtg <- sf::st_transform(wtg, crs_projection_plannar)
 
+## IDs de turbina no shapefile (InternalNa) nao tem zero a esquerda para 1-9
+## ("BSH1".."BSH9"), enquanto a matriz manual turbina<->IDF (e todos os
+## outros datasets do projeto -- curtailments, SCADA, tracks) usam sempre 2
+## digitos ("BSH01".."BSH09") -- por isso essas 9 turbinas nunca faziam
+## match em join_availability_to_turbine() (R/availability_daylight.R),
+## ficando "sem unidade IDF primaria" no aviso/plot espacial quando na
+## realidade tem, so' que o merge falhava pela diferenca de formato
+## (confirmado pelo Paulo comparando sort(unique(wtg$InternalNa)) com
+## sort(unique(turbine_idf_manual_dt[["Turbine ID"]])), 2026-08). Normaliza
+## so' aqui -- InternalNa nao e' usado em mais nenhuma secção do relatorio
+## mensal (ver comentario acima).
+wtg$InternalNa <- {
+  m <- regmatches(wtg$InternalNa, regexec("^([A-Za-z]+)([0-9]+)$", wtg$InternalNa))
+  vapply(seq_along(wtg$InternalNa), function(i) {
+    g <- m[[i]]
+    if (length(g) < 3) return(wtg$InternalNa[i])
+    paste0(g[2], sprintf("%02d", as.integer(g[3])))
+  }, character(1))
+}
+
 turbine_idf_matrix_file <- file.path(folder_input, turbine_idf_matrix_filename)
 if (file.exists(turbine_idf_matrix_file)) {
   turbine_idf_manual_dt <- readxl::read_xlsx(turbine_idf_matrix_file)
