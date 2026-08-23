@@ -631,9 +631,21 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   p_safe_dist_hist <- plot_safe_distance_hist(
     safe_dist_dt, species_sel = prioritysp, ref_line_m = safe_dist_reference_line_m, facet = TRUE
   )
+
+  ## altura dinamica -- plot_safe_distance_hist() usa facet_wrap(~species,
+  ## ncol=3), por isso o numero de linhas da grelha varia com quantas
+  ## especies (de prioritysp) tem registos este mes (de poucas ate' 13) --
+  ## uma altura fixa ou fica cortada com muitas especies ou desperdica espaco
+  ## com poucas. ~3.5cm por linha (pedido do Paulo) + 2.5cm fixos para
+  ## titulo/eixo-x, minimo 10cm (1 linha).
+  safe_dist_n_species <- data.table::uniqueN(
+    safe_dist_dt[!is.na(min_safe_dist_m) & species %in% prioritysp]$species
+  )
+  safe_dist_plot_height_cm <- max(10, ceiling(safe_dist_n_species / 3) * 3.5 + 2.5)
+
   ggsave(
     file.path(folder_output, sprintf("curtailment_safe_distance_hist_%s.png", report_month)),
-    plot = p_safe_dist_hist, width = 16, height = 10, units = "cm", dpi = 300, bg = "white"
+    plot = p_safe_dist_hist, width = 16, height = safe_dist_plot_height_cm, units = "cm", dpi = 300, bg = "white"
   )
 
 } else {message("scada_dt nao disponivel ou run_sections_monthly$curtailment_response_delays = FALSE -- 5 (response/shutdown/safe distance) saltada nesta ronda.")}
@@ -860,6 +872,10 @@ monthly_report_params <- list(
   safe_dist_overall     = if (exists("summary_safe_dist")) summary_safe_dist$overall else NULL,
   safe_dist_by_species  = if (exists("summary_safe_dist")) summary_safe_dist$by_species else NULL,
   safe_dist_plot        = if (exists("p_safe_dist_hist")) p_safe_dist_hist else NULL,
+  # fallback (3.94in = 10cm, o valor fixo antigo) so' usado se a secção 5 nao
+  # correr -- nesse caso safe_dist_plot tambem e' NULL e nada e' desenhado,
+  # mas o chunk do Rmd ainda precisa de um fig.height numerico valido
+  safe_dist_plot_height_in = if (exists("safe_dist_plot_height_cm")) safe_dist_plot_height_cm / 2.54 else 3.94,
 
   id_risk_by_direction = if (exists("monthly_id_risk_summary")) monthly_id_risk_summary$by_direction else NULL,
   id_confusion_species = if (exists("monthly_id_confusion_summary")) id_confusion_species_label else NULL,

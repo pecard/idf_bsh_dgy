@@ -40,6 +40,7 @@ params:
   safe_dist_overall: !r NULL
   safe_dist_by_species: !r NULL
   safe_dist_plot: !r NULL
+  safe_dist_plot_height_in: 3.94
 
   id_risk_by_direction: !r NULL
   id_confusion_species: !r NULL
@@ -514,16 +515,23 @@ if (!is.null(params$safe_dist_overall)) {
 
 ## By Species
 
-<!-- Source: summary_safe_dist$by_species <- summarise_safe_distance(safe_dist_dt, prioritysp)$by_species, R/curtailment_safe_distance.R -->
+Mean/Median Safe Dist. (m) is the reaction time to reach the RPM threshold multiplied by that track's own flight speed -- a low value can come from a fast reaction, a slow-flying bird (Mean Track Speed), or the turbine already slowing down from an earlier curtailment order at the moment this one triggered (% Already Slowing), not necessarily from this specific signal being answered unusually fast.
+
+<!-- Source: summary_safe_dist$by_species <- summarise_safe_distance(safe_dist_dt, prioritysp)$by_species, R/curtailment_safe_distance.R -- mean_time_to_threshold_sec/mean_avg_speed_ms/pct_already_slowing added at source to explain low mean_min_safe_dist_m values -->
 ```{r safe-dist-species-table}
 if (!is.null(params$safe_dist_by_species)) {
   report_table(
     rename_display(
       params$safe_dist_by_species,
       c(species = "Species", n = "N", n_ok = "OK", n_crit = "Critical", pct_ok = "% OK",
+        mean_time_to_threshold_sec = "Mean React. Time (s)", mean_avg_speed_ms = "Mean Track Speed (m/s)",
+        pct_already_slowing = "% Already Slowing",
         mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
     ),
-    col_widths_cm = c("Mean Safe Dist. (m)" = 2, "Median Safe Dist. (m)" = 2)
+    col_widths_cm = c(
+      "Mean React. Time (s)" = 2, "Mean Track Speed (m/s)" = 2, "% Already Slowing" = 2,
+      "Mean Safe Dist. (m)" = 2, "Median Safe Dist. (m)" = 2
+    )
   )
 }
 ```
@@ -531,7 +539,7 @@ if (!is.null(params$safe_dist_by_species)) {
 ## Distribution
 
 <!-- Source: plot_safe_distance_hist(), R/curtailment_safe_distance.R -->
-```{r safe-dist-plot, fig.width=6.30, fig.height=3.94}
+```{r safe-dist-plot, fig.width=6.30, fig.height=params$safe_dist_plot_height_in}
 if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
 ```
 

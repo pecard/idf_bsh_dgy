@@ -93,15 +93,35 @@ summarise_safe_distance <- function(safe_dist_dt, species_sel = NULL) {
   dt <- safe_dist_dt[!is.na(status)]
   if (!is.null(species_sel)) dt <- dt[species %in% species_sel]
 
+  # mean_time_to_threshold_sec/mean_avg_speed_ms/pct_already_slowing --
+  # min_safe_dist_m = time_to_threshold_sec * avg_speed_ms (ver formula no
+  # topo do ficheiro), por isso um mean_min_safe_dist_m baixo tem sempre 1 de
+  # 2 causas (ou as 2): reacao rapida (tempo curto) ou ave lenta (avg_speed
+  # baixo) -- e um tempo curto e' normal quando a turbina ja estava a
+  # abrandar de um curtailment anterior (pct_already_slowing alto), nao
+  # necessariamente resposta rapida a ESTE sinal. Estas 3 colunas expoem os
+  # 2 fatores da formula e o contexto de estado da turbina, para nao deixar
+  # um mean_min_safe_dist_m pequeno por-si-so' parecer um valor "estranho"
+  # sem explicacao (pedido do Paulo, 2026-08, sobre um caso de 14.5m).
   summary_stats <- function(d) {
-    d[, .(
-      n                       = .N,
-      n_ok                    = sum(status == "OK"),
-      n_crit                  = sum(status == "Crit"),
-      pct_ok                  = round(100 * sum(status == "OK") / .N, 1),
-      mean_min_safe_dist_m    = round(mean(min_safe_dist_m, na.rm = TRUE), 1),
-      median_min_safe_dist_m  = round(median(min_safe_dist_m, na.rm = TRUE), 1)
-    )]
+    d[, {
+      n_state_known <- sum(!is.na(turbine_state))
+      .(
+        n                          = .N,
+        n_ok                       = sum(status == "OK"),
+        n_crit                     = sum(status == "Crit"),
+        pct_ok                     = round(100 * sum(status == "OK") / .N, 1),
+        mean_time_to_threshold_sec = round(mean(time_to_threshold_sec, na.rm = TRUE), 1),
+        mean_avg_speed_ms          = round(mean(avg_speed_ms, na.rm = TRUE), 1),
+        pct_already_slowing        = if (n_state_known > 0) {
+          round(100 * sum(turbine_state == "already_slowing", na.rm = TRUE) / n_state_known, 1)
+        } else {
+          NA_real_
+        },
+        mean_min_safe_dist_m      = round(mean(min_safe_dist_m, na.rm = TRUE), 1),
+        median_min_safe_dist_m    = round(median(min_safe_dist_m, na.rm = TRUE), 1)
+      )
+    }]
   }
 
   overall    <- summary_stats(dt)
