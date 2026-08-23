@@ -211,7 +211,7 @@ Analysis date: `r params$analysis_date`
 
 Responsible: `r params$username`
 
-This report is descriptive: it presents the metrics produced by the IDF analysis pipeline for the month above, without further interpretation, except where an explicit threshold (KNE safe-distance reference line, shutdown-time bands) is already part of the agreed methodology.
+This report is descriptive and fully automated, generated end-to-end by an R code pipeline. It presents the metrics produced by the IDF analysis pipeline for the month above, without further interpretation, except where an explicit threshold (e.g. the KNE safe-distance reference line, shutdown-time bands) is already part of the pre-defined methodology.
 
 ---
 
