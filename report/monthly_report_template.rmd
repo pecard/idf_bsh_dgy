@@ -99,7 +99,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 # linha por turbina), pedido explicito para caberem numa pagina A4 vertical.
 # round_display() (ver abaixo) corre sempre primeiro, aqui dentro -- nenhuma
 # tabela do relatorio precisa de a chamar manualmente.
-report_table <- function(x, caption = NULL, max_col_width_cm = NULL) {
+report_table <- function(x, caption = NULL, max_col_width_cm = NULL, col_widths_cm = NULL) {
   ft <- flextable::flextable(round_display(x)) |>
     flextable::theme_box() |>
     flextable::bg(part = "header", bg = "gray85") |>
@@ -110,6 +110,7 @@ report_table <- function(x, caption = NULL, max_col_width_cm = NULL) {
     flextable::valign(valign = "center", part = "all") |>
     flextable::autofit()
   if (!is.null(max_col_width_cm)) ft <- cap_col_width(ft, max_col_width_cm)
+  if (!is.null(col_widths_cm)) ft <- set_col_max_width(ft, col_widths_cm)
   if (!is.null(caption)) ft <- flextable::set_caption(ft, caption)
   ft
 }
@@ -148,6 +149,22 @@ cap_col_width <- function(ft, max_width_cm = 2) {
   widths_in <- dim(ft)$widths
   capped_cm <- pmin(widths_in * 2.54, max_width_cm)
   flextable::width(ft, j = seq_along(capped_cm), width = capped_cm, unit = "cm")
+}
+
+# Como cap_col_width(), mas por coluna -- widths_cm e' um vector nomeado
+# c("Nome da Coluna" = largura_maxima_cm, ...), usando os nomes ja'
+# apresentados (apos rename_display()). So' encolhe (nunca alarga) as
+# colunas indicadas ate' esse maximo; colunas nao mencionadas ficam como o
+# autofit() as deixou. Nomes que nao existirem na tabela sao ignorados.
+set_col_max_width <- function(ft, widths_cm) {
+  widths_in <- dim(ft)$widths
+  idx <- match(names(widths_cm), ft$col_keys)
+  hit <- !is.na(idx)
+  if (any(hit)) {
+    capped_cm <- pmin(widths_in[idx[hit]] * 2.54, unname(widths_cm[hit]))
+    ft <- flextable::width(ft, j = idx[hit], width = capped_cm, unit = "cm")
+  }
+  ft
 }
 
 # Renomeia colunas so' para APRESENTACAO no docx -- os exports em xlsx
@@ -243,11 +260,16 @@ Turbines with data on both curtailments and SCADA this month, considered for fur
 <!-- Source: monthly_coverage_summary_dt <- data_coverage_summary(); p_monthly_coverage <- plot_data_coverage(monthly_coverage_calendar_dt <- data_coverage_calendar()), all R/data_coverage.R. Turbine-level overlap (coverage_considered_turbines_text/coverage_incomplete_turbines_text): monthly_coverage_overlap_summary_dt <- overlap_summary_by_turbine(daily_overlap_by_turbine()), same file, filtered to days_a>0 & days_b>0 -- annex has the unfiltered version (plot_daily_overlap_by_turbine(), too tall to embed with turbinas_scada="all") -->
 ```{r coverage-summary-table}
 if (!is.null(params$coverage_summary)) {
-  report_table(rename_display(
-    params$coverage_summary,
-    c(dataset = "Dataset", start = "From", end = "To", total_days = "Total Days",
-      days_with_data = "Days with Data", days_missing = "Days Missing", pct_missing = "% Missing")
-  ))
+  report_table(
+    rename_display(
+      params$coverage_summary,
+      c(dataset = "Dataset", start = "From", end = "To", total_days = "Total Days",
+        days_with_data = "Days with Data", days_missing = "Days Missing", pct_missing = "% Missing")
+    ),
+    col_widths_cm = c(
+      "Total Days" = 1.5, "Days with Data" = 1.5, "Days Missing" = 1.5, "% Missing" = 1.5
+    )
+  )
 }
 ```
 
@@ -324,11 +346,14 @@ Number of tracks by count of distinct species classifications recorded within th
 <!-- Source: monthly_richness_summary <- summarise_species_richness(monthly_richness_dt), R/id_transitions.R (monthly_richness_dt from track_species_summary()) -- most_common_combo/most_common_combo_n added at source -->
 ```{r richness-table}
 if (!is.null(params$richness_dt)) {
-  report_table(rename_display(
-    params$richness_dt,
-    c(n_species = "N Species", n_tracks = "Tracks", pct = "%",
-      most_common_combo = "Most Common Combination", most_common_combo_n = "Tracks with Combination")
-  ))
+  report_table(
+    rename_display(
+      params$richness_dt,
+      c(n_species = "N Species", n_tracks = "Tracks", pct = "%",
+        most_common_combo = "Most Common Combination", most_common_combo_n = "Tracks with Combination")
+    ),
+    col_widths_cm = c("Most Common Combination" = 5, "Tracks with Combination" = 3)
+  )
 }
 ```
 
@@ -492,11 +517,14 @@ if (!is.null(params$safe_dist_overall)) {
 <!-- Source: summary_safe_dist$by_species <- summarise_safe_distance(safe_dist_dt, prioritysp)$by_species, R/curtailment_safe_distance.R -->
 ```{r safe-dist-species-table}
 if (!is.null(params$safe_dist_by_species)) {
-  report_table(rename_display(
-    params$safe_dist_by_species,
-    c(species = "Species", n = "N", n_ok = "OK", n_crit = "Critical", pct_ok = "% OK",
-      mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
-  ))
+  report_table(
+    rename_display(
+      params$safe_dist_by_species,
+      c(species = "Species", n = "N", n_ok = "OK", n_crit = "Critical", pct_ok = "% OK",
+        mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
+    ),
+    col_widths_cm = c("Mean Safe Dist. (m)" = 2, "Median Safe Dist. (m)" = 2)
+  )
 }
 ```
 
