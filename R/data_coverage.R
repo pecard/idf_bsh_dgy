@@ -284,8 +284,14 @@ overlap_summary_by_turbine <- function(overlap_dt, label_a, label_b) {
 ## 12. Plot "calendario" da sobreposicao, uma faixa por turbina ----
 ##     turbine_sel: vetor de turbinas a mostrar (NULL = todas -- cuidado,
 ##     pode ficar com muitas linhas se houver muitas turbinas)
+##     date_breaks/date_labels por omissao servem o periodo TIPICO desta
+##     funcao (historico completo do projeto, IDF_analysis.R) -- para uma
+##     janela curta (ex: 1 mes, relatorio mensal), passar algo mais fino
+##     (ex: date_breaks = "2 days", date_labels = "%Y-%m-%d"), mesma logica
+##     de plot_data_coverage() acima.
 
-plot_daily_overlap_by_turbine <- function(overlap_dt, label_a, label_b, turbine_sel = NULL) {
+plot_daily_overlap_by_turbine <- function(overlap_dt, label_a, label_b, turbine_sel = NULL,
+                                          date_breaks = "1 month", date_labels = "%Y-%m") {
 
   dt <- copy(overlap_dt)
   if (!is.null(turbine_sel)) dt <- dt[turbine %in% turbine_sel]
@@ -304,7 +310,7 @@ plot_daily_overlap_by_turbine <- function(overlap_dt, label_a, label_b, turbine_
       labels = c(`TRUE` = "Data available", `FALSE` = "No data"),
       name = NULL
     ) +
-    scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m") +
+    scale_x_date(date_breaks = date_breaks, date_labels = date_labels) +
     labs(
       title = paste("Data coverage overlap by turbine:", label_a, "vs", label_b),
       x = NULL, y = NULL

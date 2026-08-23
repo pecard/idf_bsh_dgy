@@ -375,7 +375,10 @@ write_xlsx_local(
   file.path(folder_output, sprintf("data_coverage_turbine_overlap_%s.xlsx", report_month))
 )
 
-p_monthly_coverage_overlap <- plot_daily_overlap_by_turbine(monthly_coverage_overlap_dt, "Curtailments", "SCADA")
+p_monthly_coverage_overlap <- plot_daily_overlap_by_turbine(
+  monthly_coverage_overlap_dt, "Curtailments", "SCADA",
+  date_breaks = "2 days", date_labels = "%Y-%m-%d"
+)
 ggsave(
   file.path(folder_output, sprintf("data_coverage_turbine_overlap_%s.png", report_month)),
   plot = p_monthly_coverage_overlap,
