@@ -246,7 +246,8 @@ summarise_daily_max_individuals <- function(bins_dt, tz = NULL) {
 
 ## 7. Plot diario -- maximo diario ao longo do calendario, por especie ----
 
-plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vulture", "Steppe-Eagle")) {
+plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vulture", "Steppe-Eagle"),
+                                       date_breaks = "15 days", date_labels = "%d/%m/%Y") {
 
   dt <- data.table::copy(daily_dt)
   if (!is.null(species_sel)) dt <- dt[spec %in% species_sel]
@@ -256,9 +257,10 @@ plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vultu
     geom_point(colour = "steelblue", size = 1.2) +
     facet_wrap(~ spec, ncol = 1, scales = "free_y") +
     scale_x_date(
-      date_breaks = "15 days",
-      date_labels = "%d/%m/%Y" # Altera o formato conforme preferires (ex: "%d %b")
+      date_breaks = date_breaks,
+      date_labels = date_labels
     ) +
+    expand_limits(y = 0) + # cada painel (scales="free_y") comeca em 0, mesmo com free_y
     labs(
       x = "Date",
       y = "Daily peak (max individuals in any 2-min bin)",

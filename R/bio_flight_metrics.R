@@ -83,14 +83,21 @@ summarise_flight_speed <- function(flight_base_dt) {
 
 
 ## Altura de voo por especie (m AGL) -- media, mediana, desvio-padrao,
-## min/max, sobre a base fiavel (flight_metrics_base(), ja com height>=0)
-summarise_flight_height <- function(flight_base_dt) {
+## min/max, sobre a base fiavel (flight_metrics_base(), ja com height>=0).
+## risk_height_lower/risk_height_upper opcionais (mesma zona de risco
+## desenhada em plot_flight_metrics_distribution()) -- quando indicados,
+## acrescenta pct_in_risk_zone (% dos registos dessa especie com altura
+## dentro da rotor-swept zone, [risk_height_lower, risk_height_upper]).
+## Omitir para manter o comportamento antigo (sem esta coluna).
+summarise_flight_height <- function(flight_base_dt, risk_height_lower = NULL, risk_height_upper = NULL) {
 
   if (nrow(flight_base_dt) == 0L) {
-    return(data.table::data.table(
+    out <- data.table::data.table(
       spec = character(), n = integer(), mean_height_m = numeric(), median_height_m = numeric(),
       sd_height_m = numeric(), min_height_m = numeric(), max_height_m = numeric()
-    ))
+    )
+    if (!is.null(risk_height_lower) && !is.null(risk_height_upper)) out[, pct_in_risk_zone := numeric()]
+    return(out)
   }
 
   out <- flight_base_dt[, .(
@@ -101,6 +108,14 @@ summarise_flight_height <- function(flight_base_dt) {
     min_height_m   = round(min(height), 1),
     max_height_m   = round(max(height), 1)
   ), by = spec]
+
+  if (!is.null(risk_height_lower) && !is.null(risk_height_upper)) {
+    risk_pct <- flight_base_dt[, .(
+      pct_in_risk_zone = round(100 * mean(height >= risk_height_lower & height <= risk_height_upper), 1)
+    ), by = spec]
+    out <- merge(out, risk_pct, by = "spec")
+  }
+
   data.table::setorder(out, -mean_height_m)
   out[]
 }
@@ -152,6 +167,11 @@ plot_flight_metrics_distribution <- function(flight_base_dt, risk_height_lower =
 
   dt <- data.table::copy(flight_base_dt)
   dt[, spec_abbr := make_abbr(spec)]
+
+  # height pode ser lido como integer por fread() quando todos os valores do
+  # ficheiro sao inteiros (speed_ms e' sempre double, calculado por divisao)
+  # -- sem isto, melt() avisa (nao erro, so' aviso) que vai coagir a double
+  dt[, `:=`(speed_ms = as.double(speed_ms), height = as.double(height))]
 
   long_dt <- data.table::melt(
     dt, id.vars = c("spec_abbr", "track_id"), measure.vars = c("speed_ms", "height"),

@@ -1,0 +1,643 @@
+---
+title: "`r params$title`"
+output: word_document
+params:
+  title: ""
+  project_ref: ""
+  report_month: ""
+  report_start: ""
+  report_end: ""
+  analysis_date: ""
+  username: ""
+  code_version: ""
+
+  data_summary: !r NULL
+  coverage_summary: !r NULL
+  coverage_plot: !r NULL
+  coverage_considered_turbines_text: !r NULL
+  coverage_incomplete_turbines_text: !r NULL
+
+  availability_by_idf: !r NULL
+  availability_plot_cal: !r NULL
+  availability_plot_freq: !r NULL
+  availability_plot_spatial: !r NULL
+
+  richness_dt: !r NULL
+  entropy_plot: !r NULL
+
+  curtl_by_species_dt: !r NULL
+  curtl_by_group_dt: !r NULL
+
+  short_track_summary_dt: !r NULL
+
+  assess_by_status: !r NULL
+  assess_by_turbine: !r NULL
+
+  shutdown_by_turbine: !r NULL
+  shutdown_bands: !r NULL
+  shutdown_plot: !r NULL
+
+  safe_dist_overall: !r NULL
+  safe_dist_by_species: !r NULL
+  safe_dist_plot: !r NULL
+
+  id_risk_by_direction: !r NULL
+  id_confusion_species: !r NULL
+  id_confusion_general: !r NULL
+
+  flight_speed_by_species: !r NULL
+  flight_height_by_species: !r NULL
+  flight_metrics_plot: !r NULL
+
+  min_indiv_summary: !r NULL
+  min_indiv_daily_plot: !r NULL
+
+  # Literais de configuracao (monthlyReportSettings.R) usados so' para
+  # texto descritivo -- cada secção que aplica um threshold/cut-off mostra
+  # o VALOR concreto usado nesse mes, nao so' o nome do parametro.
+  heartbeat_interval_min: !r NULL
+  heartbeat_offline_gap_min: !r NULL
+  idf_availability_top_n: !r NULL
+
+  shorttrack_min_points: !r NULL
+  shorttrack_eval_range_m: !r NULL
+
+  curtailment_start_end_gap_sec: !r NULL
+  curtailment_max_next_gap_sec: !r NULL
+  curtailment_drop_pct_threshold: !r NULL
+  safe_shutdown_rpm: !r NULL
+  turbinas_scada_used: !r NULL
+
+  shutdown_time_thresholds: !r NULL
+  shutdown_time_low_cut: !r NULL
+  shutdown_time_high_cut: !r NULL
+
+  safe_dist_reference_line_m: !r NULL
+  safe_dist_rpm_threshold: !r NULL
+  safe_dist_already_slowing_rpm: !r NULL
+
+  id_transition_late_time_sec: !r NULL
+  track_proximity_threshold_m: !r NULL
+
+  flight_min_track_points: !r NULL
+  flight_speed_ms_min: !r NULL
+  flight_speed_ms_max: !r NULL
+  riskHeight_lower: !r NULL
+  riskHeight_upper: !r NULL
+
+  min_individuals_bin_min: !r NULL
+  min_individuals_merge_dist_m: !r NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# Tabela flextable com o estilo visual do relatorio. max_col_width_cm (opcional)
+# limita CADA coluna a esse maximo (cm) -- nao forca todas as colunas a esse
+# tamanho, so' encolhe as que o autofit() deixaria mais largas (ver
+# cap_col_width() abaixo). Usado nas secções 6.2 e 7.1 (tabelas largas, 1
+# linha por turbina), pedido explicito para caberem numa pagina A4 vertical.
+# round_display() (ver abaixo) corre sempre primeiro, aqui dentro -- nenhuma
+# tabela do relatorio precisa de a chamar manualmente.
+report_table <- function(x, caption = NULL, max_col_width_cm = NULL) {
+  ft <- flextable::flextable(round_display(x)) |>
+    flextable::theme_box() |>
+    flextable::bg(part = "header", bg = "gray85") |>
+    flextable::bold(part = "header") |>
+    flextable::fontsize(size = 9, part = "header") |>
+    flextable::fontsize(size = 9, part = "body") |>
+    flextable::align(align = "center", part = "header") |>
+    flextable::valign(valign = "center", part = "all") |>
+    flextable::autofit()
+  if (!is.null(max_col_width_cm)) ft <- cap_col_width(ft, max_col_width_cm)
+  if (!is.null(caption)) ft <- flextable::set_caption(ft, caption)
+  ft
+}
+
+# Arredonda, so' para apresentacao no docx, cada coluna numerica que tenha
+# algum valor nao-inteiro para `digits` casas decimais (2 por omissao) --
+# colunas so' com valores inteiros (contagens) ficam como estao. Excecao: se
+# arredondar a `digits` casas desse 0 mas o valor real nao e' zero, estende
+# casas decimais ate aparecer o 1o digito significativo (ex: 0.001), para
+# nao mostrar "0.00" nalgo que na realidade nao e' zero. Devolve os valores
+# ja como texto formatado (sprintf) -- o formatador automatico do flextable
+# nao garante um numero fixo de casas decimais (mostraria "12.3", nao
+# "12.30"). So' afeta o que aparece no docx: os exports xlsx (feitos a
+# partir dos objetos originais, nao deste helper) mantêm sempre os valores
+# tal como calculados pelas funcoes de analise.
+round_display <- function(x, digits = 2) {
+  x <- as.data.frame(x)
+  for (col in names(x)) {
+    v <- x[[col]]
+    if (!is.numeric(v) || is.integer(v)) next
+    if (all(v == round(v), na.rm = TRUE)) next
+    x[[col]] <- vapply(v, function(val) {
+      if (is.na(val)) return(NA_character_)
+      d <- digits
+      while (round(val, d) == 0 && val != 0 && d < 6) d <- d + 1
+      sprintf(paste0("%.", d, "f"), val)
+    }, character(1))
+  }
+  x
+}
+
+cap_col_width <- function(ft, max_width_cm = 2) {
+  # dim() (nao flextable::dim()) -- dim.flextable e' um metodo S3 registado
+  # pelo flextable no generico base dim(), nao necessariamente exportado como
+  # simbolo chamavel via flextable::dim()
+  widths_in <- dim(ft)$widths
+  capped_cm <- pmin(widths_in * 2.54, max_width_cm)
+  flextable::width(ft, j = seq_along(capped_cm), width = capped_cm, unit = "cm")
+}
+
+# Renomeia colunas so' para APRESENTACAO no docx -- os exports em xlsx
+# (annexos) usam sempre os nomes tecnicos originais dos objetos R. mapping:
+# c(nome_original = "Nome Legivel"); colunas nao mencionadas ficam como estao.
+rename_display <- function(x, mapping) {
+  x <- as.data.frame(x)
+  idx <- match(names(mapping), names(x))
+  hit <- !is.na(idx)
+  names(x)[idx[hit]] <- unname(mapping)[hit]
+  x
+}
+
+# Remove colunas da tabela apresentada no docx (o xlsx correspondente, feito
+# a partir do objeto original nao filtrado, continua completo)
+drop_cols <- function(x, cols) {
+  x <- as.data.frame(x)
+  x[, setdiff(names(x), cols), drop = FALSE]
+}
+
+# Substitui VALORES (nao nomes de coluna) de uma coluna categorica por
+# rotulos legiveis -- usado para as categorias de risk_direction (9.1)
+recode_values <- function(x, col, mapping) {
+  x <- as.data.frame(x)
+  hit <- x[[col]] %in% names(mapping)
+  x[[col]][hit] <- unname(mapping[x[[col]][hit]])
+  x
+}
+```
+
+<!--
+Cada tabela/plot abaixo tem, imediatamente acima do chunk que a produz, um
+comentario "Source: ..." a apontar para a funcao R (e ficheiro) que calcula
+o objeto correspondente em IDF_monthly_report.R -- usar isso para encontrar
+rapidamente onde ajustar cada tabela/plot (colunas, arredondamento, filtros,
+etc.) sem ter de procurar pelo nome do param em todo o script. Estes
+comentarios HTML nao aparecem no .docx gerado.
+
+Cada tabela/plot tem tambem a sua propria subsecção (##), com 1 frase a
+identificar o objeto, mesmo quando 2 tabelas pertencem à mesma secção -- 2
+flextables em chunks consecutivos sem nenhum paragrafo de texto a
+separa-los tendem a sair "coladas" no docx (dificeis de selecionar/mover/
+editar independentemente no Word). Uma frase de texto entre elas garante
+uma quebra de paragrafo real a separa-las.
+
+Documento TODO em A4 vertical -- uma tentativa anterior de tornar so' a
+secção 7.1 landscape (via officedown::block_section) saiu com um bug: sem
+UM SEGUNDO section break antes de 7.1, o primeiro break aplicava-se a TODO
+o conteudo anterior (secções 1-6.2 saiam landscape tambem, nao so' 7.1).
+Solucao adotada: manter tudo vertical e caber as tabelas largas (6.2, 7.1)
+por colunas mais estreitas (max_col_width_cm) e nomes de coluna mais curtos,
+em vez de mexer na orientacao da pagina.
+-->
+
+**`r params$project_ref`**
+
+Monthly report: `r params$report_month`
+
+Report period: `r params$report_start` to `r params$report_end`
+
+Analysis date: `r params$analysis_date`
+
+Responsible: `r params$username`
+
+Code version: `r params$code_version`
+
+This report is descriptive and fully automated, generated end-to-end by an R code pipeline. It presents the metrics produced by the IDF analysis pipeline for the month above, without further interpretation, except where an explicit threshold (e.g. the KNE safe-distance reference line, shutdown-time bands) is already part of the pre-defined methodology.
+
+---
+
+# Data Universe and Time Span
+
+## Row Counts and Date Range
+
+Row counts and date range of each dataset used in this report, restricted to the month above (SCADA row count restricted to the SCADA-availability window intersected with the month).
+
+<!-- Source: monthly_data_summary_dt <- summarise_dataset_extent(), R/dataset_summary.R (called from IDF_monthly_report.R, section "0. Data extent / quantities table") -->
+```{r data-summary-table}
+if (!is.null(params$data_summary)) {
+  report_table(rename_display(
+    params$data_summary,
+    c(dataset = "Dataset", n_rows = "Rows", date_from = "From", date_to = "To", n_days = "Days")
+  ))
+}
+```
+
+## Temporal Coverage
+
+Day-by-day data presence for each dataset within the month -- complements 1.1, which only gives the overall min/max/row count and does not show whether there are gaps within that range.
+
+Turbines with data on both curtailments and SCADA this month, considered for further analysis (turbines with data on only one side, or neither, are omitted here -- otherwise most of the farm would show up with 0%/undefined overlap, since only a subset of turbines has SCADA installed): `r params$coverage_considered_turbines_text`. Of these, turbines with incomplete overlap (days with one but not the other): `r params$coverage_incomplete_turbines_text`. The full day-by-day breakdown per turbine, including turbines outside the considered set, is in the accompanying workbook and plot (data_coverage_turbine_overlap\_*.xlsx/.png), not reproduced here.
+
+<!-- Source: monthly_coverage_summary_dt <- data_coverage_summary(); p_monthly_coverage <- plot_data_coverage(monthly_coverage_calendar_dt <- data_coverage_calendar()), all R/data_coverage.R. Turbine-level overlap (coverage_considered_turbines_text/coverage_incomplete_turbines_text): monthly_coverage_overlap_summary_dt <- overlap_summary_by_turbine(daily_overlap_by_turbine()), same file, filtered to days_a>0 & days_b>0 -- annex has the unfiltered version (plot_daily_overlap_by_turbine(), too tall to embed with turbinas_scada="all") -->
+```{r coverage-summary-table}
+if (!is.null(params$coverage_summary)) {
+  report_table(rename_display(
+    params$coverage_summary,
+    c(dataset = "Dataset", start = "From", end = "To", total_days = "Total Days",
+      days_with_data = "Days with Data", days_missing = "Days Missing", pct_missing = "% Missing")
+  ))
+}
+```
+
+```{r coverage-plot, fig.width=7, fig.height=4}
+if (!is.null(params$coverage_plot)) print(params$coverage_plot)
+```
+
+# System Availability (Heartbeats)
+
+Heartbeats are expected every `r params$heartbeat_interval_min` minutes; an IDF unit is considered offline once the gap since its last heartbeat exceeds `r params$heartbeat_offline_gap_min` minutes (at least 2 consecutive heartbeats missed).
+
+## Availability by IDF Unit
+
+```{r availability-text, results='asis'}
+if (!is.null(params$availability_by_idf) && nrow(params$availability_by_idf) > 0) {
+  cat(sprintf(
+    "This month covered %d day(s) of monitoring, %s total minutes of daylight monitoring time per IDF unit (same calendar for every unit, so not repeated per row below). Offline (%%) and category, per IDF unit:\n\n",
+    params$availability_by_idf$days_covered[1],
+    format(params$availability_by_idf$daylight_mins_total[1], big.mark = ",")
+  ))
+}
+```
+
+<!-- Source: idf_availability_summary$by_idf <- summarise_availability(idf_availability_dt), R/availability_daylight.R (idf_availability_dt itself from daylight_availability()) -->
+```{r availability-table}
+if (!is.null(params$availability_by_idf)) {
+  report_table(rename_display(
+    drop_cols(params$availability_by_idf, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
+    c(idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
+  ))
+}
+```
+
+## Availability Calendar
+
+Daily offline percentage per IDF unit, laid out as a calendar (top `r params$idf_availability_top_n` units by offline time only, to stay legible).
+
+<!-- Source: plot_availability_calendar(), R/availability_daylight.R -->
+```{r availability-cal, fig.width=6.30, fig.height=6.30}
+if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
+```
+
+## Availability Frequency
+
+Count of IDF units per daylight-availability category.
+
+<!-- Source: plot_availability_frequency(), R/availability_daylight.R -->
+```{r availability-freq, fig.width=6, fig.height=3}
+if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq)
+```
+
+## Spatial Distribution of Unavailability
+
+Spatial distribution of unavailability, by turbine (point size = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit).
+
+<!-- Source: turbine_availability_dt <- join_availability_to_turbine(); plot_availability_spatial(), both R/availability_daylight.R -->
+```{r availability-spatial, fig.width=6.30, fig.height=4.72}
+if (!is.null(params$availability_plot_spatial)) print(params$availability_plot_spatial)
+```
+
+# Observed Species
+
+## Track Level Entropy
+
+Normalised Shannon entropy (Pielou's evenness) of the sequence of species classifications recorded within each track, for tracks recorded this month. 0% = a track classified as a single species throughout (stable); 100% = classifications alternated as evenly as possible between the distinct species detected in that track (that track's own worst case). Being normalised by each track's own theoretical maximum, this is comparable across tracks with different numbers of distinct species, unlike the raw entropy value.
+
+<!-- Source: plot_entropy_hist(monthly_richness_dt), R/id_transitions.R (monthly_richness_dt from track_species_summary(), shannon_evenness_pct computed there) -->
+```{r entropy-plot, fig.width=6.30, fig.height=3.94}
+if (!is.null(params$entropy_plot)) print(params$entropy_plot)
+```
+
+Number of tracks by count of distinct species classifications recorded within the same track, with the most frequent exact species combination for each count. For n_species = 1 there is no actual combination -- "Most Common Combination" there is simply the single most frequently detected species among tracks with only one classification.
+
+<!-- Source: monthly_richness_summary <- summarise_species_richness(monthly_richness_dt), R/id_transitions.R (monthly_richness_dt from track_species_summary()) -- most_common_combo/most_common_combo_n added at source -->
+```{r richness-table}
+if (!is.null(params$richness_dt)) {
+  report_table(rename_display(
+    params$richness_dt,
+    c(n_species = "N Species", n_tracks = "Tracks", pct = "%",
+      most_common_combo = "Most Common Combination", most_common_combo_n = "Tracks with Combination")
+  ))
+}
+```
+
+<!-- 3.2 (richness histogram) removida do docx por pedido -- a figura
+continua a ser calculada e gravada em outputs/ (ver IDF_monthly_report.R,
+secção 2), so' deixou de ser incluida no relatorio -->
+
+# Curtailments by Species
+
+## Curtailments by Species
+
+Curtailment events triggered in this month, one row per species -- ordered by group (priority, then non-priority, then other/uncategorized), and by % of total within each group.
+
+<!-- Source: summarise_curtailment_species(), R/curtailment_species.R (built on classify_curtailment_species()) -- row order fixed at source, see group_order in summarise_curtailment_species() -->
+```{r curtl-species-table}
+if (!is.null(params$curtl_by_species_dt)) {
+  report_table(rename_display(
+    params$curtl_by_species_dt,
+    c(species_group = "Group", species = "Species", n = "N", pct_of_group = "% of Group", pct_of_total = "% of Total")
+  ))
+}
+```
+
+## Curtailments by Priority Group
+
+Same events, rolled up by species group (priority / nonpriority / other / uncategorized).
+
+<!-- Source: summarise_curtailment_species_group(), R/curtailment_species.R -->
+```{r curtl-group-table}
+if (!is.null(params$curtl_by_group_dt)) {
+  report_table(rename_display(
+    params$curtl_by_group_dt,
+    c(species_group = "Group", n = "N", pct_of_total = "% of Total")
+  ))
+}
+```
+
+# Short-Track Curtailments
+
+Curtailments triggered by tracks with fewer than `r params$shorttrack_min_points` recorded points, considered only within `r params$shorttrack_eval_range_m` m of the turbine.
+
+<!-- Source: summarise_short_track_curtailments(), R/curtailment_short_track.R (built on classify_short_track_curtailments()) -->
+```{r short-track-table}
+if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_summary_dt)
+```
+
+# Curtailment Response Assessment
+
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, for the turbines and window with SCADA coverage this month (`r params$turbinas_scada_used` -- all turbines with SCADA data in this window, per turbinas_scada = "all" in monthlyReportSettings.R). The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s; an immediate response is recorded when RPM drops by at least `r params$curtailment_drop_pct_threshold * 100`% within `r params$curtailment_max_next_gap_sec` s of the signal; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`.
+
+## By Status
+
+- **already_stopped**: RPM was already below the stop threshold at the moment of the curtailment signal.
+- **full_stop_by_end**: RPM dropped below the stop threshold by the end of the curtailment order.
+- **partial_or_no_stop**: RPM was still at or above the stop threshold when the curtailment order ended.
+- **no_data**: no SCADA reading within the matching tolerance at the start and/or end signal, so the outcome could not be determined.
+
+A breakdown of curtailment-order duration by status is available in the accompanying workbook (curtailment_response_assessment\_*.xlsx) -- useful to check whether partial_or_no_stop cases are curtailment orders that were simply shorter than the typical shutdown time (section 7), rather than a failure to respond.
+
+<!-- Source: summary_assess$by_status <- summarise_curtailment_assessment(assess_dt)$by_status, R/curtailment_response.R (assess_dt from assess_curtailment_response()) -->
+```{r assess-status-table}
+if (!is.null(params$assess_by_status)) {
+  report_table(rename_display(
+    drop_cols(params$assess_by_status, c("mean_duration_sec", "median_duration_sec")),
+    c(final_status = "Status", n = "N", pct = "%", pct_of_valid = "% of Valid")
+  ))
+}
+```
+
+## By Turbine
+
+Same assessment, broken down by turbine. Having SCADA data this month (the list above) is necessary but not sufficient to appear below -- a turbine also needs at least one curtailment whose SCADA baseline falls within the matching tolerance stated above, which in a given month only a subset of turbines actually achieves. The table below is restricted to Turbine, Curtailments, Valid Matches, No Immed. Resp. % and Missed %, and to turbines with a computable Missed % this month (i.e. at least one SCADA-validated curtailment); turbines with no valid SCADA match this month (no_data for every curtailment) are omitted here. The complete table, with every column and every turbine, is in the accompanying workbook (curtailment_response_assessment\_*.xlsx).
+
+<!-- Source: summary_assess$by_turbine <- summarise_curtailment_assessment(assess_dt)$by_turbine, R/curtailment_response.R -- filtered here to !is.na(missed_pct) and to a subset of columns, the xlsx annex keeps every column/turbine -->
+```{r assess-turbine-table}
+if (!is.null(params$assess_by_turbine)) {
+  dt <- params$assess_by_turbine[!is.na(params$assess_by_turbine$missed_pct), ]
+  report_table(
+    rename_display(
+      drop_cols(dt, c(
+        "n_no_immediate_response", "n_already_stopped", "n_full_stop_by_end",
+        "n_partial_or_no_stop", "n_no_data", "mean_rpm_delta_pct"
+      )),
+      c(
+        turbine = "Turbine", n_curtailments = "Curtailments",
+        n_valid_matches = "Valid Matches", no_immediate_response_pct = "No Immed. Resp. %",
+        missed_pct = "Missed %"
+      )
+    )
+  )
+}
+```
+
+# Shutdown Time
+
+Time from curtailment signal to reaching each RPM threshold, by turbine -- 3 thresholds evaluated: `r paste(params$shutdown_time_thresholds, collapse = ", ")` rpm. Bands below/above the agreed cut-offs are reported as-is, without further interpretation.
+
+## Time to Threshold by Turbine
+
+<!-- Source: summarise_time_to_threshold(tt_dt), R/curtailment_shutdown_time.R (tt_dt from time_to_rpm_thresholds()) -->
+```{r shutdown-turbine-table}
+if (!is.null(params$shutdown_by_turbine)) {
+  report_table(
+    rename_display(
+      drop_cols(params$shutdown_by_turbine, c("median_time_sec")),
+      c(
+        turbine = "Turbine", threshold = "Thresh. (rpm)", n_curtailments = "Curtailments",
+        n_reached = "Reached", pct_reached = "% Reached", mean_time_sec = "Mean (s)",
+        sd_time_sec = "SD (s)", min_time_sec = "Min (s)",
+        max_time_sec = "Max (s)"
+      )
+    ),
+    max_col_width_cm = 2
+  )
+}
+```
+
+## Time to Threshold Bands
+
+Same events, grouped by threshold (ascending, lowest rpm reached first) into bands below/above the agreed cut-offs. A curtailment counts as "below cut" when it reached the threshold in under `r params$shutdown_time_low_cut` s (fast), and "above cut" when it took more than `r params$shutdown_time_high_cut` s (slow); cases in between count towards neither band.
+
+<!-- Source: summarise_time_to_threshold_bands(tt_dt), R/curtailment_shutdown_time.R -- row order (ascending threshold) fixed at source -->
+```{r shutdown-bands-table}
+if (!is.null(params$shutdown_bands)) {
+  report_table(rename_display(
+    params$shutdown_bands,
+    stats::setNames(
+      c("Thresh. (rpm)", "Reached", sprintf("%% < %ss", params$shutdown_time_low_cut), sprintf("%% > %ss", params$shutdown_time_high_cut)),
+      c("threshold", "n_reached", "pct_below_cut", "pct_above_cut")
+    )
+  ))
+}
+```
+
+## Time to Threshold Distribution
+
+<!-- Source: plot_time_to_threshold(), R/curtailment_shutdown_time.R -->
+```{r shutdown-plot, fig.width=7, fig.height=6}
+if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
+```
+
+# Safe Distance (KNE Methodology)
+
+Distance between the triggering track and the turbine at the moment of curtailment, compared against the KNE reference line (`r params$safe_dist_reference_line_m` m), by priority species. A turbine's estimated time-to-stop-safely uses `r params$safe_dist_rpm_threshold` rpm as the "stopped" threshold; a turbine already below `r params$safe_dist_already_slowing_rpm` rpm at the moment of the signal is treated as already slowing from a previous curtailment, not at full operating speed.
+
+## Overall
+
+<!-- Source: summary_safe_dist$overall <- summarise_safe_distance(safe_dist_dt, prioritysp)$overall, R/curtailment_safe_distance.R (safe_dist_dt from compute_safe_distance()) -->
+```{r safe-dist-overall-table}
+if (!is.null(params$safe_dist_overall)) {
+  report_table(rename_display(
+    params$safe_dist_overall,
+    c(n = "N", n_ok = "OK", n_crit = "Critical", pct_ok = "% OK",
+      mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
+  ))
+}
+```
+
+## By Species
+
+<!-- Source: summary_safe_dist$by_species <- summarise_safe_distance(safe_dist_dt, prioritysp)$by_species, R/curtailment_safe_distance.R -->
+```{r safe-dist-species-table}
+if (!is.null(params$safe_dist_by_species)) {
+  report_table(rename_display(
+    params$safe_dist_by_species,
+    c(species = "Species", n = "N", n_ok = "OK", n_crit = "Critical", pct_ok = "% OK",
+      mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
+  ))
+}
+```
+
+## Distribution
+
+<!-- Source: plot_safe_distance_hist(), R/curtailment_safe_distance.R -->
+```{r safe-dist-plot, fig.width=6.30, fig.height=3.94}
+if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
+```
+
+# Bi-Directional ID Transitions
+
+Curtailments triggered by a species reclassification within the same track, in both directions (priority-to-nonpriority and nonpriority-to-priority) -- global, across all non-priority species together, not any single species. A reclassification is considered "late" when it happens more than `r params$id_transition_late_time_sec` s after the curtailment start, or when the track was already within `r params$track_proximity_threshold_m` m of the turbine at the moment of reclassification.
+
+## Risk by Direction
+
+- **P to NP (unnecessary curtailment)**: curtailment triggered while classified as priority, but the track's final classification was non-priority -- turbine stopped unnecessarily (production cost).
+- **NP to P, no curtailment (near)**: reclassified to a priority species, no curtailment ever triggered, and the track was already within the proximity threshold at that moment -- the most concerning case.
+- **NP to P, no curtailment (far)**: same, but the track was still far from any turbine when reclassified -- descriptive, not necessarily concerning on its own.
+- **NP to P, late curtailment**: curtailment was triggered, but later than the agreed time or distance criterion.
+- **No risk**: no meaningful transition risk detected (single-species track, or reclassification with a timely curtailment).
+
+<!-- Source: monthly_id_risk_summary$by_direction <- summarise_id_transition_risk(monthly_id_risk_dt, curtl_dt)$by_direction, R/id_transitions.R (monthly_id_risk_dt from classify_id_transition_risk()) -->
+```{r id-risk-table}
+if (!is.null(params$id_risk_by_direction)) {
+  report_table(rename_display(
+    recode_values(params$id_risk_by_direction, "risk_direction", c(
+      P_to_NP_unnecessary_curtailment = "P to NP (unnecessary curtailment)",
+      NP_to_P_no_curtailment_near     = "NP to P, no curtailment (near)",
+      NP_to_P_no_curtailment_far      = "NP to P, no curtailment (far)",
+      NP_to_P_late_curtailment        = "NP to P, late curtailment",
+      no_risk                         = "No risk"
+    )),
+    c(risk_direction = "Direction", n_tracks = "Tracks", n_multi_id_tracks = "Multi-ID Tracks", pct_of_multi_id = "% of Multi-ID")
+  ))
+}
+```
+
+<!--
+9.2 e' opcional (run_sections_monthly$id_confusion, DESLIGADA por omissao
+em monthlyReportSettings.R) -- analise pontual para a(s) especie(s) em
+id_confusion_species_of_interest (Egyptian-Vulture e Steppe-Eagle por
+omissao), nao uma metrica de rotina mensal. Quando desligada,
+params$id_confusion_general fica NULL e todo o subsection (titulo, texto e
+tabela) desaparece do documento -- nao so' a tabela -- por isso o
+titulo/texto tambem estao dentro deste chunk condicional (results='asis'),
+nao como markdown normal. So' mostra pares > 1% dos tracks multi-ID (ver
+filtro no chunk id-confusion-table, abaixo) -- pares muito raros (1-2
+tracks em milhares) ficam so' no xlsx.
+-->
+```{r id-confusion-heading, results='asis'}
+if (!is.null(params$id_confusion_general)) {
+  cat(sprintf("## 9.2 Species Confusion (%s)\n\n", params$id_confusion_species))
+  cat(sprintf(
+    "Other species recorded within the same track as %s (all tracks, not only curtailment-triggering ones), for pairs above 1%% of multi-ID tracks in scope.\n\n",
+    params$id_confusion_species
+  ))
+}
+```
+
+<!-- Source: monthly_id_confusion_summary$confusion_general <- summarise_species_confusion(), R/id_transitions.R -->
+```{r id-confusion-table}
+if (!is.null(params$id_confusion_general) && nrow(params$id_confusion_general) > 0) {
+  dt <- params$id_confusion_general[params$id_confusion_general$pct_of_multi_id_tracks > 1, ]
+  if (nrow(dt) > 0) {
+    report_table(rename_display(
+      dt,
+      c(species = "Species", other_species = "Other Species", n_tracks = "Tracks", pct_of_multi_id_tracks = "% of Multi-ID")
+    ))
+  }
+}
+```
+
+# Biological Flight Metrics
+
+Flight speed and flight height per species, for tracks with at least `r params$flight_min_track_points` recorded points and a flight speed between `r params$flight_speed_ms_min` and `r params$flight_speed_ms_max` m/s.
+
+## Flight Speed by Species
+
+<!-- Source: summarise_flight_speed(monthly_flight_base_dt), R/bio_flight_metrics.R (monthly_flight_base_dt from flight_metrics_base()) -->
+```{r flight-speed-table}
+if (!is.null(params$flight_speed_by_species)) {
+  report_table(rename_display(
+    drop_cols(params$flight_speed_by_species, c("min_speed_ms", "max_speed_ms")),
+    c(spec = "Species", n = "N", mean_speed_ms = "Mean (m/s)", median_speed_ms = "Median (m/s)", sd_speed_ms = "SD (m/s)")
+  ))
+}
+```
+
+## Flight Height by Species
+
+Mean and standard deviation of flight height, plus the % of records within the rotor-swept risk zone (`r params$riskHeight_lower`-`r params$riskHeight_upper` m).
+
+<!-- Source: summarise_flight_height(monthly_flight_base_dt, risk_height_lower, risk_height_upper), R/bio_flight_metrics.R -->
+```{r flight-height-table}
+if (!is.null(params$flight_height_by_species)) {
+  # as.data.frame() primeiro -- params$flight_height_by_species pode ser
+  # data.table, onde df[, char_vector] tem semantica ambigua/dependente de
+  # versao para seleccao de colunas (ao contrario de data.frame, sem
+  # ambiguidade); os outros helpers (rename_display/drop_cols) ja fazem
+  # este as.data.frame() internamente, so' este subset manual precisava
+  dt <- as.data.frame(params$flight_height_by_species)
+  dt <- dt[, intersect(c("spec", "mean_height_m", "sd_height_m", "pct_in_risk_zone"), names(dt)), drop = FALSE]
+  report_table(rename_display(
+    dt,
+    c(spec = "Species", mean_height_m = "Mean (m)", sd_height_m = "SD (m)", pct_in_risk_zone = "% in Risk Zone")
+  ))
+}
+```
+
+## Distribution
+
+<!-- Source: plot_flight_metrics_distribution(), R/bio_flight_metrics.R -->
+```{r flight-metrics-plot, fig.width=6.30, fig.height=4.72}
+if (!is.null(params$flight_metrics_plot)) print(params$flight_metrics_plot)
+```
+
+# Minimum Individuals per Time Bin
+
+Minimum number of distinct individuals per priority species detected in the same `r params$min_individuals_bin_min`-minute time bin (2 tracks count as 1 individual when within `r params$min_individuals_merge_dist_m` m of each other), farm-wide, summarised by day.
+
+## Summary
+
+<!-- Source: summarise_min_individuals(monthly_min_indiv_bins_dt), R/track_min_individuals.R (monthly_min_indiv_bins_dt from count_min_individuals_per_bin()) -->
+```{r min-indiv-summary-table}
+if (!is.null(params$min_indiv_summary)) {
+  report_table(rename_display(
+    params$min_indiv_summary,
+    c(spec = "Species", n_bins = "Bins", peak_individuals = "Peak Individuals",
+      peak_bin_start = "Peak Time", mean_individuals_nonzero = "Mean (Non-zero Bins)")
+  ))
+}
+```
+
+## Daily Peak, by Species
+
+<!-- Source: plot_daily_max_individuals(monthly_min_indiv_daily_dt, species_sel = prioritysp, date_breaks = "1 week"), R/track_min_individuals.R (monthly_min_indiv_daily_dt from summarise_daily_max_individuals()) -->
+```{r min-indiv-daily-plot, fig.width=6.30, fig.height=8.66}
+if (!is.null(params$min_indiv_daily_plot)) print(params$min_indiv_daily_plot)
+```
+
+# Annexes
+
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: data summary, temporal coverage (including the turbine-level Curtailments/SCADA overlap workbook and plot, section 1.2), system availability (including the turbine-level spatial availability table), observed species, curtailments by species, short-track curtailments, curtailment response assessment (including the curtailment-duration-by-status breakdown, section 6), shutdown time, safe distance, ID transitions and species confusion, biological flight metrics, and minimum individuals per bin.

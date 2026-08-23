@@ -13,7 +13,8 @@
 ## o nascer e o por do sol) de cada dia, calculado a partir da posicao
 ## (lat/lon) do projeto com o package suncalc.
 ##
-## Depende de: data.table, lubridate, suncalc, ggplot2, scales
+## Depende de: data.table, lubridate, suncalc, ggplot2, scales, sf (so' as
+## funcoes 10-11, join_availability_to_turbine()/plot_availability_spatial())
 ##
 
 
@@ -343,5 +344,96 @@ plot_heartbeat_slots <- function(slot_grid_dt, date_breaks = "2 days", title = N
       strip.text = element_text(face = "bold"),
       axis.text.x = element_text(size = 8),
       legend.position = "bottom"
+    )
+}
+
+
+## 10. Cruzar disponibilidade por unidade IDF com a localizacao das turbinas
+##     (matriz manual turbina<->IDF, Primary IDF) ----
+##
+## Devolve 1 linha por turbina do shapefile (wtg_sf), com as coordenadas
+## (x, y, no CRS em que wtg_sf ja estiver -- projetar ANTES de chamar esta
+## funcao) e a disponibilidade da SUA unidade IDF primaria (coluna "Primary
+## IDF" da matriz manual) neste periodo. NAO agrega Primary+Secondary --
+## e' a mesma logica "1 unidade por turbina" da secção de disponibilidade
+## acima (by_idf), so' reprojetada no espaco; nao substitui a analise de
+## fallback usada na investigacao de fatalidades (R/fatality_window_analysis.R).
+## Turbinas sem unidade IDF primaria na matriz manual, ou cuja unidade
+## primaria nao tem heartbeats neste periodo (nao aparece em by_idf_summary),
+## ficam com as colunas de disponibilidade a NA -- mostradas no plot como
+## "no data", nao descartadas em silencio.
+##
+## by_idf_summary: summarise_availability(...)$by_idf
+## turbine_idf_manual_dt: lido diretamente do xlsx (ACWA_IDF_Coverage_Matrix.xlsx
+## via turbine_idf_matrix_filename) -- colunas "Turbine ID"/"Primary IDF"
+
+join_availability_to_turbine <- function(by_idf_summary, wtg_sf, turbine_idf_manual_dt,
+                                         wtg_id_col = "InternalNa") {
+
+  manual_dt <- data.table::as.data.table(turbine_idf_manual_dt)
+  data.table::setnames(
+    manual_dt,
+    old = c("Turbine ID", "Primary IDF"),
+    new = c("turbine", "primary_idf"),
+    skip_absent = TRUE
+  )
+  manual_dt <- unique(manual_dt[, .(turbine, primary_idf)])
+
+  coords <- sf::st_coordinates(wtg_sf)
+  turbine_xy <- data.table::data.table(
+    turbine = wtg_sf[[wtg_id_col]],
+    x = coords[, "X"],
+    y = coords[, "Y"]
+  )
+
+  out <- merge(turbine_xy, manual_dt, by = "turbine", all.x = TRUE)
+  out <- merge(out, by_idf_summary, by.x = "primary_idf", by.y = "idf", all.x = TRUE)
+
+  n_no_data <- out[is.na(monitoring_period_pct), .N]
+  if (n_no_data > 0) {
+    message(sprintf(
+      "Aviso: %d turbina(s) sem disponibilidade calculavel (sem unidade IDF primaria na matriz manual, ou sem heartbeats dessa unidade neste periodo) -- ficam \"no data\" no plot espacial.",
+      n_no_data
+    ))
+  }
+
+  out[]
+}
+
+
+## 11. Plot espacial de (in)disponibilidade -- 1 ponto por turbina, tamanho
+##     e cor proporcionais a % offline (monitoring_period_pct); turbinas
+##     sem dados (NA) ficam com um marcador "x" cinzento, categoria
+##     separada na legenda, nao descartadas do plot ----
+
+plot_availability_spatial <- function(turbine_availability_dt, value_col = "monitoring_period_pct") {
+
+  dt <- data.table::copy(turbine_availability_dt)
+  dt[, value := get(value_col)]
+  dt[, has_data := !is.na(value)]
+
+  ggplot() +
+    geom_point(
+      data = dt[has_data == TRUE],
+      aes(x = x, y = y, size = value),
+      colour = "steelblue", alpha = 0.8 # so' tamanho varia -- sem escala de cor, 20% transparencia (ajuda a ver turbinas sobrepostas/proximas)
+    ) +
+    geom_point(
+      data = dt[has_data == FALSE],
+      aes(x = x, y = y),
+      size = 2, colour = "grey60", shape = 4, alpha = 0.8
+    ) +
+    scale_size_continuous(name = "Offline (%)", range = c(2, 10)) +
+    coord_equal() +
+    labs(
+      x = NULL, y = NULL,
+      title = "Spatial distribution of IDF unavailability by turbine",
+      subtitle = "Point size = % of daylight monitoring period offline (primary IDF unit); x = no data"
+    ) +
+    theme_minimal(base_size = 9) +
+    theme(
+      panel.grid = element_blank(),
+      axis.text = element_blank(),
+      axis.ticks = element_blank()
     )
 }

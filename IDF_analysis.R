@@ -67,7 +67,25 @@ for (p in packages) {
 
 
 ##SET INPUT/OUTPUT FOLDERS##
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path)) #Automatically set wd to the folder where the script is located
+## rstudioapi::getActiveDocumentContext()$path so' resolve de forma fiavel
+## quando o codigo corre via "Source" ou um source("...") explicito escrito
+## na consola -- selecionar TODO o ficheiro (Ctrl+A) e correr como bloco
+## envia o texto para a consola sem passar por source(), e o path devolvido
+## pode vir vazio/invalido, fazendo o setwd() abaixo falhar com "cannot
+## change working directory". Como isso aconteceria dentro do source() que
+## carrega este ficheiro, um erro aqui aborta o script INTEIRO (nao so' esta
+## linha), mesmo com options(error=...) definido acima -- por isso o
+## try/aviso, em vez de deixar falhar (ver mesmo problema/correcao em
+## IDF_monthly_report.R, 2026-08).
+tryCatch({
+  active_doc_path <- rstudioapi::getActiveDocumentContext()$path
+  if (isTRUE(nzchar(active_doc_path))) setwd(dirname(active_doc_path))
+}, error = function(e) {
+  message(sprintf(
+    "Aviso: nao foi possivel mudar para a pasta do script via rstudioapi (%s) -- a usar a working directory atual: %s",
+    conditionMessage(e), getwd()
+  ))
+})
 folder_input <- "inputs"
 folder_output <- file.path("outputs",format(Sys.time(), "%Y%m%d"))
 folder_output_DC <- file.path("outputs",format(Sys.time(), "%Y%m%d"),"DC")
@@ -391,20 +409,36 @@ scada_dt[, .(
   max_start = max(datetime , na.rm = TRUE)
 )]
 
+## Todos os filtros de data abaixo (curtl_dt/track_dt/heartb_dt) usam a
+## MESMA sintaxe (data.table `[...]`, nao dplyr::filter()) e as MESMAS 2
+## variaveis auxiliares (filter_ini/filter_end), nunca `ini`/`end`
+## diretamente dentro de um `DT[...]` -- curtl_dt_unfilt TEM uma coluna
+## chamada "end" (fim do proprio curtailment, ver R/read_curtailments.R), e
+## dentro de DT[...] nomes de coluna tomam precedencia sobre variaveis do
+## ambiente com o mesmo nome. Usar `ini`/`end` bare dentro do filtro de
+## curtl_dt_unfilt fazia "start <= end" comparar com a COLUNA end (sempre
+## >= o seu proprio start -- quase sempre TRUE), nao com o limite do
+## periodo do relatorio -- bug real, encontrado 2026-08 a partir do
+## relatorio mensal (curtl_dt incluia todos os curtailments desde `ini` ate
+## ao fim de TODO o historico em cache, nao so' ate `end`). filter_ini/
+## filter_end nao colidem com nenhuma coluna de curtl_dt_unfilt/
+## track_dt_unfilt/heartb_dt_unfilt, nem com report_start/report_end (Date,
+## definidos acima, usados em nomes de ficheiro) -- usados por omissao em
+## TODOS os filtros, mesmo nos que hoje nao tem risco de colisao, para nao
+## depender de confirmar caso a caso.
+filter_ini <- ini
+filter_end <- end
+
 #Curtail data
-curtl_dt <- as.data.table(curtl_dt_unfilt)[
-  start >= ini & start <= end
-]
-#check 
+curtl_dt <- as.data.table(curtl_dt_unfilt)[start >= filter_ini & start <= filter_end]
+#check
 curtl_dt[, .(
   min_start = min(start, na.rm = TRUE),
   max_start = max(start, na.rm = TRUE)
 )]
 
 #Track data
-track_dt <- track_dt_unfilt %>%
-  filter(timestamp >= ini & timestamp <= end)
-track_dt <- data.table::as.data.table(track_dt)
+track_dt <- as.data.table(track_dt_unfilt)[timestamp >= filter_ini & timestamp <= filter_end]
 # count (nº de pontos por track) foi calculado em R/read_tracks.R sobre
 # track_dt_unfilt (NAO filtrado) -- o filtro de datas acima so remove
 # LINHAS, nao recalcula count, por isso um track que atravessa a fronteira
@@ -420,9 +454,9 @@ track_dt[, .(
 )]
 
 #Heartbeat data
-heartb_dt <- heartb_dt_unfilt %>%
-  filter(idf %in% heartbeat_idf_units) %>%
-  filter(timestamp >= ini & timestamp <= end)
+heartb_dt <- as.data.table(heartb_dt_unfilt)[
+  idf %in% heartbeat_idf_units & timestamp >= filter_ini & timestamp <= filter_end
+]
 #check
 heartb_dt[, .(
   min_datetime = min(timestamp, na.rm = TRUE),

@@ -99,8 +99,15 @@ data_coverage_calendar <- function(track_dt, curtl_dt, scada_dt, heartb_dt) {
 
 
 ## 5. Plot "calendario" de cobertura (lacunas visiveis como faixas em branco) ----
+##
+## date_breaks/date_labels por omissao servem para o periodo TIPICO desta
+## funcao (historico completo do projeto, IDF_analysis.R) -- para uma
+## janela curta (ex: 1 mes, relatorio mensal), passar algo mais fino (ex:
+## date_breaks = "2 days", date_labels = "%d %b"), senao o eixo x fica so'
+## com 1 marca (mesma logica de slot_date_breaks em IDF_analysis.R, secção
+## 3.1 -- heartbeat_slots).
 
-plot_data_coverage <- function(coverage_dt) {
+plot_data_coverage <- function(coverage_dt, date_breaks = "1 month", date_labels = "%Y-%m") {
 
   ggplot(coverage_dt, aes(x = date, y = dataset, fill = has_data)) +
     geom_tile(colour = "white", linewidth = 0.1) +
@@ -109,15 +116,20 @@ plot_data_coverage <- function(coverage_dt) {
       labels = c(`TRUE` = "Data available", `FALSE` = "No data"),
       name = NULL
     ) +
-    scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m") +
+    # expand = c(0,0) -- sem isto o ggplot acrescenta ~5% de folga de cada
+    # lado do eixo x por omissao, mostrando dias fora do periodo coberto
+    # pelos dados (ex: 31 Dez antes do inicio de Janeiro, 2 Fev depois do
+    # fim) sem terem qualquer significado
+    scale_x_date(date_breaks = date_breaks, date_labels = date_labels, expand = c(0, 0)) +
     labs(
       title = "Data coverage timeline",
       x = NULL, y = NULL
     ) +
     theme_minimal() +
     theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      panel.grid = element_blank()
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+      panel.grid = element_blank(),
+      legend.position = "bottom"
     )
 }
 

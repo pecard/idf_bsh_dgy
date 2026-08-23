@@ -16,7 +16,7 @@
 ## 0.152...), por isso "rpm <= 0" raramente e atingido na pratica -- e
 ## esperado ver muitos NA nesse limiar especificamente.
 ##
-## Depende de: data.table, ggplot2, R/curtailment_response.R (usa match_nearest_rpm())
+## Depende de: data.table, ggplot2, scales, R/curtailment_response.R (usa match_nearest_rpm())
 ##
 ## Uso:
 ##   source("R/curtailment_response.R")
@@ -117,8 +117,8 @@ summarise_time_to_threshold <- function(time_to_threshold_dt) {
       mean_time_sec   = round(mean(time_to_threshold_sec, na.rm = TRUE), 1),
       median_time_sec = round(median(time_to_threshold_sec, na.rm = TRUE), 1),
       sd_time_sec     = round(sd(time_to_threshold_sec, na.rm = TRUE), 1),
-      min_time_sec    = rng[1],
-      max_time_sec    = rng[2]
+      min_time_sec    = round(rng[1], 1),
+      max_time_sec    = round(rng[2], 1)
     )
   }, by = .(turbine, threshold)]
 
@@ -131,6 +131,8 @@ summarise_time_to_threshold <- function(time_to_threshold_dt) {
 
 summarise_time_to_threshold_bands <- function(time_to_threshold_dt, low_cut = 40, high_cut = 50) {
 
+  # ordem ascendente de threshold -- mesma ordem de summarise_time_to_threshold()
+  # (7.1), para as 2 tabelas ficarem consistentes entre si
   time_to_threshold_dt[
     !is.na(time_to_threshold_sec),
     .(
@@ -139,7 +141,7 @@ summarise_time_to_threshold_bands <- function(time_to_threshold_dt, low_cut = 40
       pct_above_cut = round(100 * sum(time_to_threshold_sec > high_cut) / .N, 1)
     ),
     by = threshold
-  ][order(-threshold)]
+  ][order(threshold)]
 }
 
 
@@ -155,6 +157,7 @@ plot_time_to_threshold <- function(time_to_threshold_dt, threshold_sel = NULL) {
   ggplot(dt, aes(x = time_to_threshold_sec)) +
     geom_histogram(binwidth = 5, boundary = 0, fill = "steelblue", colour = "black") +
     facet_wrap(~ threshold_lab, ncol = 1, scales = "free_y") +
+    scale_x_continuous(breaks = scales::breaks_width(10)) +
     labs(
       x = "Time to reach threshold (s)",
       y = "Number of curtailments",
