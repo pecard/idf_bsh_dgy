@@ -454,9 +454,12 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   source("R/curtailment_safe_distance.R")
 
   # turbinas_scada = "all" (monthlyReportSettings.R) e' resolvido aqui contra
-  # o scada_dt REAL da janela do mes -- ver resolve_turbinas_scada(),
-  # R/monthly_report_utils.R. Um vetor explicito passa tal e qual.
-  turbinas_scada_resolved <- resolve_turbinas_scada(turbinas_scada, scada_dt, scada_ini_monthly, scada_end_monthly)
+  # TODO o scada_dt (nao so' o mes do relatorio -- ver correcao 2026-08 em
+  # resolve_turbinas_scada(), R/monthly_report_utils.R: filtrar so' pelo mes
+  # excluia turbinas com SCADA instalado mas sem leituras nesse mes
+  # especifico). scada_dt aqui ja nao e' filtrado por ini/end (ver "0.
+  # Filter data", acima). Um vetor explicito passa tal e qual.
+  turbinas_scada_resolved <- resolve_turbinas_scada(turbinas_scada, scada_dt)
   message(sprintf(
     "Turbinas SCADA usadas nesta ronda (%d): %s",
     length(turbinas_scada_resolved), paste(turbinas_scada_resolved, collapse = ", ")

@@ -38,20 +38,27 @@ month_bounds <- function(report_month, tz) {
 
 ## Resolve `turbinas_scada` (monthlyReportSettings.R) para o vetor real de
 ## turbinas a usar nas seccoes de resposta/shutdown-time/safe-distance --
-## "all" e' recalculado a cada corrida a partir do scada_dt REAL da janela
-## do relatorio (nao uma lista fixa), para acompanhar automaticamente se
-## mais turbinas passarem a ter SCADA instalado; um vetor explicito
-## (ex: c('BSH54','BSH62','BSH14')) e' devolvido tal e qual, sem verificar
-## se essas turbinas tem mesmo dados no periodo (mesmo comportamento de
+## "all" e' recalculado a cada corrida a partir do scada_dt recebido (nao
+## uma lista fixa), para acompanhar automaticamente se mais turbinas
+## passarem a ter SCADA instalado; um vetor explicito (ex:
+## c('BSH54','BSH62','BSH14')) e' devolvido tal e qual, sem verificar se
+## essas turbinas tem mesmo dados no periodo (mesmo comportamento de
 ## sempre, antes de existir a opcao "all").
 ##
-## scada_dt: NAO filtrado por ini/end (ver "0. Filter data" em
-## IDF_monthly_report.R -- scada_dt <- scada_dt_unfilt) -- por isso window_ini/
-## window_end sao passados aqui explicitamente, para "all" refletir so' as
-## turbinas com dados DENTRO da janela do relatorio, nao em todo o historico.
-resolve_turbinas_scada <- function(turbinas_scada, scada_dt, window_ini, window_end) {
+## CORRECAO (2026-08, caso real): a 1ª versao filtrava "all" so' pelo MES do
+## relatorio (scada_ini_monthly/scada_end_monthly) -- isso excluiu BSH14 num
+## mes em que essa turbina nao teve NENHUMA leitura SCADA (buraco temporario
+## de 1 mes), apesar de ter SCADA instalado e dados noutros meses. Passar
+## aqui scada_dt SEM filtrar por mes (ex: scada_dt_unfilt, ou o scada_dt do
+## relatorio mensal -- que ja NAO e' filtrado por ini/end, ver "0. Filter
+## data" em IDF_monthly_report.R) -- "all" passa a significar "teve SCADA
+## alguma vez", nao "teve SCADA NESTE mes especifico". Uma turbina com
+## SCADA instalado mas sem leituras neste mes continua na lista -- so'
+## contribui 0 curtailments SCADA-validados nesse mes, nao e' descartada
+## por um buraco temporario.
+resolve_turbinas_scada <- function(turbinas_scada, scada_dt) {
 
   if (!identical(turbinas_scada, "all")) return(turbinas_scada)
 
-  sort(unique(scada_dt[datetime >= window_ini & datetime <= window_end, turbinelabel]))
+  sort(unique(scada_dt$turbinelabel))
 }
