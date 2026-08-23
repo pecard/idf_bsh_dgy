@@ -862,8 +862,11 @@ monthly_report_params <- list(
   min_individuals_merge_dist_m  = min_individuals_merge_dist_m
 )
 
+## Reutiliza o template Word da empresa (estilos, cabecalho/rodape com
+## numeracao de pagina) -- ver comentario em R/report.R (build_idf_report).
 build_idf_report(
-  output_file   = file.path(folder_output, sprintf("IDF_monthly_report_%s.docx", report_month)),
-  report_params = monthly_report_params,
-  template      = "report/monthly_report_template.rmd"
+  output_file    = file.path(folder_output, sprintf("IDF_monthly_report_%s.docx", report_month)),
+  report_params  = monthly_report_params,
+  template       = "report/monthly_report_template.rmd",
+  reference_docx = file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")
 )
