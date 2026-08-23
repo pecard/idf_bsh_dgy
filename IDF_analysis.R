@@ -242,8 +242,15 @@ databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) datab
 ## repositorio) se existir; so relê os ficheiros brutos e regrava a cache
 ## quando force_reread_cache = TRUE (usar depois de descarregar dados novos).
 ##
+## force_reread_cache: FALSE por omissao -- so' definir TRUE (na consola,
+## antes de correr este script, ex: force_reread_cache <- TRUE) na 1a
+## corrida a seguir a descarregar dados novos, so' nessa corrida. Definir
+## aqui antes so' forcava reler tudo em TODAS as corridas (era preciso
+## lembrar de repor FALSE manualmente); assim, se nao definires nada, fica
+## FALSE sozinho.
+if (!exists("force_reread_cache")) force_reread_cache <- FALSE
+
 folder_cache <- "cache"
-force_reread_cache <- TRUE # -> TRUE depois de descarregar dados novos, so 1 corrida
 
 # As 4 bases de dados vem do portal IdentiFlight ja em hora LOCAL do projeto
 # (confirmado -- nao UTC como se assumia antes); read_*_data() reinterpreta
