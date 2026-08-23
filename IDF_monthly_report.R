@@ -590,6 +590,16 @@ if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_t
 ## TRUE e ajustar id_confusion_species_of_interest quando for preciso.
 ##
 
+## Limpar estado de uma corrida anterior NA MESMA sessao R -- source() nao
+## remove variaveis nao tocadas pela corrida atual. Sem isto, se esta
+## secção tivesse corrido com run_sections_monthly$id_confusion = TRUE numa
+## corrida anterior (mesma sessao) e agora estiver FALSE,
+## monthly_id_confusion_summary continuaria a "existir" (desatualizado, de
+## outra corrida/mes) -- o relatorio mostraria dados errados na secção 9.2
+## em vez de a saltar, e id_confusion_species_label (so' criada dentro do
+## bloco abaixo) ficaria em falta, causando "object not found".
+rm(list = intersect(c("monthly_id_confusion_summary", "id_confusion_species_label"), ls()))
+
 if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_confusion)) {
 
   source("R/id_transitions.R")
