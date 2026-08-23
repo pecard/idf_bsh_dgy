@@ -331,19 +331,21 @@ ggsave(
 ## texto da secção 1.2 identifica so' as turbinas com sobreposicao
 ## incompleta (overlap_summary_by_turbine() abaixo).
 ##
-## Restringido as turbinas alguma vez equipadas com SCADA
-## (turbinas_scada_resolved, recalculado de forma identica -- e idempotente
-## -- na secção 5 abaixo). SEM isto, daily_overlap_by_turbine() usava TODAS
-## as turbinas da quinta presentes em curtl_dt (~70+, a maioria sem SCADA
-## instalado), o que fazia o plot (facet_wrap ncol=1, altura = n_turbinas *
-## 25mm) ficar gigantesco a ponto de varias turbinas -- incluindo algumas
-## COM sobreposicao real este mes -- nao aparecerem visiveis/legiveis nele,
-## dando a falsa impressao de que nao tinham dados (bug real, confirmado
-## pelo Paulo cruzando com curtailment_response_assessment_*.xlsx, 2026-08).
-turbinas_scada_resolved <- resolve_turbinas_scada(turbinas_scada, scada_dt)
+## Restringido as turbinas com leituras SCADA NESTE MES (scada_dt_month) --
+## de propósito DIFERENTE de turbinas_scada_resolved (secção 5, "alguma vez
+## equipadas com SCADA", em TODO o historico do projeto). Essa resolucao
+## "sempre" e' o comportamento certo para decidir que curtailments tentar
+## avaliar (secções 5-7, onde queremos ser inclusivos mesmo com leituras
+## esparsas nalguns meses) -- mas para ESTE plot mensal, uma turbina cujo
+## unico registo SCADA de sempre veio de outro mes (ex: um download pontual
+## feito no passado para uma investigacao de incidente especifica, sem
+## relacao com este relatorio) so' apareceria aqui com uma faixa SCADA
+## inteiramente em branco, sem informacao nenhuma -- ruido, nao sinal (bug
+## reportado pelo Paulo com a BSH14, 2026-08).
+turbinas_scada_this_month <- sort(unique(scada_dt_month$turbinelabel))
 
 monthly_coverage_overlap_dt <- daily_overlap_by_turbine(
-  curtl_dt[turbine %in% turbinas_scada_resolved], "start", "turbine", "Curtailments",
+  curtl_dt[turbine %in% turbinas_scada_this_month], "start", "turbine", "Curtailments",
   scada_dt_month, "datetime", "turbinelabel", "SCADA"
 )
 monthly_coverage_overlap_summary_dt <- overlap_summary_by_turbine(monthly_coverage_overlap_dt, "Curtailments", "SCADA")
@@ -568,9 +570,6 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   # excluia turbinas com SCADA instalado mas sem leituras nesse mes
   # especifico). scada_dt aqui ja nao e' filtrado por ini/end (ver "0.
   # Filter data", acima). Um vetor explicito passa tal e qual.
-  # (Recalculo idempotente -- a mesma chamada ja correu na secção "0b.
-  # Temporal coverage", acima, para restringir o plot/xlsx de sobreposicao
-  # por turbina as mesmas turbinas SCADA consideradas aqui.)
   turbinas_scada_resolved <- resolve_turbinas_scada(turbinas_scada, scada_dt)
   message(sprintf(
     "Turbinas SCADA usadas nesta ronda (%d): %s",
