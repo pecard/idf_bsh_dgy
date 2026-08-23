@@ -245,11 +245,14 @@ id_transition_late_time_sec <- 50
 # nao operacional, global para todas as turbinas
 track_proximity_threshold_m <- 100
 
-# especie a analisar na matriz de confusao (que outras especies aparecem no
-# mesmo track) -- so' tem efeito quando run_sections_monthly$id_confusion =
-# TRUE (secção 6b, desligada por omissao -- ver acima). Ajustar este literal
-# manualmente para a especie que se quer investigar antes de ligar o switch.
-id_confusion_species_of_interest <- "Kestrel"
+# especie(s) a analisar na matriz de confusao (que outras especies aparecem
+# no mesmo track) -- aceita 1 ou varias (vetor); so' tem efeito quando
+# run_sections_monthly$id_confusion = TRUE (secção 6b, desligada por omissao
+# -- ver acima). Ajustar este literal manualmente para a(s) especie(s) que se
+# quer investigar antes de ligar o switch -- Egyptian-Vulture e Steppe-Eagle
+# por omissao (as 2 especies dos incidentes de fatalidade conhecidos, ver
+# fatality_incidents em userSettings_BSH.R).
+id_confusion_species_of_interest <- c("Egyptian-Vulture", "Steppe-Eagle")
 
 
 ## -- 10. Biological flight metrics (speed/height per species) --

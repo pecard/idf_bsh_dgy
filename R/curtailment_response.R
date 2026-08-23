@@ -282,6 +282,14 @@ assess_curtailment_response <- function(curtl_dt, scada_dt,
     by = "curtailment_id", all.x = TRUE
   )
 
+  # duracao da propria ordem de curtailment (end - start) -- diagnostico para
+  # investigar se "partial_or_no_stop" esta a confundir "nao respondeu" com
+  # "a ordem de curtailment durou menos tempo do que o necessario para parar"
+  # (ver shutdown_time_high_cut, secção 7 -- se muitos "partial_or_no_stop"
+  # tiverem duracao curta, o problema pode ser o denominador/definicao, nao
+  # uma falha real de resposta). Ver summarise_curtailment_assessment().
+  result[, duration_sec := as.numeric(difftime(end, start, units = "secs"))]
+
   ## 4) Sinal 1: resposta imediata (queda >= drop_pct_threshold na leitura seguinte) ----
   result[, immediate_drop_pct := fifelse(
     !is.na(start_rpm) & start_rpm > 0 & !is.na(next_rpm),
@@ -327,6 +335,27 @@ summarise_curtailment_assessment <- function(assess_dt) {
   by_status[, pct_of_valid := fifelse(
     final_status == "no_data", NA_real_, round(100 * n / n_valid_status, 1)
   )]
+
+  # diagnostico -- duracao media/mediana da ordem de curtailment (end-start),
+  # por status final. Se "partial_or_no_stop" tiver duracao sistematicamente
+  # mais curta que "full_stop_by_end", a leitura de "missed curtailment" pode
+  # estar a confundir ordens de curtailment curtas (a ave afastou-se depressa,
+  # a ordem terminou antes de haver tempo para parar) com falhas reais de
+  # resposta -- comparar com shutdown_time_high_cut (secção 7) antes de tirar
+  # conclusoes so' a partir desta tabela.
+  by_status_duration <- assess_dt[, .(
+    mean_duration_sec   = round(mean(duration_sec, na.rm = TRUE), 1),
+    median_duration_sec = round(median(duration_sec, na.rm = TRUE), 1)
+  ), by = final_status]
+  by_status <- merge(by_status, by_status_duration, by = "final_status")
+
+  # no_data por ultimo (nao e' um "pior caso" na mesma escala dos outros 3,
+  # e' ausencia de informacao) -- os outros 3 mantem a ordem de gravidade
+  # crescente definida em assess_curtailment_response()
+  status_order <- c("already_stopped", "full_stop_by_end", "partial_or_no_stop", "no_data")
+  by_status[, status_rank := match(final_status, status_order)]
+  data.table::setorder(by_status, status_rank)
+  by_status[, status_rank := NULL]
 
   by_immediate <- assess_dt[, .(n = .N), by = no_immediate_response]
   by_immediate[, pct := round(100 * n / sum(n), 1)]

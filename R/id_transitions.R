@@ -648,8 +648,13 @@ species_confusion_rate <- function(track_dt, richness_dt, species_of_interest, t
 }
 
 
-## 4. Sumario completo para UMA especie de interesse -- junta as 3 funcoes
-##    acima, em geral e para curtailments, pronto a exportar/reportar
+## 4. Sumario completo para 1 OU VARIAS especies de interesse -- junta as 3
+##    funcoes acima, em geral e para curtailments, pronto a exportar/reportar.
+##    species_of_interest aceita um vetor (ex: c("Egyptian-Vulture",
+##    "Steppe-Eagle")) -- cada especie e' tratada de forma independente (nao
+##    como um grupo fundido), e as linhas de todas ficam juntas na mesma
+##    tabela, distinguidas pela coluna `species`. Um vetor de tamanho 1
+##    funciona exatamente como antes (comportamento antigo preservado).
 summarise_species_confusion <- function(track_dt, richness_dt, curtl_dt, species_of_interest) {
 
   curtl_track_ids <- unique(as.character(curtl_dt$track_id))
@@ -657,11 +662,21 @@ summarise_species_confusion <- function(track_dt, richness_dt, curtl_dt, species
   general_pairs <- species_confusion_pairs(track_dt)
   curtl_pairs   <- species_confusion_pairs(track_dt, track_ids = curtl_track_ids)
 
-  confusion_general       <- species_confusion_involving(general_pairs, species_of_interest)
-  confusion_curtailments  <- species_confusion_involving(curtl_pairs, species_of_interest)
+  confusion_general <- data.table::rbindlist(lapply(
+    species_of_interest, function(sp) species_confusion_involving(general_pairs, sp)
+  ))
+  confusion_curtailments <- data.table::rbindlist(lapply(
+    species_of_interest, function(sp) species_confusion_involving(curtl_pairs, sp)
+  ))
+  if (nrow(confusion_general) > 0L) data.table::setorder(confusion_general, -n_tracks)
+  if (nrow(confusion_curtailments) > 0L) data.table::setorder(confusion_curtailments, -n_tracks)
 
-  general_rate <- species_confusion_rate(track_dt, richness_dt, species_of_interest)
-  curtl_rate   <- species_confusion_rate(track_dt, richness_dt, species_of_interest, track_ids = curtl_track_ids)
+  general_rate <- data.table::rbindlist(lapply(
+    species_of_interest, function(sp) species_confusion_rate(track_dt, richness_dt, sp)
+  ))
+  curtl_rate <- data.table::rbindlist(lapply(
+    species_of_interest, function(sp) species_confusion_rate(track_dt, richness_dt, sp, track_ids = curtl_track_ids)
+  ))
 
   # scope adicionado com := (nao data.table(scope=, existing_dt) -- esse
   # construtor nao faz splice das colunas do 2º argumento, ficaria uma

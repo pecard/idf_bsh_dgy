@@ -63,7 +63,14 @@ summarise_curtailment_species <- function(species_curt_dt) {
   out <- species_curt_dt[, .(n = .N), by = .(species_group, species)]
   out[, pct_of_group := round(100 * n / sum(n), 1), by = species_group]
   out[, pct_of_total := round(100 * n / n_total, 1)]
-  data.table::setorder(out, species_group, -n)
+
+  # ordem de grupo fixa (priority, nonpriority, other, uncategorized) em vez
+  # de alfabetica -- dentro do grupo, por pct_of_total decrescente (mesma
+  # ordem que -n, ja que pct_of_total e' so' n/n_total*100)
+  group_order <- c("priority", "nonpriority", "other", "uncategorized")
+  out[, group_rank := match(species_group, group_order)]
+  data.table::setorder(out, group_rank, -pct_of_total)
+  out[, group_rank := NULL]
   out[]
 }
 

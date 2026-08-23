@@ -131,6 +131,8 @@ summarise_time_to_threshold <- function(time_to_threshold_dt) {
 
 summarise_time_to_threshold_bands <- function(time_to_threshold_dt, low_cut = 40, high_cut = 50) {
 
+  # ordem ascendente de threshold -- mesma ordem de summarise_time_to_threshold()
+  # (7.1), para as 2 tabelas ficarem consistentes entre si
   time_to_threshold_dt[
     !is.na(time_to_threshold_sec),
     .(
@@ -139,7 +141,7 @@ summarise_time_to_threshold_bands <- function(time_to_threshold_dt, low_cut = 40
       pct_above_cut = round(100 * sum(time_to_threshold_sec > high_cut) / .N, 1)
     ),
     by = threshold
-  ][order(-threshold)]
+  ][order(threshold)]
 }
 
 

@@ -1,12 +1,6 @@
 ---
 title: "`r params$title`"
-output:
-  officedown::rdocx_document:
-    page_size:
-      width: 8.27
-      height: 11.69
-      orient: "portrait"
-      unit: "in"
+output: word_document
 params:
   title: ""
   project_ref: ""
@@ -26,7 +20,6 @@ params:
   availability_plot_spatial: !r NULL
 
   richness_dt: !r NULL
-  richness_plot: !r NULL
 
   curtl_by_species_dt: !r NULL
   curtl_by_group_dt: !r NULL
@@ -69,7 +62,9 @@ params:
   curtailment_max_next_gap_sec: !r NULL
   curtailment_drop_pct_threshold: !r NULL
   safe_shutdown_rpm: !r NULL
+  turbinas_scada_used: !r NULL
 
+  shutdown_time_thresholds: !r NULL
   shutdown_time_low_cut: !r NULL
   shutdown_time_high_cut: !r NULL
 
@@ -93,9 +88,12 @@ params:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
-# Mesmo helper de formatacao de tabelas do report_template.rmd, para manter
-# o estilo visual consistente entre o relatorio geral e o mensal.
-report_table <- function(x, caption = NULL) {
+# Tabela flextable com o estilo visual do relatorio. max_col_width_cm (opcional)
+# limita CADA coluna a esse maximo (cm) -- nao forca todas as colunas a esse
+# tamanho, so' encolhe as que o autofit() deixaria mais largas (ver
+# cap_col_width() abaixo). Usado nas secções 6.2 e 7.1 (tabelas largas, 1
+# linha por turbina), pedido explicito para caberem numa pagina A4 vertical.
+report_table <- function(x, caption = NULL, max_col_width_cm = NULL) {
   ft <- flextable::flextable(as.data.frame(x)) |>
     flextable::theme_box() |>
     flextable::bg(part = "header", bg = "gray85") |>
@@ -105,8 +103,45 @@ report_table <- function(x, caption = NULL) {
     flextable::align(align = "center", part = "header") |>
     flextable::valign(valign = "center", part = "all") |>
     flextable::autofit()
+  if (!is.null(max_col_width_cm)) ft <- cap_col_width(ft, max_col_width_cm)
   if (!is.null(caption)) ft <- flextable::set_caption(ft, caption)
   ft
+}
+
+cap_col_width <- function(ft, max_width_cm = 2) {
+  # dim() (nao flextable::dim()) -- dim.flextable e' um metodo S3 registado
+  # pelo flextable no generico base dim(), nao necessariamente exportado como
+  # simbolo chamavel via flextable::dim()
+  widths_in <- dim(ft)$widths
+  capped_cm <- pmin(widths_in * 2.54, max_width_cm)
+  flextable::width(ft, j = seq_along(capped_cm), width = capped_cm, unit = "cm")
+}
+
+# Renomeia colunas so' para APRESENTACAO no docx -- os exports em xlsx
+# (annexos) usam sempre os nomes tecnicos originais dos objetos R. mapping:
+# c(nome_original = "Nome Legivel"); colunas nao mencionadas ficam como estao.
+rename_display <- function(x, mapping) {
+  x <- as.data.frame(x)
+  idx <- match(names(mapping), names(x))
+  hit <- !is.na(idx)
+  names(x)[idx[hit]] <- unname(mapping)[hit]
+  x
+}
+
+# Remove colunas da tabela apresentada no docx (o xlsx correspondente, feito
+# a partir do objeto original nao filtrado, continua completo)
+drop_cols <- function(x, cols) {
+  x <- as.data.frame(x)
+  x[, setdiff(names(x), cols), drop = FALSE]
+}
+
+# Substitui VALORES (nao nomes de coluna) de uma coluna categorica por
+# rotulos legiveis -- usado para as categorias de risk_direction (9.1)
+recode_values <- function(x, col, mapping) {
+  x <- as.data.frame(x)
+  hit <- x[[col]] %in% names(mapping)
+  x[[col]][hit] <- unname(mapping[x[[col]][hit]])
+  x
 }
 ```
 
@@ -119,11 +154,19 @@ etc.) sem ter de procurar pelo nome do param em todo o script. Estes
 comentarios HTML nao aparecem no .docx gerado.
 
 Cada tabela/plot tem tambem a sua propria subsecção (##), com 1 frase a
-identificar o objeto, mesmo quando 2 tabelas pertencem à mesma secção
-(ex: 6.1/6.2) -- isto e' deliberado: 2 flextables em chunks consecutivos
-sem nenhum paragrafo de texto a separa-los tendem a sair "coladas" no docx
-(dificeis de selecionar/mover/editar independentemente no Word). Uma frase
-de texto entre elas garante uma quebra de paragrafo real a separa-las.
+identificar o objeto, mesmo quando 2 tabelas pertencem à mesma secção -- 2
+flextables em chunks consecutivos sem nenhum paragrafo de texto a
+separa-los tendem a sair "coladas" no docx (dificeis de selecionar/mover/
+editar independentemente no Word). Uma frase de texto entre elas garante
+uma quebra de paragrafo real a separa-las.
+
+Documento TODO em A4 vertical -- uma tentativa anterior de tornar so' a
+secção 7.1 landscape (via officedown::block_section) saiu com um bug: sem
+UM SEGUNDO section break antes de 7.1, o primeiro break aplicava-se a TODO
+o conteudo anterior (secções 1-6.2 saiam landscape tambem, nao so' 7.1).
+Solucao adotada: manter tudo vertical e caber as tabelas largas (6.2, 7.1)
+por colunas mais estreitas (max_col_width_cm) e nomes de coluna mais curtos,
+em vez de mexer na orientacao da pagina.
 -->
 
 **`r params$project_ref`**
@@ -167,11 +210,24 @@ Heartbeats are expected every `r params$heartbeat_interval_min` minutes; an IDF 
 
 ## 2.1 Availability by IDF Unit
 
-Total offline time and daylight-availability category for each IDF unit, this month.
+```{r availability-text, results='asis'}
+if (!is.null(params$availability_by_idf) && nrow(params$availability_by_idf) > 0) {
+  cat(sprintf(
+    "This month covered %d day(s) of monitoring, %s total minutes of daylight monitoring time per IDF unit (same calendar for every unit, so not repeated per row below). Offline (%%) and category, per IDF unit:\n\n",
+    params$availability_by_idf$days_covered[1],
+    format(params$availability_by_idf$daylight_mins_total[1], big.mark = ",")
+  ))
+}
+```
 
 <!-- Source: idf_availability_summary$by_idf <- summarise_availability(idf_availability_dt), R/availability_daylight.R (idf_availability_dt itself from daylight_availability()) -->
 ```{r availability-table}
-if (!is.null(params$availability_by_idf)) report_table(params$availability_by_idf)
+if (!is.null(params$availability_by_idf)) {
+  report_table(rename_display(
+    drop_cols(params$availability_by_idf, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
+    c(idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
+  ))
+}
 ```
 
 ## 2.2 Availability Calendar
@@ -179,7 +235,7 @@ if (!is.null(params$availability_by_idf)) report_table(params$availability_by_id
 Daily offline percentage per IDF unit, laid out as a calendar (top `r params$idf_availability_top_n` units by offline time only, to stay legible).
 
 <!-- Source: plot_availability_calendar(), R/availability_daylight.R -->
-```{r availability-cal, fig.width=9, fig.height=4}
+```{r availability-cal, fig.width=6.30, fig.height=4.72}
 if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
 ```
 
@@ -197,7 +253,7 @@ if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq
 Spatial distribution of unavailability, by turbine (point size/colour = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit).
 
 <!-- Source: turbine_availability_dt <- join_availability_to_turbine(); plot_availability_spatial(), both R/availability_daylight.R -->
-```{r availability-spatial, fig.width=9, fig.height=7}
+```{r availability-spatial, fig.width=6.30, fig.height=4.72}
 if (!is.null(params$availability_plot_spatial)) print(params$availability_plot_spatial)
 ```
 
@@ -212,24 +268,24 @@ Number of tracks by count of distinct species classifications recorded within th
 if (!is.null(params$richness_dt)) report_table(params$richness_dt)
 ```
 
-## 3.2 Species Richness Distribution
-
-Same data as 3.1, as a histogram.
-
-<!-- Source: plot_species_richness_hist(), R/id_transitions.R -->
-```{r richness-plot, fig.width=6, fig.height=4}
-if (!is.null(params$richness_plot)) print(params$richness_plot)
-```
+<!-- 3.2 (richness histogram) removida do docx por pedido -- a figura
+continua a ser calculada e gravada em outputs/ (ver IDF_monthly_report.R,
+secção 2), so' deixou de ser incluida no relatorio -->
 
 # 4. Curtailments by Species
 
 ## 4.1 Curtailments by Species
 
-Curtailment events triggered in this month, one row per species.
+Curtailment events triggered in this month, one row per species -- ordered by group (priority, then non-priority, then other/uncategorized), and by % of total within each group.
 
-<!-- Source: summarise_curtailment_species(), R/curtailment_species.R (built on classify_curtailment_species()) -->
+<!-- Source: summarise_curtailment_species(), R/curtailment_species.R (built on classify_curtailment_species()) -- row order fixed at source, see group_order in summarise_curtailment_species() -->
 ```{r curtl-species-table}
-if (!is.null(params$curtl_by_species_dt)) report_table(params$curtl_by_species_dt)
+if (!is.null(params$curtl_by_species_dt)) {
+  report_table(rename_display(
+    params$curtl_by_species_dt,
+    c(species_group = "Group", species = "Species", n = "N", pct_of_group = "% of Group", pct_of_total = "% of Total")
+  ))
+}
 ```
 
 ## 4.2 Curtailments by Species Group
@@ -252,13 +308,25 @@ if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_sum
 
 # 6. Curtailment Response Assessment
 
-Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, for the turbines and window with SCADA coverage this month. The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s; an immediate response is recorded when RPM drops by at least `r params$curtailment_drop_pct_threshold * 100`% within `r params$curtailment_max_next_gap_sec` s of the signal; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`.
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, for the turbines and window with SCADA coverage this month (`r params$turbinas_scada_used` -- all turbines with SCADA data in this window, per turbinas_scada = "all" in monthlyReportSettings.R). The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s; an immediate response is recorded when RPM drops by at least `r params$curtailment_drop_pct_threshold * 100`% within `r params$curtailment_max_next_gap_sec` s of the signal; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`.
 
 ## 6.1 By Status
 
+- **already_stopped**: RPM was already below the stop threshold at the moment of the curtailment signal.
+- **full_stop_by_end**: RPM dropped below the stop threshold by the end of the curtailment order.
+- **partial_or_no_stop**: RPM was still at or above the stop threshold when the curtailment order ended.
+- **no_data**: no SCADA reading within the matching tolerance at the start and/or end signal, so the outcome could not be determined.
+
+A breakdown of curtailment-order duration by status is available in the accompanying workbook (curtailment_response_assessment\_*.xlsx) -- useful to check whether partial_or_no_stop cases are curtailment orders that were simply shorter than the typical shutdown time (section 7), rather than a failure to respond.
+
 <!-- Source: summary_assess$by_status <- summarise_curtailment_assessment(assess_dt)$by_status, R/curtailment_response.R (assess_dt from assess_curtailment_response()) -->
 ```{r assess-status-table}
-if (!is.null(params$assess_by_status)) report_table(params$assess_by_status)
+if (!is.null(params$assess_by_status)) {
+  report_table(rename_display(
+    drop_cols(params$assess_by_status, c("mean_duration_sec", "median_duration_sec")),
+    c(final_status = "Status", n = "N", pct = "%", pct_of_valid = "% of Valid")
+  ))
+}
 ```
 
 ## 6.2 By Turbine
@@ -267,47 +335,63 @@ Same assessment, broken down by turbine.
 
 <!-- Source: summary_assess$by_turbine <- summarise_curtailment_assessment(assess_dt)$by_turbine, R/curtailment_response.R -->
 ```{r assess-turbine-table}
-if (!is.null(params$assess_by_turbine)) report_table(params$assess_by_turbine)
+if (!is.null(params$assess_by_turbine)) {
+  report_table(
+    rename_display(
+      params$assess_by_turbine,
+      c(
+        turbine = "Turbine", n_curtailments = "Curtailments",
+        n_no_immediate_response = "No Immed. Resp.", n_already_stopped = "Already Stopped",
+        n_full_stop_by_end = "Full Stop", n_partial_or_no_stop = "Partial/No Stop",
+        n_no_data = "No Data", mean_rpm_delta_pct = "Mean RPM Drop %",
+        n_valid_matches = "Valid Matches", no_immediate_response_pct = "No Immed. Resp. %",
+        missed_pct = "Missed %"
+      )
+    ),
+    max_col_width_cm = 2
+  )
+}
 ```
 
 # 7. Shutdown Time
 
-Time from curtailment signal to reaching each RPM threshold, by turbine. Bands below/above the agreed cut-offs are reported as-is, without further interpretation.
+Time from curtailment signal to reaching each RPM threshold, by turbine -- 3 thresholds evaluated: `r paste(params$shutdown_time_thresholds, collapse = ", ")` rpm. Bands below/above the agreed cut-offs are reported as-is, without further interpretation.
 
 ## 7.1 Time to Threshold by Turbine
 
 <!-- Source: summarise_time_to_threshold(tt_dt), R/curtailment_shutdown_time.R (tt_dt from time_to_rpm_thresholds()) -->
 ```{r shutdown-turbine-table}
-if (!is.null(params$shutdown_by_turbine)) report_table(params$shutdown_by_turbine)
-```
-
-<!--
-7.1's table is wide (1 row per turbine, many columns) and does not fit a
-portrait A4 page -- this section break makes JUST the page(s) up to this
-point (i.e. 7.1's table) render landscape; everything from 7.2 onward
-reverts to the document's default portrait page_size (set in the YAML
-header above). Requires the officedown package (output format changed
-from word_document to officedown::rdocx_document above) -- officer is
-already a dependency via flextable, officedown adds the block_section()/
-prop_section() Word section-break support that plain rmarkdown::word_document
-does not have.
--->
-```{r shutdown-turbine-landscape, echo=FALSE}
-officer::block_section(
-  officer::prop_section(
-    page_size = officer::page_size(orient = "landscape", width = 11.69, height = 8.27),
-    type = "continuous"
+if (!is.null(params$shutdown_by_turbine)) {
+  report_table(
+    rename_display(
+      params$shutdown_by_turbine,
+      c(
+        turbine = "Turbine", threshold = "Thresh. (rpm)", n_curtailments = "Curtailments",
+        n_reached = "Reached", pct_reached = "% Reached", mean_time_sec = "Mean (s)",
+        median_time_sec = "Median (s)", sd_time_sec = "SD (s)", min_time_sec = "Min (s)",
+        max_time_sec = "Max (s)"
+      )
+    ),
+    max_col_width_cm = 2
   )
-)
+}
 ```
 
 ## 7.2 Time to Threshold Bands
 
-Same events, grouped into bands below/above the agreed cut-offs (`r params$shutdown_time_low_cut` s / `r params$shutdown_time_high_cut` s).
+Same events, grouped by threshold (ascending, lowest rpm reached first) into bands below/above the agreed cut-offs. A curtailment counts as "below cut" when it reached the threshold in under `r params$shutdown_time_low_cut` s (fast), and "above cut" when it took more than `r params$shutdown_time_high_cut` s (slow); cases in between count towards neither band.
 
-<!-- Source: summarise_time_to_threshold_bands(tt_dt), R/curtailment_shutdown_time.R -->
+<!-- Source: summarise_time_to_threshold_bands(tt_dt), R/curtailment_shutdown_time.R -- row order (ascending threshold) fixed at source -->
 ```{r shutdown-bands-table}
-if (!is.null(params$shutdown_bands)) report_table(params$shutdown_bands)
+if (!is.null(params$shutdown_bands)) {
+  report_table(rename_display(
+    params$shutdown_bands,
+    stats::setNames(
+      c("Thresh. (rpm)", "Reached", sprintf("%% < %ss", params$shutdown_time_low_cut), sprintf("%% > %ss", params$shutdown_time_high_cut)),
+      c("threshold", "n_reached", "pct_below_cut", "pct_above_cut")
+    )
+  ))
+}
 ```
 
 ## 7.3 Time to Threshold Distribution
@@ -325,20 +409,32 @@ Distance between the triggering track and the turbine at the moment of curtailme
 
 <!-- Source: summary_safe_dist$overall <- summarise_safe_distance(safe_dist_dt, prioritysp)$overall, R/curtailment_safe_distance.R (safe_dist_dt from compute_safe_distance()) -->
 ```{r safe-dist-overall-table}
-if (!is.null(params$safe_dist_overall)) report_table(params$safe_dist_overall)
+if (!is.null(params$safe_dist_overall)) {
+  report_table(rename_display(
+    params$safe_dist_overall,
+    c(n = "N", n_ok = "OK", n_crit = "Critical", pct_ok = "% OK",
+      mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
+  ))
+}
 ```
 
 ## 8.2 By Species
 
 <!-- Source: summary_safe_dist$by_species <- summarise_safe_distance(safe_dist_dt, prioritysp)$by_species, R/curtailment_safe_distance.R -->
 ```{r safe-dist-species-table}
-if (!is.null(params$safe_dist_by_species)) report_table(params$safe_dist_by_species)
+if (!is.null(params$safe_dist_by_species)) {
+  report_table(rename_display(
+    params$safe_dist_by_species,
+    c(species = "Species", n = "N", n_ok = "OK", n_crit = "Critical", pct_ok = "% OK",
+      mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
+  ))
+}
 ```
 
 ## 8.3 Distribution
 
 <!-- Source: plot_safe_distance_hist(), R/curtailment_safe_distance.R -->
-```{r safe-dist-plot, fig.width=8, fig.height=8}
+```{r safe-dist-plot, fig.width=6.30, fig.height=3.94}
 if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
 ```
 
@@ -348,25 +444,45 @@ Curtailments triggered by a species reclassification within the same track, in b
 
 ## 9.1 Risk by Direction
 
+- **P to NP (unnecessary curtailment)**: curtailment triggered while classified as priority, but the track's final classification was non-priority -- turbine stopped unnecessarily (production cost).
+- **NP to P, no curtailment (near)**: reclassified to a priority species, no curtailment ever triggered, and the track was already within the proximity threshold at that moment -- the most concerning case.
+- **NP to P, no curtailment (far)**: same, but the track was still far from any turbine when reclassified -- descriptive, not necessarily concerning on its own.
+- **NP to P, late curtailment**: curtailment was triggered, but later than the agreed time or distance criterion.
+- **No risk**: no meaningful transition risk detected (single-species track, or reclassification with a timely curtailment).
+
 <!-- Source: monthly_id_risk_summary$by_direction <- summarise_id_transition_risk(monthly_id_risk_dt, curtl_dt)$by_direction, R/id_transitions.R (monthly_id_risk_dt from classify_id_transition_risk()) -->
 ```{r id-risk-table}
-if (!is.null(params$id_risk_by_direction)) report_table(params$id_risk_by_direction)
+if (!is.null(params$id_risk_by_direction)) {
+  report_table(rename_display(
+    recode_values(params$id_risk_by_direction, "risk_direction", c(
+      P_to_NP_unnecessary_curtailment = "P to NP (unnecessary curtailment)",
+      NP_to_P_no_curtailment_near     = "NP to P, no curtailment (near)",
+      NP_to_P_no_curtailment_far      = "NP to P, no curtailment (far)",
+      NP_to_P_late_curtailment        = "NP to P, late curtailment",
+      no_risk                         = "No risk"
+    )),
+    c(risk_direction = "Direction", n_tracks = "Tracks", n_multi_id_tracks = "Multi-ID Tracks", pct_of_multi_id = "% of Multi-ID")
+  ))
+}
 ```
 
 <!--
 9.2 e' opcional (run_sections_monthly$id_confusion, DESLIGADA por omissao
-em monthlyReportSettings.R) -- analise pontual para UMA especie
-(id_confusion_species_of_interest), nao uma metrica de rotina mensal.
-Quando desligada, params$id_confusion_general fica NULL e todo o
-subsection (titulo, texto e tabela) desaparece do documento -- nao so' a
-tabela -- por isso o titulo/texto tambem estao dentro deste chunk
-condicional (results='asis'), nao como markdown normal.
+em monthlyReportSettings.R) -- analise pontual para a(s) especie(s) em
+id_confusion_species_of_interest (Egyptian-Vulture e Steppe-Eagle por
+omissao), nao uma metrica de rotina mensal. Quando desligada,
+params$id_confusion_general fica NULL e todo o subsection (titulo, texto e
+tabela) desaparece do documento -- nao so' a tabela -- por isso o
+titulo/texto tambem estao dentro deste chunk condicional (results='asis'),
+nao como markdown normal. So' mostra pares > 1% dos tracks multi-ID (ver
+filtro no chunk id-confusion-table, abaixo) -- pares muito raros (1-2
+tracks em milhares) ficam so' no xlsx.
 -->
 ```{r id-confusion-heading, results='asis'}
 if (!is.null(params$id_confusion_general)) {
   cat(sprintf("## 9.2 Species Confusion (%s)\n\n", params$id_confusion_species))
   cat(sprintf(
-    "Other species recorded within the same track as %s, all tracks (not only curtailment-triggering ones).\n\n",
+    "Other species recorded within the same track as %s (all tracks, not only curtailment-triggering ones), for pairs above 1%% of multi-ID tracks in scope.\n\n",
     params$id_confusion_species
   ))
 }
@@ -374,31 +490,58 @@ if (!is.null(params$id_confusion_general)) {
 
 <!-- Source: monthly_id_confusion_summary$confusion_general <- summarise_species_confusion(), R/id_transitions.R -->
 ```{r id-confusion-table}
-if (!is.null(params$id_confusion_general)) report_table(params$id_confusion_general)
+if (!is.null(params$id_confusion_general) && nrow(params$id_confusion_general) > 0) {
+  dt <- params$id_confusion_general[params$id_confusion_general$pct_of_multi_id_tracks > 1, ]
+  if (nrow(dt) > 0) {
+    report_table(rename_display(
+      dt,
+      c(species = "Species", other_species = "Other Species", n_tracks = "Tracks", pct_of_multi_id_tracks = "% of Multi-ID")
+    ))
+  }
+}
 ```
 
 # 10. Biological Flight Metrics
 
-Flight speed and flight height per species, for tracks with at least `r params$flight_min_track_points` recorded points and a flight speed between `r params$flight_speed_ms_min` and `r params$flight_speed_ms_max` m/s. The shaded band in the height distribution (10.3) marks the `r params$riskHeight_lower`-`r params$riskHeight_upper` m risk zone.
+Flight speed and flight height per species, for tracks with at least `r params$flight_min_track_points` recorded points and a flight speed between `r params$flight_speed_ms_min` and `r params$flight_speed_ms_max` m/s.
 
 ## 10.1 Flight Speed by Species
 
 <!-- Source: summarise_flight_speed(monthly_flight_base_dt), R/bio_flight_metrics.R (monthly_flight_base_dt from flight_metrics_base()) -->
 ```{r flight-speed-table}
-if (!is.null(params$flight_speed_by_species)) report_table(params$flight_speed_by_species)
+if (!is.null(params$flight_speed_by_species)) {
+  report_table(rename_display(
+    drop_cols(params$flight_speed_by_species, c("min_speed_ms", "max_speed_ms")),
+    c(spec = "Species", n = "N", mean_speed_ms = "Mean (m/s)", median_speed_ms = "Median (m/s)", sd_speed_ms = "SD (m/s)")
+  ))
+}
 ```
 
 ## 10.2 Flight Height by Species
 
-<!-- Source: summarise_flight_height(monthly_flight_base_dt), R/bio_flight_metrics.R -->
+Mean and standard deviation of flight height, plus the % of records within the rotor-swept risk zone (`r params$riskHeight_lower`-`r params$riskHeight_upper` m).
+
+<!-- Source: summarise_flight_height(monthly_flight_base_dt, risk_height_lower, risk_height_upper), R/bio_flight_metrics.R -->
 ```{r flight-height-table}
-if (!is.null(params$flight_height_by_species)) report_table(params$flight_height_by_species)
+if (!is.null(params$flight_height_by_species)) {
+  # as.data.frame() primeiro -- params$flight_height_by_species pode ser
+  # data.table, onde df[, char_vector] tem semantica ambigua/dependente de
+  # versao para seleccao de colunas (ao contrario de data.frame, sem
+  # ambiguidade); os outros helpers (rename_display/drop_cols) ja fazem
+  # este as.data.frame() internamente, so' este subset manual precisava
+  dt <- as.data.frame(params$flight_height_by_species)
+  dt <- dt[, intersect(c("spec", "mean_height_m", "sd_height_m", "pct_in_risk_zone"), names(dt)), drop = FALSE]
+  report_table(rename_display(
+    dt,
+    c(spec = "Species", mean_height_m = "Mean (m)", sd_height_m = "SD (m)", pct_in_risk_zone = "% in Risk Zone")
+  ))
+}
 ```
 
 ## 10.3 Distribution
 
 <!-- Source: plot_flight_metrics_distribution(), R/bio_flight_metrics.R -->
-```{r flight-metrics-plot, fig.width=8, fig.height=6}
+```{r flight-metrics-plot, fig.width=6.30, fig.height=4.72}
 if (!is.null(params$flight_metrics_plot)) print(params$flight_metrics_plot)
 ```
 
@@ -410,16 +553,22 @@ Minimum number of distinct individuals per priority species detected in the same
 
 <!-- Source: summarise_min_individuals(monthly_min_indiv_bins_dt), R/track_min_individuals.R (monthly_min_indiv_bins_dt from count_min_individuals_per_bin()) -->
 ```{r min-indiv-summary-table}
-if (!is.null(params$min_indiv_summary)) report_table(params$min_indiv_summary)
+if (!is.null(params$min_indiv_summary)) {
+  report_table(rename_display(
+    params$min_indiv_summary,
+    c(spec = "Species", n_bins = "Bins", peak_individuals = "Peak Individuals",
+      peak_bin_start = "Peak Time", mean_individuals_nonzero = "Mean (Non-zero Bins)")
+  ))
+}
 ```
 
 ## 11.2 Daily Peak, by Species
 
-<!-- Source: plot_daily_max_individuals(monthly_min_indiv_daily_dt, species_sel = prioritysp), R/track_min_individuals.R (monthly_min_indiv_daily_dt from summarise_daily_max_individuals()) -->
-```{r min-indiv-daily-plot, fig.width=8, fig.height=6}
+<!-- Source: plot_daily_max_individuals(monthly_min_indiv_daily_dt, species_sel = prioritysp, date_breaks = "1 week"), R/track_min_individuals.R (monthly_min_indiv_daily_dt from summarise_daily_max_individuals()) -->
+```{r min-indiv-daily-plot, fig.width=6.30, fig.height=7.87}
 if (!is.null(params$min_indiv_daily_plot)) print(params$min_indiv_daily_plot)
 ```
 
 # Annexes
 
-The full detail behind each table above (including all rows, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: data summary, system availability (including the turbine-level spatial availability table), observed species, curtailments by species, short-track curtailments, curtailment response assessment, shutdown time, safe distance, ID transitions and species confusion, biological flight metrics, and minimum individuals per bin.
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: data summary, system availability (including the turbine-level spatial availability table), observed species, curtailments by species, short-track curtailments, curtailment response assessment (including the curtailment-duration-by-status breakdown, section 6), shutdown time, safe distance, ID transitions and species confusion, biological flight metrics, and minimum individuals per bin.

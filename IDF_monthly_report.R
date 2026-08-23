@@ -34,16 +34,17 @@ options(error = function() message("Skipping failed step"))
 ## Subconjunto do IDF_analysis.R -- este script nao usa terra/RANN/plotly/
 ## cluster (coverage 3D e turbine clustering ficam fora do relatorio
 ## mensal); sf e' usado so' para localizar as turbinas no plot espacial de
-## disponibilidade (secção 1); officedown/officer suportam a secção em
-## landscape da tabela 7.1 (report/monthly_report_template.rmd) -- nao sao
-## precisos por IDF_analysis.R (usa rmarkdown::word_document simples, sem
-## secções landscape)
+## disponibilidade (secção 1). NAO usa officedown/officer -- uma tentativa
+## anterior de tornar a tabela 7.1 landscape via officedown::block_section
+## saiu com um bug (aplicava landscape a TODO o conteudo anterior, nao so' a
+## 7.1); revertido para rmarkdown::word_document simples, documento inteiro
+## em A4 vertical, tabelas largas resolvidas por colunas mais estreitas em
+## vez de mudar a orientacao da pagina (ver report/monthly_report_template.rmd).
 packages <- c('purrr', 'rstudioapi',
               'tidyverse', 'lubridate', 'ggplot2',
               'scales', 'readxl', 'janitor', 'sf',
               'flextable', 'systemfonts',
               'openxlsx', 'writexl', 'rmarkdown',
-              'officedown', 'officer',
               'data.table', 'suncalc',
               'fst')
 
@@ -302,7 +303,7 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   )
   ggsave(
     file.path(folder_output, sprintf("idf_availability_calendar_%s.png", report_month)),
-    plot = p_availability_cal, width = 15, height = 20, units = "cm", dpi = 300, bg = "white"
+    plot = p_availability_cal, width = 16, height = 12, units = "cm", dpi = 300, bg = "white"
   )
 
   p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
@@ -335,7 +336,7 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
     p_availability_spatial <- plot_availability_spatial(turbine_availability_dt)
     ggsave(
       file.path(folder_output, sprintf("idf_availability_spatial_%s.png", report_month)),
-      plot = p_availability_spatial, width = 220, height = 180, units = "mm", dpi = 300, bg = "white"
+      plot = p_availability_spatial, width = 16, height = 12, units = "cm", dpi = 300, bg = "white"
     )
 
   } else {message("Matriz turbina<->IDF nao disponivel -- 1b (spatial unavailability) saltada nesta ronda.")}
@@ -519,7 +520,7 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   )
   ggsave(
     file.path(folder_output, sprintf("curtailment_safe_distance_hist_%s.png", report_month)),
-    plot = p_safe_dist_hist, width = 8, height = 8, dpi = 300, bg = "white"
+    plot = p_safe_dist_hist, width = 16, height = 10, units = "cm", dpi = 300, bg = "white"
   )
 
 } else {message("scada_dt nao disponivel ou run_sections_monthly$curtailment_response_delays = FALSE -- 5 (response/shutdown/safe distance) saltada nesta ronda.")}
@@ -580,12 +581,12 @@ if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_t
 ##
 ## 6b. Species confusion matrix (opcional, DESLIGADA por omissao) ----
 ##
-## Que outras especies aparecem no mesmo track que
-## id_confusion_species_of_interest (ver inputs/monthlyReportSettings.R) --
-## analise pontual para uma especie especifica (ex: Kestrel, no contexto da
-## discussao de remocao do curtailment trigger), nao uma metrica mensal de
-## rotina. Ligar via run_sections_monthly$id_confusion = TRUE e ajustar
-## id_confusion_species_of_interest quando for preciso.
+## Que outras especies aparecem no mesmo track que qualquer uma das especies
+## em id_confusion_species_of_interest (ver inputs/monthlyReportSettings.R --
+## aceita 1 ou varias) -- analise pontual (ex: Egyptian-Vulture/Steppe-Eagle
+## por omissao, as especies dos incidentes de fatalidade conhecidos), nao uma
+## metrica mensal de rotina. Ligar via run_sections_monthly$id_confusion =
+## TRUE e ajustar id_confusion_species_of_interest quando for preciso.
 ##
 
 if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_confusion)) {
@@ -598,13 +599,20 @@ if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_c
     track_dt, monthly_richness_dt, curtl_dt, id_confusion_species_of_interest
   )
 
+  # id_confusion_species_of_interest pode ter varias especies -- juntar num
+  # unico texto/nome de ficheiro (sprintf com um vetor de tamanho >1
+  # devolveria varios ficheiros/titulos, nao 1)
+  id_confusion_species_label <- paste(id_confusion_species_of_interest, collapse = " & ")
+
   write_xlsx_local(
     list(
       Confusion_rate_compare = monthly_id_confusion_summary$rate_compare,
       Confusion_general      = monthly_id_confusion_summary$confusion_general,
       Confusion_curtailments = monthly_id_confusion_summary$confusion_curtailments
     ),
-    file.path(folder_output, sprintf("id_confusion_%s_%s.xlsx", id_confusion_species_of_interest, report_month))
+    file.path(folder_output, sprintf(
+      "id_confusion_%s_%s.xlsx", paste(id_confusion_species_of_interest, collapse = "_"), report_month
+    ))
   )
 
 } else {message("run_sections_monthly$id_confusion = FALSE (por omissao) -- 6b (species confusion matrix) saltada nesta ronda.")}
@@ -623,7 +631,9 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$bio_flight_metrics)) {
     speed_ms_min = flight_speed_ms_min, speed_ms_max = flight_speed_ms_max
   )
   monthly_flight_speed_summary_dt  <- summarise_flight_speed(monthly_flight_base_dt)
-  monthly_flight_height_summary_dt <- summarise_flight_height(monthly_flight_base_dt)
+  monthly_flight_height_summary_dt <- summarise_flight_height(
+    monthly_flight_base_dt, risk_height_lower = riskHeight_lower, risk_height_upper = riskHeight_upper
+  )
 
   write_xlsx_local(
     list(
@@ -633,13 +643,10 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$bio_flight_metrics)) {
     file.path(folder_output, sprintf("bio_flight_metrics_%s.xlsx", report_month))
   )
 
-  n_species_flight_monthly <- length(unique(monthly_flight_base_dt$spec))
   p_monthly_flight_metrics <- plot_flight_metrics_distribution(monthly_flight_base_dt, riskHeight_lower, riskHeight_upper)
-  # 8x8cm por painel (1 especie x 1 metrica) -- facet_grid(spec_abbr ~ metric)
-  # tem sempre 2 colunas (speed_ms, height) e 1 linha por especie
   ggsave(
     file.path(folder_output, sprintf("bio_flight_metrics_distribution_%s.png", report_month)),
-    plot = p_monthly_flight_metrics, width = 2 * 8, height = n_species_flight_monthly * 8, units = "cm", dpi = 300, bg = "white"
+    plot = p_monthly_flight_metrics, width = 16, height = 12, units = "cm", dpi = 300, bg = "white"
   )
 
 } else {message("track_dt nao disponivel ou run_sections_monthly$bio_flight_metrics = FALSE -- 7 (bio flight metrics) saltada nesta ronda.")}
@@ -669,16 +676,14 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$min_individuals)) {
     file.path(folder_output, sprintf("min_individuals_per_bin_%s.xlsx", report_month))
   )
 
-  n_species_min_indiv_monthly <- length(unique(monthly_min_indiv_bins_dt$spec))
-
   # species_sel = prioritysp (nao o default da funcao, so' 2 especies) --
   # mostrar todas as especies prioritarias, 1 painel por especie
-  p_monthly_min_indiv_daily <- plot_daily_max_individuals(monthly_min_indiv_daily_dt, species_sel = prioritysp)
-  # 15cm de largura (facet_wrap ncol=1 -- so' 1 coluna) x 8cm de altura por
-  # especie/painel
+  p_monthly_min_indiv_daily <- plot_daily_max_individuals(
+    monthly_min_indiv_daily_dt, species_sel = prioritysp, date_breaks = "1 week", date_labels = "%d %b"
+  )
   ggsave(
     file.path(folder_output, sprintf("min_individuals_daily_max_%s.png", report_month)),
-    plot = p_monthly_min_indiv_daily, width = 15, height = n_species_min_indiv_monthly * 8, units = "cm", dpi = 300, bg = "white"
+    plot = p_monthly_min_indiv_daily, width = 16, height = 20, units = "cm", dpi = 300, bg = "white"
   )
 
 } else {message("track_dt nao disponivel ou run_sections_monthly$min_individuals = FALSE -- 8 (min individuals) saltada nesta ronda.")}
@@ -709,7 +714,9 @@ monthly_report_params <- list(
   availability_plot_spatial = if (exists("p_availability_spatial")) p_availability_spatial else NULL,
 
   richness_dt         = if (exists("monthly_richness_summary")) monthly_richness_summary$by_n_species else NULL,
-  richness_plot        = if (exists("p_monthly_richness")) p_monthly_richness else NULL,
+  # richness_plot (3.2) removida do docx por pedido -- p_monthly_richness
+  # continua a ser calculado e gravado em outputs/ (ver secção 2, acima),
+  # so' deixou de ser passado ao Rmd
 
   curtl_by_species_dt = if (exists("monthly_species_curt_by_species_dt")) monthly_species_curt_by_species_dt else NULL,
   curtl_by_group_dt   = if (exists("monthly_species_curt_by_group_dt")) monthly_species_curt_by_group_dt else NULL,
@@ -728,7 +735,7 @@ monthly_report_params <- list(
   safe_dist_plot        = if (exists("p_safe_dist_hist")) p_safe_dist_hist else NULL,
 
   id_risk_by_direction = if (exists("monthly_id_risk_summary")) monthly_id_risk_summary$by_direction else NULL,
-  id_confusion_species = if (exists("monthly_id_confusion_summary")) id_confusion_species_of_interest else NULL,
+  id_confusion_species = if (exists("monthly_id_confusion_summary")) id_confusion_species_label else NULL,
   id_confusion_general = if (exists("monthly_id_confusion_summary")) monthly_id_confusion_summary$confusion_general else NULL,
 
   flight_speed_by_species  = if (exists("monthly_flight_speed_summary_dt")) monthly_flight_speed_summary_dt else NULL,
@@ -754,7 +761,9 @@ monthly_report_params <- list(
   curtailment_max_next_gap_sec   = curtailment_max_next_gap_sec,
   curtailment_drop_pct_threshold = curtailment_drop_pct_threshold,
   safe_shutdown_rpm               = safe_shutdown_rpm,
+  turbinas_scada_used = if (exists("turbinas_scada_resolved")) paste(turbinas_scada_resolved, collapse = ", ") else NULL,
 
+  shutdown_time_thresholds = shutdown_time_thresholds,
   shutdown_time_low_cut  = shutdown_time_low_cut,
   shutdown_time_high_cut = shutdown_time_high_cut,
 
