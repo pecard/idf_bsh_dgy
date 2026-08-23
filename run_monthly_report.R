@@ -1,7 +1,13 @@
 ##
-## Atalho seguro para correr o relatorio mensal para 1 mes especifico --
-## editar report_month abaixo e dar Source A ESTE FICHEIRO (Ctrl+Shift+S no
-## RStudio, ou source("run_monthly_report.R") na consola).
+## Atalho alternativo para correr o relatorio mensal para 1 mes especifico
+## sem editar IDF_monthly_report.R -- editar report_month abaixo e dar
+## Source A ESTE FICHEIRO (Ctrl+Shift+S no RStudio, ou
+## source("run_monthly_report.R") na consola).
+##
+## IDF_monthly_report.R ja tem um report_month por omissao, editavel
+## diretamente nesse ficheiro (ver comentario la' proprio) -- este launcher
+## so' e' preciso se preferir nao editar IDF_monthly_report.R a cada mes; o
+## report_month definido aqui tem prioridade sobre esse valor por omissao.
 ##
 ## Porque este ficheiro existe (2026-08): a mesma ideia -- "report_month <-
 ## '...'; source('IDF_monthly_report.R')" -- ja foi colocada 2 vezes DENTRO

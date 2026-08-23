@@ -58,27 +58,21 @@ for (p in packages) {
 ## SETTINGS ----
 ##
 
-## report_month: definir ANTES de correr este ficheiro.
+## report_month: mes a processar (formato "YYYY-MM"). Editar o valor por
+## omissao abaixo antes de correr (Source) -- OU definir report_month antes
+## de dar source a este ficheiro (consola, ou run_monthly_report.R na raiz
+## do projeto), o que tem sempre prioridade sobre o valor por omissao.
 ##
 ## NUNCA colocar aqui "source(\"IDF_monthly_report.R\")" -- isso faz este
 ## ficheiro chamar-se A SI PROPRIO a meio da sua propria execucao, o que
 ## recursa infinitamente ate um erro confuso tipo "node stack overflow"
 ## (ja aconteceu 2x, 2026-08). Quem quer que tenha invocado este ficheiro
-## (consola, botao "Source" do RStudio, etc.) ja continua sozinho para as
-## linhas seguintes depois desta -- nunca e' preciso nem seguro dar
-## source() a este ficheiro a partir de dentro dele proprio.
-##
-## Para um atalho "definir o mes e correr" -- ex: clicar Source e pronto,
-## sem editar este ficheiro -- usar run_monthly_report.R (na raiz do
-## projeto): esse ficheiro e' pequeno, SEPARADO deste, e faz exatamente
-## isso em segurança (report_month <- "..."; source("IDF_monthly_report.R")),
-## porque nao e' o MESMO ficheiro a chamar-se a si proprio.
-
-## Verificado ja aqui, antes de qualquer uso de report_month abaixo (ex:
-## folder_output) -- monthlyReportSettings.R confia que ja esta definido e
-## nao repete esta verificacao.
+## (consola, botao "Source" do RStudio, run_monthly_report.R, etc.) ja
+## continua sozinho para as linhas seguintes depois desta -- nunca e'
+## preciso nem seguro dar source() a este ficheiro a partir de dentro dele
+## proprio.
 if (!exists("report_month")) {
-  stop('Definir report_month (formato "YYYY-MM", ex: "2026-07") antes de correr IDF_monthly_report.R')
+  report_month <- "2026-07"  ## <<< editar aqui o mes a processar, ex: "2026-08"
 }
 
 ## rstudioapi::getActiveDocumentContext()$path so' resolve de forma fiavel
