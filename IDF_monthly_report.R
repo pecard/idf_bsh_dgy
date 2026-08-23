@@ -128,12 +128,22 @@ get_code_version <- function() {
   run_git <- function(args) {
     tryCatch(system2("git", args, stdout = TRUE, stderr = FALSE), error = function(e) character(0))
   }
-  hash_date <- run_git(c("log", "-1", "--format=%h (%ci)"))
-  if (length(hash_date) == 0L || !nzchar(hash_date[1])) {
+  # --format=%h (%ci) num so' argumento (espaco + parenteses) e' interpretado
+  # pela shell como 2 argumentos separados em alguns sistemas (ex: Windows),
+  # partindo o argumento a meio e devolvendo status 128 do git -- 2 chamadas
+  # com formatos de 1 so' token (sem espacos/parenteses) evita o problema
+  hash <- run_git(c("log", "-1", "--format=%h"))
+  if (length(hash) == 0L || !nzchar(hash[1])) {
     return("unknown (not a git checkout, or git unavailable)")
   }
+  commit_date <- run_git(c("log", "-1", "--format=%ci"))
   dirty <- length(run_git(c("status", "--porcelain"))) > 0L
-  if (dirty) paste0(hash_date[1], " + uncommitted local changes") else hash_date[1]
+  out <- if (length(commit_date) > 0L && nzchar(commit_date[1])) {
+    sprintf("%s (%s)", hash[1], commit_date[1])
+  } else {
+    hash[1]
+  }
+  if (dirty) paste0(out, " + uncommitted local changes") else out
 }
 code_version <- get_code_version()
 

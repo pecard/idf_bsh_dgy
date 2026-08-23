@@ -400,25 +400,24 @@ if (!is.null(params$assess_by_status)) {
 
 ## By Turbine
 
-Same assessment, broken down by turbine. The table below shows only turbines with a computable Missed % this month (i.e. at least one SCADA-validated curtailment); turbines with no valid SCADA match this month (no_data for every curtailment -- typically a turbine with SCADA installed but no readings this specific month, see 1.2) are omitted here. The complete table, including those turbines, is in the accompanying workbook (curtailment_response_assessment\_*.xlsx).
+Same assessment, broken down by turbine. The table below is restricted to Turbine, Curtailments, Valid Matches, No Immed. Resp. % and Missed %, and to turbines with a computable Missed % this month (i.e. at least one SCADA-validated curtailment); turbines with no valid SCADA match this month (no_data for every curtailment -- typically a turbine with SCADA installed but no readings this specific month, see 1.2) are omitted here. The complete table, with every column and every turbine, is in the accompanying workbook (curtailment_response_assessment\_*.xlsx).
 
-<!-- Source: summary_assess$by_turbine <- summarise_curtailment_assessment(assess_dt)$by_turbine, R/curtailment_response.R -- filtered here to !is.na(missed_pct), the xlsx annex keeps the full table -->
+<!-- Source: summary_assess$by_turbine <- summarise_curtailment_assessment(assess_dt)$by_turbine, R/curtailment_response.R -- filtered here to !is.na(missed_pct) and to a subset of columns, the xlsx annex keeps every column/turbine -->
 ```{r assess-turbine-table}
 if (!is.null(params$assess_by_turbine)) {
   dt <- params$assess_by_turbine[!is.na(params$assess_by_turbine$missed_pct), ]
   report_table(
     rename_display(
-      dt,
+      drop_cols(dt, c(
+        "n_no_immediate_response", "n_already_stopped", "n_full_stop_by_end",
+        "n_partial_or_no_stop", "n_no_data", "mean_rpm_delta_pct"
+      )),
       c(
         turbine = "Turbine", n_curtailments = "Curtailments",
-        n_no_immediate_response = "No Immed. Resp.", n_already_stopped = "Already Stopped",
-        n_full_stop_by_end = "Full Stop", n_partial_or_no_stop = "Partial/No Stop",
-        n_no_data = "No Data", mean_rpm_delta_pct = "Mean RPM Drop %",
         n_valid_matches = "Valid Matches", no_immediate_response_pct = "No Immed. Resp. %",
         missed_pct = "Missed %"
       )
-    ),
-    max_col_width_cm = 2
+    )
   )
 }
 ```
@@ -434,11 +433,11 @@ Time from curtailment signal to reaching each RPM threshold, by turbine -- 3 thr
 if (!is.null(params$shutdown_by_turbine)) {
   report_table(
     rename_display(
-      params$shutdown_by_turbine,
+      drop_cols(params$shutdown_by_turbine, c("median_time_sec")),
       c(
         turbine = "Turbine", threshold = "Thresh. (rpm)", n_curtailments = "Curtailments",
         n_reached = "Reached", pct_reached = "% Reached", mean_time_sec = "Mean (s)",
-        median_time_sec = "Median (s)", sd_time_sec = "SD (s)", min_time_sec = "Min (s)",
+        sd_time_sec = "SD (s)", min_time_sec = "Min (s)",
         max_time_sec = "Max (s)"
       )
     ),
