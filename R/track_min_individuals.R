@@ -256,9 +256,14 @@ plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vultu
     geom_line(colour = "steelblue") +
     geom_point(colour = "steelblue", size = 1.2) +
     facet_wrap(~ spec, ncol = 1, scales = "free_y") +
+    # expand = c(0,0) -- sem isto o ggplot acrescenta ~5% de folga de cada
+    # lado do eixo x por omissao, mostrando datas fora do periodo coberto
+    # pelos dados sem terem qualquer significado (mesma correcao ja feita
+    # em plot_data_coverage(), R/data_coverage.R)
     scale_x_date(
       date_breaks = date_breaks,
-      date_labels = date_labels
+      date_labels = date_labels,
+      expand = c(0, 0)
     ) +
     expand_limits(y = 0) + # cada painel (scales="free_y") comeca em 0, mesmo com free_y
     labs(

@@ -310,7 +310,11 @@ plot_daily_overlap_by_turbine <- function(overlap_dt, label_a, label_b, turbine_
       labels = c(`TRUE` = "Data available", `FALSE` = "No data"),
       name = NULL
     ) +
-    scale_x_date(date_breaks = date_breaks, date_labels = date_labels) +
+    # expand = c(0,0) -- sem isto o ggplot acrescenta ~5% de folga de cada
+    # lado do eixo x por omissao, mostrando datas fora do periodo coberto
+    # pelos dados sem terem qualquer significado (mesma correcao ja feita
+    # em plot_data_coverage(), acima)
+    scale_x_date(date_breaks = date_breaks, date_labels = date_labels, expand = c(0, 0)) +
     labs(
       title = paste("Data coverage overlap by turbine:", label_a, "vs", label_b),
       x = NULL, y = NULL
