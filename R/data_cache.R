@@ -56,3 +56,36 @@ load_or_read_cache <- function(cache_file, read_fn, force_reread = FALSE, tz = N
 
   dt
 }
+
+
+## Evita reler a cache do disco (fst::read_fst(), varios milhoes de linhas
+## nos datasets maiores) quando o objeto ja esta em memoria de uma corrida
+## anterior NA MESMA sessao R -- ex: gerar o relatorio mensal para varios
+## meses seguidos sem reiniciar o R, ou correr IDF_analysis.R e depois
+## IDF_monthly_report.R na mesma sessao (os 2 usam os MESMOS ficheiros de
+## cache/objetos "_unfilt", que nao dependem do mes do relatorio -- so' a
+## filtragem por mes, feita depois, e' que muda). Chamar com
+## `current = if (exists("nome_do_objeto")) nome_do_objeto else NULL`.
+##
+## force_reread = TRUE ignora sempre o que estiver em memoria e vai ao
+## disco (ou aos ficheiros brutos, conforme load_or_read_cache()) -- e'
+## o caso de "acabei de descarregar dados novos", onde o objeto em
+## memoria pode estar desatualizado.
+##
+## Uso:
+##   track_dt_unfilt <- reuse_or_load_cache(
+##     if (exists("track_dt_unfilt")) track_dt_unfilt else NULL,
+##     "track_dt_unfilt", file.path(folder_cache, "track_dt_unfilt.fst"),
+##     function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone),
+##     force_reread = force_reread_cache_monthly, tz = proj_timezone
+##   )
+
+reuse_or_load_cache <- function(current, name, cache_file, read_fn, force_reread = FALSE, tz = NULL) {
+
+  if (!force_reread && !is.null(current)) {
+    cat(sprintf("Cache: '%s' ja em memoria (%d linhas) -- reutilizada sem tocar no disco.\n", name, nrow(current)))
+    return(current)
+  }
+
+  load_or_read_cache(cache_file, read_fn, force_reread = force_reread, tz = tz)
+}
