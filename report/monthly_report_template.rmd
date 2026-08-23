@@ -215,9 +215,9 @@ This report is descriptive: it presents the metrics produced by the IDF analysis
 
 ---
 
-# 1. Data Universe and Time Span
+# Data Universe and Time Span
 
-## 1.1 Row Counts and Date Range
+## Row Counts and Date Range
 
 Row counts and date range of each dataset used in this report, restricted to the month above (SCADA row count restricted to the SCADA-availability window intersected with the month).
 
@@ -231,7 +231,7 @@ if (!is.null(params$data_summary)) {
 }
 ```
 
-## 1.2 Temporal Coverage
+## Temporal Coverage
 
 Day-by-day data presence for each dataset within the month -- complements 1.1, which only gives the overall min/max/row count and does not show whether there are gaps within that range.
 
@@ -252,11 +252,11 @@ if (!is.null(params$coverage_summary)) {
 if (!is.null(params$coverage_plot)) print(params$coverage_plot)
 ```
 
-# 2. System Availability (Heartbeats)
+# System Availability (Heartbeats)
 
 Heartbeats are expected every `r params$heartbeat_interval_min` minutes; an IDF unit is considered offline once the gap since its last heartbeat exceeds `r params$heartbeat_offline_gap_min` minutes (at least 2 consecutive heartbeats missed).
 
-## 2.1 Availability by IDF Unit
+## Availability by IDF Unit
 
 ```{r availability-text, results='asis'}
 if (!is.null(params$availability_by_idf) && nrow(params$availability_by_idf) > 0) {
@@ -278,7 +278,7 @@ if (!is.null(params$availability_by_idf)) {
 }
 ```
 
-## 2.2 Availability Calendar
+## Availability Calendar
 
 Daily offline percentage per IDF unit, laid out as a calendar (top `r params$idf_availability_top_n` units by offline time only, to stay legible).
 
@@ -287,7 +287,7 @@ Daily offline percentage per IDF unit, laid out as a calendar (top `r params$idf
 if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
 ```
 
-## 2.3 Availability Frequency
+## Availability Frequency
 
 Count of IDF units per daylight-availability category.
 
@@ -296,7 +296,7 @@ Count of IDF units per daylight-availability category.
 if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq)
 ```
 
-## 2.4 Spatial Distribution of Unavailability
+## Spatial Distribution of Unavailability
 
 Spatial distribution of unavailability, by turbine (point size = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit).
 
@@ -305,9 +305,9 @@ Spatial distribution of unavailability, by turbine (point size = % of the month'
 if (!is.null(params$availability_plot_spatial)) print(params$availability_plot_spatial)
 ```
 
-# 3. Observed Species
+# Observed Species
 
-## 3.1 Track Level Entropy
+## Track Level Entropy
 
 Normalised Shannon entropy (Pielou's evenness) of the sequence of species classifications recorded within each track, for tracks recorded this month. 0% = a track classified as a single species throughout (stable); 100% = classifications alternated as evenly as possible between the distinct species detected in that track (that track's own worst case). Being normalised by each track's own theoretical maximum, this is comparable across tracks with different numbers of distinct species, unlike the raw entropy value.
 
@@ -333,9 +333,9 @@ if (!is.null(params$richness_dt)) {
 continua a ser calculada e gravada em outputs/ (ver IDF_monthly_report.R,
 secção 2), so' deixou de ser incluida no relatorio -->
 
-# 4. Curtailments by Species
+# Curtailments by Species
 
-## 4.1 Curtailments by Species
+## Curtailments by Species
 
 Curtailment events triggered in this month, one row per species -- ordered by group (priority, then non-priority, then other/uncategorized), and by % of total within each group.
 
@@ -349,7 +349,7 @@ if (!is.null(params$curtl_by_species_dt)) {
 }
 ```
 
-## 4.2 Curtailments by Priority Group
+## Curtailments by Priority Group
 
 Same events, rolled up by species group (priority / nonpriority / other / uncategorized).
 
@@ -363,7 +363,7 @@ if (!is.null(params$curtl_by_group_dt)) {
 }
 ```
 
-# 5. Short-Track Curtailments
+# Short-Track Curtailments
 
 Curtailments triggered by tracks with fewer than `r params$shorttrack_min_points` recorded points, considered only within `r params$shorttrack_eval_range_m` m of the turbine.
 
@@ -372,11 +372,11 @@ Curtailments triggered by tracks with fewer than `r params$shorttrack_min_points
 if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_summary_dt)
 ```
 
-# 6. Curtailment Response Assessment
+# Curtailment Response Assessment
 
 Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, for the turbines and window with SCADA coverage this month (`r params$turbinas_scada_used` -- all turbines with SCADA data in this window, per turbinas_scada = "all" in monthlyReportSettings.R). The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s; an immediate response is recorded when RPM drops by at least `r params$curtailment_drop_pct_threshold * 100`% within `r params$curtailment_max_next_gap_sec` s of the signal; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`.
 
-## 6.1 By Status
+## By Status
 
 - **already_stopped**: RPM was already below the stop threshold at the moment of the curtailment signal.
 - **full_stop_by_end**: RPM dropped below the stop threshold by the end of the curtailment order.
@@ -395,7 +395,7 @@ if (!is.null(params$assess_by_status)) {
 }
 ```
 
-## 6.2 By Turbine
+## By Turbine
 
 Same assessment, broken down by turbine. The table below shows only turbines with a computable Missed % this month (i.e. at least one SCADA-validated curtailment); turbines with no valid SCADA match this month (no_data for every curtailment -- typically a turbine with SCADA installed but no readings this specific month, see 1.2) are omitted here. The complete table, including those turbines, is in the accompanying workbook (curtailment_response_assessment\_*.xlsx).
 
@@ -420,11 +420,11 @@ if (!is.null(params$assess_by_turbine)) {
 }
 ```
 
-# 7. Shutdown Time
+# Shutdown Time
 
 Time from curtailment signal to reaching each RPM threshold, by turbine -- 3 thresholds evaluated: `r paste(params$shutdown_time_thresholds, collapse = ", ")` rpm. Bands below/above the agreed cut-offs are reported as-is, without further interpretation.
 
-## 7.1 Time to Threshold by Turbine
+## Time to Threshold by Turbine
 
 <!-- Source: summarise_time_to_threshold(tt_dt), R/curtailment_shutdown_time.R (tt_dt from time_to_rpm_thresholds()) -->
 ```{r shutdown-turbine-table}
@@ -444,7 +444,7 @@ if (!is.null(params$shutdown_by_turbine)) {
 }
 ```
 
-## 7.2 Time to Threshold Bands
+## Time to Threshold Bands
 
 Same events, grouped by threshold (ascending, lowest rpm reached first) into bands below/above the agreed cut-offs. A curtailment counts as "below cut" when it reached the threshold in under `r params$shutdown_time_low_cut` s (fast), and "above cut" when it took more than `r params$shutdown_time_high_cut` s (slow); cases in between count towards neither band.
 
@@ -461,18 +461,18 @@ if (!is.null(params$shutdown_bands)) {
 }
 ```
 
-## 7.3 Time to Threshold Distribution
+## Time to Threshold Distribution
 
 <!-- Source: plot_time_to_threshold(), R/curtailment_shutdown_time.R -->
 ```{r shutdown-plot, fig.width=7, fig.height=6}
 if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
 ```
 
-# 8. Safe Distance (KNE Methodology)
+# Safe Distance (KNE Methodology)
 
 Distance between the triggering track and the turbine at the moment of curtailment, compared against the KNE reference line (`r params$safe_dist_reference_line_m` m), by priority species. A turbine's estimated time-to-stop-safely uses `r params$safe_dist_rpm_threshold` rpm as the "stopped" threshold; a turbine already below `r params$safe_dist_already_slowing_rpm` rpm at the moment of the signal is treated as already slowing from a previous curtailment, not at full operating speed.
 
-## 8.1 Overall
+## Overall
 
 <!-- Source: summary_safe_dist$overall <- summarise_safe_distance(safe_dist_dt, prioritysp)$overall, R/curtailment_safe_distance.R (safe_dist_dt from compute_safe_distance()) -->
 ```{r safe-dist-overall-table}
@@ -485,7 +485,7 @@ if (!is.null(params$safe_dist_overall)) {
 }
 ```
 
-## 8.2 By Species
+## By Species
 
 <!-- Source: summary_safe_dist$by_species <- summarise_safe_distance(safe_dist_dt, prioritysp)$by_species, R/curtailment_safe_distance.R -->
 ```{r safe-dist-species-table}
@@ -498,18 +498,18 @@ if (!is.null(params$safe_dist_by_species)) {
 }
 ```
 
-## 8.3 Distribution
+## Distribution
 
 <!-- Source: plot_safe_distance_hist(), R/curtailment_safe_distance.R -->
 ```{r safe-dist-plot, fig.width=6.30, fig.height=3.94}
 if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
 ```
 
-# 9. Bi-Directional ID Transitions
+# Bi-Directional ID Transitions
 
 Curtailments triggered by a species reclassification within the same track, in both directions (priority-to-nonpriority and nonpriority-to-priority) -- global, across all non-priority species together, not any single species. A reclassification is considered "late" when it happens more than `r params$id_transition_late_time_sec` s after the curtailment start, or when the track was already within `r params$track_proximity_threshold_m` m of the turbine at the moment of reclassification.
 
-## 9.1 Risk by Direction
+## Risk by Direction
 
 - **P to NP (unnecessary curtailment)**: curtailment triggered while classified as priority, but the track's final classification was non-priority -- turbine stopped unnecessarily (production cost).
 - **NP to P, no curtailment (near)**: reclassified to a priority species, no curtailment ever triggered, and the track was already within the proximity threshold at that moment -- the most concerning case.
@@ -568,11 +568,11 @@ if (!is.null(params$id_confusion_general) && nrow(params$id_confusion_general) >
 }
 ```
 
-# 10. Biological Flight Metrics
+# Biological Flight Metrics
 
 Flight speed and flight height per species, for tracks with at least `r params$flight_min_track_points` recorded points and a flight speed between `r params$flight_speed_ms_min` and `r params$flight_speed_ms_max` m/s.
 
-## 10.1 Flight Speed by Species
+## Flight Speed by Species
 
 <!-- Source: summarise_flight_speed(monthly_flight_base_dt), R/bio_flight_metrics.R (monthly_flight_base_dt from flight_metrics_base()) -->
 ```{r flight-speed-table}
@@ -584,7 +584,7 @@ if (!is.null(params$flight_speed_by_species)) {
 }
 ```
 
-## 10.2 Flight Height by Species
+## Flight Height by Species
 
 Mean and standard deviation of flight height, plus the % of records within the rotor-swept risk zone (`r params$riskHeight_lower`-`r params$riskHeight_upper` m).
 
@@ -605,18 +605,18 @@ if (!is.null(params$flight_height_by_species)) {
 }
 ```
 
-## 10.3 Distribution
+## Distribution
 
 <!-- Source: plot_flight_metrics_distribution(), R/bio_flight_metrics.R -->
 ```{r flight-metrics-plot, fig.width=6.30, fig.height=4.72}
 if (!is.null(params$flight_metrics_plot)) print(params$flight_metrics_plot)
 ```
 
-# 11. Minimum Individuals per Time Bin
+# Minimum Individuals per Time Bin
 
 Minimum number of distinct individuals per priority species detected in the same `r params$min_individuals_bin_min`-minute time bin (2 tracks count as 1 individual when within `r params$min_individuals_merge_dist_m` m of each other), farm-wide, summarised by day.
 
-## 11.1 Summary
+## Summary
 
 <!-- Source: summarise_min_individuals(monthly_min_indiv_bins_dt), R/track_min_individuals.R (monthly_min_indiv_bins_dt from count_min_individuals_per_bin()) -->
 ```{r min-indiv-summary-table}
@@ -629,7 +629,7 @@ if (!is.null(params$min_indiv_summary)) {
 }
 ```
 
-## 11.2 Daily Peak, by Species
+## Daily Peak, by Species
 
 <!-- Source: plot_daily_max_individuals(monthly_min_indiv_daily_dt, species_sel = prioritysp, date_breaks = "1 week"), R/track_min_individuals.R (monthly_min_indiv_daily_dt from summarise_daily_max_individuals()) -->
 ```{r min-indiv-daily-plot, fig.width=6.30, fig.height=8.66}
