@@ -190,6 +190,12 @@ plot_flight_metrics_distribution <- function(flight_base_dt, risk_height_lower =
       ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
       inherit.aes = FALSE, fill = "red", alpha = 0.15
     ) +
-    ggplot2::labs(x = NULL, y = "Frequency", title = "Distribution of flight speed and height for priority species") +
+    ggplot2::labs(
+      x = NULL, y = "Frequency", title = "Distribution of flight speed and height for priority species",
+      caption = sprintf(
+        "Shaded band (height panel) marks the rotor-swept risk height zone, %g-%gm AGL.",
+        risk_height_lower, risk_height_upper
+      )
+    ) +
     ggplot2::theme_minimal()
 }

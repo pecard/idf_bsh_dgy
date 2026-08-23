@@ -505,11 +505,19 @@ Distance between the triggering track and the turbine at the moment of curtailme
 <!-- Source: summary_safe_dist$overall <- summarise_safe_distance(safe_dist_dt, prioritysp)$overall, R/curtailment_safe_distance.R (safe_dist_dt from compute_safe_distance()) -->
 ```{r safe-dist-overall-table}
 if (!is.null(params$safe_dist_overall)) {
-  report_table(rename_display(
-    params$safe_dist_overall,
-    c(n = "N", n_ok = "OK", n_crit = "Critical", pct_ok = "% OK",
-      mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
-  ))
+  report_table(
+    rename_display(
+      params$safe_dist_overall,
+      c(n = "N", n_ok = "OK", n_crit = "Critical", pct_ok = "% OK",
+        mean_time_to_threshold_sec = "Mean React. Time (s)", mean_avg_speed_ms = "Mean Track Speed (m/s)",
+        pct_already_slowing = "% Already Slowing",
+        mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
+    ),
+    col_widths_cm = c(
+      "Mean React. Time (s)" = 2, "Mean Track Speed (m/s)" = 2, "% Already Slowing" = 2,
+      "Mean Safe Dist. (m)" = 2, "Median Safe Dist. (m)" = 2
+    )
+  )
 }
 ```
 
@@ -646,7 +654,7 @@ if (!is.null(params$flight_height_by_species)) {
 ## Distribution
 
 <!-- Source: plot_flight_metrics_distribution(), R/bio_flight_metrics.R -->
-```{r flight-metrics-plot, fig.width=6.30, fig.height=4.72}
+```{r flight-metrics-plot, fig.width=6.30, fig.height=5.91}
 if (!is.null(params$flight_metrics_plot)) print(params$flight_metrics_plot)
 ```
 

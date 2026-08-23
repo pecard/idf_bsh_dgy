@@ -781,7 +781,7 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$bio_flight_metrics)) {
   p_monthly_flight_metrics <- plot_flight_metrics_distribution(monthly_flight_base_dt, riskHeight_lower, riskHeight_upper)
   ggsave(
     file.path(folder_output, sprintf("bio_flight_metrics_distribution_%s.png", report_month)),
-    plot = p_monthly_flight_metrics, width = 16, height = 12, units = "cm", dpi = 300, bg = "white"
+    plot = p_monthly_flight_metrics, width = 16, height = 15, units = "cm", dpi = 300, bg = "white"
   )
 
 } else {message("track_dt nao disponivel ou run_sections_monthly$bio_flight_metrics = FALSE -- 7 (bio flight metrics) saltada nesta ronda.")}
@@ -812,9 +812,12 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$min_individuals)) {
   )
 
   # species_sel = prioritysp (nao o default da funcao, so' 2 especies) --
-  # mostrar todas as especies prioritarias, 1 painel por especie
+  # mostrar todas as especies prioritarias, 1 painel por especie -- exceto
+  # "Protected" (categoria generica, nao 1 especie concreta), removida deste
+  # plot a pedido do Paulo (2026-08)
   p_monthly_min_indiv_daily <- plot_daily_max_individuals(
-    monthly_min_indiv_daily_dt, species_sel = prioritysp, date_breaks = "1 week", date_labels = "%d %b"
+    monthly_min_indiv_daily_dt, species_sel = setdiff(prioritysp, "Protected"),
+    date_breaks = "1 week", date_labels = "%d %b"
   )
   ggsave(
     file.path(folder_output, sprintf("min_individuals_daily_max_%s.png", report_month)),
