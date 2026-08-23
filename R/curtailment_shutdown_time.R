@@ -117,8 +117,8 @@ summarise_time_to_threshold <- function(time_to_threshold_dt) {
       mean_time_sec   = round(mean(time_to_threshold_sec, na.rm = TRUE), 1),
       median_time_sec = round(median(time_to_threshold_sec, na.rm = TRUE), 1),
       sd_time_sec     = round(sd(time_to_threshold_sec, na.rm = TRUE), 1),
-      min_time_sec    = rng[1],
-      max_time_sec    = rng[2]
+      min_time_sec    = round(rng[1], 1),
+      max_time_sec    = round(rng[2], 1)
     )
   }, by = .(turbine, threshold)]
 

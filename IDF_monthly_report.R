@@ -434,6 +434,12 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$observed_species)) {
     plot = p_monthly_richness, width = 8, height = 8, units = "cm", dpi = 300, bg = "white"
   )
 
+  p_monthly_entropy <- plot_entropy_hist(monthly_richness_dt)
+  ggsave(
+    file.path(folder_output, sprintf("observed_species_entropy_hist_%s.png", report_month)),
+    plot = p_monthly_entropy, width = 16, height = 10, units = "cm", dpi = 300, bg = "white"
+  )
+
 } else {message("track_dt nao disponivel ou run_sections_monthly$observed_species = FALSE -- 2 (observed species) saltada nesta ronda.")}
 
 
@@ -792,9 +798,10 @@ monthly_report_params <- list(
   availability_plot_spatial = if (exists("p_availability_spatial")) p_availability_spatial else NULL,
 
   richness_dt         = if (exists("monthly_richness_summary")) monthly_richness_summary$by_n_species else NULL,
-  # richness_plot (3.2) removida do docx por pedido -- p_monthly_richness
-  # continua a ser calculado e gravado em outputs/ (ver secção 2, acima),
-  # so' deixou de ser passado ao Rmd
+  entropy_plot        = if (exists("p_monthly_entropy")) p_monthly_entropy else NULL,
+  # richness_plot (histograma de n_species por track) removida do docx por
+  # pedido -- p_monthly_richness continua a ser calculado e gravado em
+  # outputs/ (ver secção 2, acima), so' deixou de ser passado ao Rmd
 
   curtl_by_species_dt = if (exists("monthly_species_curt_by_species_dt")) monthly_species_curt_by_species_dt else NULL,
   curtl_by_group_dt   = if (exists("monthly_species_curt_by_group_dt")) monthly_species_curt_by_group_dt else NULL,

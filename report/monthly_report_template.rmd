@@ -22,6 +22,7 @@ params:
   availability_plot_spatial: !r NULL
 
   richness_dt: !r NULL
+  entropy_plot: !r NULL
 
   curtl_by_species_dt: !r NULL
   curtl_by_group_dt: !r NULL
@@ -95,8 +96,10 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 # tamanho, so' encolhe as que o autofit() deixaria mais largas (ver
 # cap_col_width() abaixo). Usado nas secções 6.2 e 7.1 (tabelas largas, 1
 # linha por turbina), pedido explicito para caberem numa pagina A4 vertical.
+# round_display() (ver abaixo) corre sempre primeiro, aqui dentro -- nenhuma
+# tabela do relatorio precisa de a chamar manualmente.
 report_table <- function(x, caption = NULL, max_col_width_cm = NULL) {
-  ft <- flextable::flextable(as.data.frame(x)) |>
+  ft <- flextable::flextable(round_display(x)) |>
     flextable::theme_box() |>
     flextable::bg(part = "header", bg = "gray85") |>
     flextable::bold(part = "header") |>
@@ -108,6 +111,33 @@ report_table <- function(x, caption = NULL, max_col_width_cm = NULL) {
   if (!is.null(max_col_width_cm)) ft <- cap_col_width(ft, max_col_width_cm)
   if (!is.null(caption)) ft <- flextable::set_caption(ft, caption)
   ft
+}
+
+# Arredonda, so' para apresentacao no docx, cada coluna numerica que tenha
+# algum valor nao-inteiro para `digits` casas decimais (2 por omissao) --
+# colunas so' com valores inteiros (contagens) ficam como estao. Excecao: se
+# arredondar a `digits` casas desse 0 mas o valor real nao e' zero, estende
+# casas decimais ate aparecer o 1o digito significativo (ex: 0.001), para
+# nao mostrar "0.00" nalgo que na realidade nao e' zero. Devolve os valores
+# ja como texto formatado (sprintf) -- o formatador automatico do flextable
+# nao garante um numero fixo de casas decimais (mostraria "12.3", nao
+# "12.30"). So' afeta o que aparece no docx: os exports xlsx (feitos a
+# partir dos objetos originais, nao deste helper) mantêm sempre os valores
+# tal como calculados pelas funcoes de analise.
+round_display <- function(x, digits = 2) {
+  x <- as.data.frame(x)
+  for (col in names(x)) {
+    v <- x[[col]]
+    if (!is.numeric(v) || is.integer(v)) next
+    if (all(v == round(v), na.rm = TRUE)) next
+    x[[col]] <- vapply(v, function(val) {
+      if (is.na(val)) return(NA_character_)
+      d <- digits
+      while (round(val, d) == 0 && val != 0 && d < 6) d <- d + 1
+      sprintf(paste0("%.", d, "f"), val)
+    }, character(1))
+  }
+  x
 }
 
 cap_col_width <- function(ft, max_width_cm = 2) {
@@ -277,9 +307,16 @@ if (!is.null(params$availability_plot_spatial)) print(params$availability_plot_s
 
 # 3. Observed Species
 
-## 3.1 Species Richness Summary
+## 3.1 Track Level Entropy
 
-Number of tracks by count of distinct species classifications recorded within the same track, for tracks recorded in this month, with the most frequent exact species combination for each count.
+Normalised Shannon entropy (Pielou's evenness) of the sequence of species classifications recorded within each track, for tracks recorded this month. 0% = a track classified as a single species throughout (stable); 100% = classifications alternated as evenly as possible between the distinct species detected in that track (that track's own worst case). Being normalised by each track's own theoretical maximum, this is comparable across tracks with different numbers of distinct species, unlike the raw entropy value.
+
+<!-- Source: plot_entropy_hist(monthly_richness_dt), R/id_transitions.R (monthly_richness_dt from track_species_summary(), shannon_evenness_pct computed there) -->
+```{r entropy-plot, fig.width=6.30, fig.height=3.94}
+if (!is.null(params$entropy_plot)) print(params$entropy_plot)
+```
+
+Number of tracks by count of distinct species classifications recorded within the same track, with the most frequent exact species combination for each count. For n_species = 1 there is no actual combination -- "Most Common Combination" there is simply the single most frequently detected species among tracks with only one classification.
 
 <!-- Source: monthly_richness_summary <- summarise_species_richness(monthly_richness_dt), R/id_transitions.R (monthly_richness_dt from track_species_summary()) -- most_common_combo/most_common_combo_n added at source -->
 ```{r richness-table}
@@ -312,7 +349,7 @@ if (!is.null(params$curtl_by_species_dt)) {
 }
 ```
 
-## 4.2 Curtailments by Species Group
+## 4.2 Curtailments by Priority Group
 
 Same events, rolled up by species group (priority / nonpriority / other / uncategorized).
 
