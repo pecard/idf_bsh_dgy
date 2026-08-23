@@ -58,9 +58,21 @@ for (p in packages) {
 ## SETTINGS ----
 ##
 
-## report_month: definir ANTES de executar este script, ex:
-report_month <- "2026-01"
-source("IDF_monthly_report.R")
+## report_month: definir ANTES de correr este ficheiro.
+##
+## NUNCA colocar aqui "source(\"IDF_monthly_report.R\")" -- isso faz este
+## ficheiro chamar-se A SI PROPRIO a meio da sua propria execucao, o que
+## recursa infinitamente ate um erro confuso tipo "node stack overflow"
+## (ja aconteceu 2x, 2026-08). Quem quer que tenha invocado este ficheiro
+## (consola, botao "Source" do RStudio, etc.) ja continua sozinho para as
+## linhas seguintes depois desta -- nunca e' preciso nem seguro dar
+## source() a este ficheiro a partir de dentro dele proprio.
+##
+## Para um atalho "definir o mes e correr" -- ex: clicar Source e pronto,
+## sem editar este ficheiro -- usar run_monthly_report.R (na raiz do
+## projeto): esse ficheiro e' pequeno, SEPARADO deste, e faz exatamente
+## isso em segurança (report_month <- "..."; source("IDF_monthly_report.R")),
+## porque nao e' o MESMO ficheiro a chamar-se a si proprio.
 
 ## Verificado ja aqui, antes de qualquer uso de report_month abaixo (ex:
 ## folder_output) -- monthlyReportSettings.R confia que ja esta definido e
