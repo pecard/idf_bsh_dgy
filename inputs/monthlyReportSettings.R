@@ -187,7 +187,7 @@ othersp <- c(
 
 heartbeat_interval_min    <- 30
 heartbeat_offline_gap_min <- 60
-idf_availability_top_n    <- 12L
+idf_availability_top_n    <- 10L
 
 
 ## -- 5. Short-track curtailment --

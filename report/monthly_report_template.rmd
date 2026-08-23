@@ -306,7 +306,7 @@ if (!is.null(params$availability_by_idf)) {
 
 ## Availability Calendar
 
-Daily offline percentage per IDF unit, laid out as a calendar (top `r params$idf_availability_top_n` units by offline time only, to stay legible).
+Daily offline percentage per IDF unit, laid out as a calendar -- restricted to the top `r params$idf_availability_top_n` units by offline time, to stay legible. The table in 2.1 above has every IDF unit.
 
 <!-- Source: plot_availability_calendar(), R/availability_daylight.R -->
 ```{r availability-cal, fig.width=6.30, fig.height=6.30}
