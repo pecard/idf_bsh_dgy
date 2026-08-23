@@ -118,10 +118,30 @@ source(file.path(folder_input, "monthlyReportSettings.R"))
 
 username <- check_username()
 
+## Versao do codigo que gerou este relatorio especifico -- rastreabilidade:
+## se num mes seguinte ajustarmos conteudo/formula, isto identifica
+## exatamente que commit (e se havia alteracoes locais nao commitadas)
+## produziu CADA relatorio ja emitido. "unknown" so' se este nao for um
+## checkout git ou o git nao estiver disponivel (ex: maquina sem git
+## instalado) -- nunca aborta o relatorio por causa disto.
+get_code_version <- function() {
+  run_git <- function(args) {
+    tryCatch(system2("git", args, stdout = TRUE, stderr = FALSE), error = function(e) character(0))
+  }
+  hash_date <- run_git(c("log", "-1", "--format=%h (%ci)"))
+  if (length(hash_date) == 0L || !nzchar(hash_date[1])) {
+    return("unknown (not a git checkout, or git unavailable)")
+  }
+  dirty <- length(run_git(c("status", "--porcelain"))) > 0L
+  if (dirty) paste0(hash_date[1], " + uncommitted local changes") else hash_date[1]
+}
+code_version <- get_code_version()
+
 sink(file.path(folder_output, "R_analysis_info.txt"))
 cat(paste0('Analysis technician: ', username, '\n'))
 cat(paste0('Analysis date: ', format(Sys.time(), "%Y-%m-%d"), '\n'))
 cat(paste0('Report month: ', report_month, '\n'))
+cat(paste0('Code version: ', code_version, '\n'))
 sink()
 
 
@@ -785,6 +805,7 @@ monthly_report_params <- list(
   report_end    = as.character(report_end),
   analysis_date = format(Sys.time(), "%Y-%m-%d"),
   username      = username,
+  code_version  = code_version,
 
   data_summary = if (exists("monthly_data_summary_dt")) monthly_data_summary_dt else NULL,
   coverage_summary = if (exists("monthly_coverage_summary_dt")) monthly_coverage_summary_dt else NULL,

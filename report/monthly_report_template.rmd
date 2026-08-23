@@ -9,6 +9,7 @@ params:
   report_end: ""
   analysis_date: ""
   username: ""
+  code_version: ""
 
   data_summary: !r NULL
   coverage_summary: !r NULL
@@ -210,6 +211,8 @@ Report period: `r params$report_start` to `r params$report_end`
 Analysis date: `r params$analysis_date`
 
 Responsible: `r params$username`
+
+Code version: `r params$code_version`
 
 This report is descriptive and fully automated, generated end-to-end by an R code pipeline. It presents the metrics produced by the IDF analysis pipeline for the month above, without further interpretation, except where an explicit threshold (e.g. the KNE safe-distance reference line, shutdown-time bands) is already part of the pre-defined methodology.
 
