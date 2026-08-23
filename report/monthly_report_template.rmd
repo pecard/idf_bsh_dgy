@@ -400,7 +400,7 @@ if (!is.null(params$assess_by_status)) {
 
 ## By Turbine
 
-Same assessment, broken down by turbine. The table below is restricted to Turbine, Curtailments, Valid Matches, No Immed. Resp. % and Missed %, and to turbines with a computable Missed % this month (i.e. at least one SCADA-validated curtailment); turbines with no valid SCADA match this month (no_data for every curtailment -- typically a turbine with SCADA installed but no readings this specific month, see 1.2) are omitted here. The complete table, with every column and every turbine, is in the accompanying workbook (curtailment_response_assessment\_*.xlsx).
+Same assessment, broken down by turbine. Having SCADA data this month (the list above) is necessary but not sufficient to appear below -- a turbine also needs at least one curtailment whose SCADA baseline falls within the matching tolerance stated above, which in a given month only a subset of turbines actually achieves. The table below is restricted to Turbine, Curtailments, Valid Matches, No Immed. Resp. % and Missed %, and to turbines with a computable Missed % this month (i.e. at least one SCADA-validated curtailment); turbines with no valid SCADA match this month (no_data for every curtailment) are omitted here. The complete table, with every column and every turbine, is in the accompanying workbook (curtailment_response_assessment\_*.xlsx).
 
 <!-- Source: summary_assess$by_turbine <- summarise_curtailment_assessment(assess_dt)$by_turbine, R/curtailment_response.R -- filtered here to !is.na(missed_pct) and to a subset of columns, the xlsx annex keeps every column/turbine -->
 ```{r assess-turbine-table}
