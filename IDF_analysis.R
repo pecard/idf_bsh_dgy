@@ -151,6 +151,29 @@ source("R/write_utils.R")
 #WTG
 wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
 
+## IDs de turbina no shapefile (InternalNa) nao tem zero a esquerda para 1-9
+## ("BSH1".."BSH9"), enquanto a matriz manual turbina<->IDF (ACWA_IDF_Coverage_Matrix.xlsx)
+## e todos os outros datasets do projeto (curtailments, SCADA, tracks) usam
+## sempre 2 digitos ("BSH01".."BSH09") -- por isso essas 9 turbinas nunca
+## faziam match em nenhuma analise que cruze wtg$InternalNa com outro
+## dataset (compare_turbine_idf_matrix() acima, R/turbine_idf_coverage.R;
+## e a jusante, fatality_track_investigation.R, coverage_3d_topography.R,
+## curtailment_removal_risk.R, track_species_clusters.R,
+## turbine_spatial_clusters.R, turbine_recent_activity.R -- todos recebem
+## este mesmo objeto wtg). Corrigido o mesmo bug no relatorio mensal
+## (IDF_monthly_report.R, 2026-08) depois de o Paulo confirmar comparando
+## sort(unique(wtg$InternalNa)) com sort(unique(turbine_idf_manual_dt[["Turbine ID"]])).
+## Normalizado aqui, logo a seguir a leitura -- antes de QUALQUER consumidor
+## (o 1o e' compute_turbine_idf_coverage(), poucas linhas abaixo).
+wtg$InternalNa <- {
+  m <- regmatches(wtg$InternalNa, regexec("^([A-Za-z]+)([0-9]+)$", wtg$InternalNa))
+  vapply(seq_along(wtg$InternalNa), function(i) {
+    g <- m[[i]]
+    if (length(g) < 3) return(wtg$InternalNa[i])
+    paste0(g[2], sprintf("%02d", as.integer(g[3])))
+  }, character(1))
+}
+
 #IDF
 idf <- sf::read_sf(file.path(folder_input, idf_filename))
 
