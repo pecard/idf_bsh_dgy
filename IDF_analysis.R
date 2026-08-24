@@ -1032,18 +1032,22 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
   p_safe_dist_hist <- plot_safe_distance_hist(
     safe_dist_dt, species_sel = prioritysp, ref_line_m = safe_dist_reference_line_m, facet = TRUE
   )
-  ggsave(
-    file.path(folder_output, paste0("curtailment_safe_distance_hist_", date(scada_ini), "to", date(scada_end), ".png")),
-    plot = p_safe_dist_hist, width = 8, height = 8, dpi = 300, bg = "white"
-  )
+  if (!is.null(p_safe_dist_hist)) {
+    ggsave(
+      file.path(folder_output, paste0("curtailment_safe_distance_hist_", date(scada_ini), "to", date(scada_end), ".png")),
+      plot = p_safe_dist_hist, width = 8, height = 8, dpi = 300, bg = "white"
+    )
+  } else {message("Sem safe-distance calculavel para especies prioritarias -- plot nao gerado.")}
 
   p_trigger_dist_status <- plot_trigger_distance_status(
     safe_dist_dt, species_sel = prioritysp, ref_line_m = safe_dist_reference_line_m, facet = TRUE
   )
-  ggsave(
-    file.path(folder_output, paste0("curtailment_trigger_distance_", date(scada_ini), "to", date(scada_end), ".png")),
-    plot = p_trigger_dist_status, width = 8, height = 8, dpi = 300, bg = "white"
-  )
+  if (!is.null(p_trigger_dist_status)) {
+    ggsave(
+      file.path(folder_output, paste0("curtailment_trigger_distance_", date(scada_ini), "to", date(scada_end), ".png")),
+      plot = p_trigger_dist_status, width = 8, height = 8, dpi = 300, bg = "white"
+    )
+  } else {message("Sem x2d/status calculavel para especies prioritarias -- plot nao gerado.")}
 
 } else {message("run_sections$curtailment_response = FALSE ou SCADA nao disponivel -- 3.5-3.7 saltadas nesta ronda.")}
 

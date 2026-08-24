@@ -690,10 +690,14 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   )
   safe_dist_plot_height_cm <- max(10, ceiling(safe_dist_n_species / 3) * 3.5 + 2.5)
 
-  ggsave(
-    file.path(folder_output, sprintf("curtailment_safe_distance_hist_%s.png", report_month)),
-    plot = p_safe_dist_hist, width = 16, height = safe_dist_plot_height_cm, units = "cm", dpi = 300, bg = "white"
-  )
+  if (!is.null(p_safe_dist_hist)) {
+    ggsave(
+      file.path(folder_output, sprintf("curtailment_safe_distance_hist_%s.png", report_month)),
+      plot = p_safe_dist_hist, width = 16, height = safe_dist_plot_height_cm, units = "cm", dpi = 300, bg = "white"
+    )
+  } else {
+    message(sprintf("Sem safe-distance calculavel para especies prioritarias em %s -- plot 8.3 nao gerado.", report_month))
+  }
 
 } else {message("scada_dt nao disponivel ou run_sections_monthly$curtailment_response_delays = FALSE -- 5 (response/shutdown/safe distance) saltada nesta ronda.")}
 

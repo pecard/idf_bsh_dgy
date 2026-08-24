@@ -139,6 +139,16 @@ plot_safe_distance_hist <- function(safe_dist_dt, species_sel = NULL, ref_line_m
   dt <- safe_dist_dt[!is.na(min_safe_dist_m)]
   if (!is.null(species_sel)) dt <- dt[species %in% species_sel]
 
+  # sem linhas -- facet_wrap(~species) nao tem valores para facetar e falha
+  # com "Faceting variables must have at least one value" (ggplot2::combine_vars()).
+  # NULL devolvido em vez de um plot partido -- caller ja trata NULL como
+  # "sem dados este periodo, saltar" (mesma convencao usada nas restantes
+  # secções do relatorio)
+  if (nrow(dt) == 0L) {
+    message("plot_safe_distance_hist(): sem curtailments com min_safe_dist_m calculavel para as especies pedidas -- NULL devolvido.")
+    return(NULL)
+  }
+
   p <- ggplot(dt, aes(x = min_safe_dist_m)) +
     geom_histogram(binwidth = 50, boundary = 0, colour = "grey") +
     labs(
@@ -159,6 +169,13 @@ plot_trigger_distance_status <- function(safe_dist_dt, species_sel = NULL, ref_l
 
   dt <- safe_dist_dt[!is.na(x2d) & !is.na(status)]
   if (!is.null(species_sel)) dt <- dt[species %in% species_sel]
+
+  # mesma razao de plot_safe_distance_hist() acima -- sem linhas, facet_wrap()
+  # nao tem valores para facetar
+  if (nrow(dt) == 0L) {
+    message("plot_trigger_distance_status(): sem curtailments com x2d/status calculavel para as especies pedidas -- NULL devolvido.")
+    return(NULL)
+  }
 
   p <- ggplot(dt, aes(x = x2d, fill = status)) +
     geom_histogram(binwidth = 50, boundary = 0, position = "dodge", colour = "white") +
