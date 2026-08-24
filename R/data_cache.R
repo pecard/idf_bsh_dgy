@@ -50,6 +50,20 @@ load_or_read_cache <- function(cache_file, read_fn, force_reread = FALSE, tz = N
 
   dt <- read_fn()
 
+  # read_fn() pode devolver NULL quando nao ha ficheiros a ler, 0 ficheiros
+  # apos o filtro de pattern/farm_pattern -- pode ser um problema real (ex:
+  # padrao errado) ou um gap genuino de dados (ex: um mes sem ficheiros
+  # disponiveis, como o gap de SCADA de junho encontrado 2026-08). Sem esta
+  # guarda, fst::write_fst(NULL, ...) falhava com um erro criptico ("Please
+  # make sure 'x' is a data frame"), sem indicar a causa real.
+  if (is.null(dt)) {
+    message(sprintf(
+      "load_or_read_cache: read_fn() nao devolveu dados para '%s' (0 ficheiros encontrados?) -- a gravar cache vazia.",
+      cache_file
+    ))
+    dt <- data.table::data.table()
+  }
+
   dir.create(dirname(cache_file), showWarnings = FALSE, recursive = TRUE)
   fst::write_fst(dt, cache_file)
   cat(sprintf("Cache: '%s' gravada (%d linhas).\n", cache_file, nrow(dt)))

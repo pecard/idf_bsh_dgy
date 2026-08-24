@@ -62,12 +62,16 @@ databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-
 ## databases_dir acima e' PARTILHADA com o projeto DGY (userSettings_DGY.R
 ## aponta para a mesma pasta) -- os 4 patterns abaixo, por si so', nao
 ## discriminam por parque. farm_pattern e' um filtro ADICIONAL (2a
-## passagem, por substring "BSH" em qualquer posicao do nome do ficheiro --
-## ver list_files_multi_dir(), R/read_utils.R) para excluir ficheiros do
-## DGY que estejam na mesma pasta partilhada, mesmo que a posicao exata do
-## codigo do parque varie entre convencoes de nome (ex: SCADA_..._BSH_T014.csv
-## vs SCADA_BSH014_..._BSH.csv).
-farm_pattern <- "BSH"
+## passagem, por substring em qualquer posicao do nome do ficheiro -- ver
+## list_files_multi_dir(), R/read_utils.R) para excluir ficheiros do DGY que
+## estejam na mesma pasta partilhada, mesmo que a posicao exata do codigo do
+## parque varie entre convencoes de nome (ex: SCADA_..._BSH_T014.csv vs
+## SCADA_BSH014_..._BSH.csv). Alternancia "BSH|Bash" -- tracks/curtailments/
+## SCADA usam o acronimo "BSH" no nome do ficheiro, mas heartbeats usa o
+## nome completo "Bash" (ver heartbeats_pattern, "Bash_Heartbeats.+csv",
+## abaixo) -- so' "BSH" deixava 0 ficheiros de heartbeats depois do filtro
+## (bug encontrado 2026-08, corrida real: "0 de 1 ficheiro(s) mantidos").
+farm_pattern <- "BSH|Bash"
 
 trackreport_pattern  <- "TrackReport_" #"TrackReport.+csv"          # ex: TrackReport_20260201_....csv
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx

@@ -83,11 +83,15 @@ databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-2025_BSH_DGY/IDF_PortalData/BSH"
 
 ## databases_dir e' partilhada com o projeto DGY -- farm_pattern filtra por
-## substring "BSH" (em qualquer posicao do nome do ficheiro) para excluir
+## substring (em qualquer posicao do nome do ficheiro) para excluir
 ## ficheiros do DGY que estejam na mesma pasta partilhada (ver
 ## list_files_multi_dir(), R/read_utils.R, e o mesmo ajuste em
-## userSettings_BSH.R).
-farm_pattern <- "BSH"
+## userSettings_BSH.R). Alternancia "BSH|Bash" -- tracks/curtailments/SCADA
+## usam o acronimo "BSH" no nome do ficheiro, mas heartbeats usa o nome
+## completo "Bash" (ver heartbeats_pattern, "Bash_Heartbeats.+csv", abaixo)
+## -- so' "BSH" deixava 0 ficheiros de heartbeats depois do filtro (bug
+## encontrado 2026-08, corrida real: "0 de 1 ficheiro(s) mantidos").
+farm_pattern <- "BSH|Bash"
 
 trackreport_pattern  <- "TrackReport_"
 curtailments_pattern <- "curtail_orders|Curtailments"
