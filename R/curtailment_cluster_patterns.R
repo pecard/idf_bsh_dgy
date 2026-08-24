@@ -222,6 +222,11 @@ plot_cluster_curtailments_weekly <- function(cluster_weekly_dt, highlight_cluste
   ggplot2::ggplot(dt, ggplot2::aes(x = period, y = n, color = cluster_id, linewidth = is_highlight, group = cluster_id)) +
     ggplot2::geom_line() +
     ggplot2::scale_linewidth_manual(values = c(`TRUE` = 1.3, `FALSE` = 0.5), guide = "none") +
+    # expand = c(0,0) + breaks mensais -- mesma correcao ja aplicada aos
+    # plots de cobertura diaria (R/data_coverage.R), aqui adaptada ao
+    # historico completo (varios meses) do relatorio anual
+    ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m", expand = c(0, 0)) +
     ggplot2::labs(x = "Week", y = "Curtailments", color = "Cluster", title = title) +
-    ggplot2::theme_minimal()
+    ggplot2::theme_minimal() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 }

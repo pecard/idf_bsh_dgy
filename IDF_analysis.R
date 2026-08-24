@@ -1379,7 +1379,7 @@ ggsave(
   plot = p_min_indiv, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
 )
 
-p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt)
+p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt, date_breaks = "1 month", date_labels = "%Y-%m")
 p_min_indiv_daily
 ggsave(
   file.path(folder_output, "min_individuals_daily_max.png"),
@@ -1506,168 +1506,178 @@ write_xlsx_local(
 ## manual_turbine_clusters, cluster_species_sel, curtl_cluster_date_from/to
 ## --> definidos no userSettings_BSH.R.
 ##
+## 2 switches INDEPENDENTES (pedido do Paulo, 2026-08): turbine_clustering
+## controla so' a via ESTATISTICA (por distancia); risk_clusters controla
+## so' a via MANUAL (setores) -- cada uma pode ligar-se/desligar-se sem
+## afetar a outra (antes so' havia turbine_clustering, a controlar as 2 em
+## conjunto). species_tracks_dt (ocorrencia de tracks por turbina, 10.2) e'
+## partilhado pelas 2 vias -- calculado uma so' vez, se QUALQUER uma correr.
+##
 
-## isTRUE(run_sections$turbine_clustering) fica FALSE tambem se run_sections
-## nao tiver este elemento (ex: userSettings_BSH.R desatualizado ainda em
-## memoria, sem re-fazer source() depois de adicionar este switch) -- por
-## isso o guard fica separado em 3 mensagens especificas, para nao dar a
-## entender que track_dt_unfilt/curtl_dt_unfilt e' que faltam quando pode
-## ser so' o run_sections desatualizado
 if (!exists("track_dt_unfilt")) {
   message("10 saltada: track_dt_unfilt nao existe (ver secção 0 -- Import data).")
 } else if (!exists("curtl_dt_unfilt")) {
   message("10 saltada: curtl_dt_unfilt nao existe (ver secção 0 -- Import data).")
-} else if (!isTRUE(run_sections$turbine_clustering)) {
-  message("10 saltada: run_sections$turbine_clustering != TRUE (confirma se o userSettings_BSH.R em memoria esta atualizado -- corre source() outra vez se tiveres duvidas).")
+} else if (!isTRUE(run_sections$turbine_clustering) && !isTRUE(run_sections$risk_clusters)) {
+  message("10 saltada: nem run_sections$turbine_clustering nem run_sections$risk_clusters = TRUE (confirma se o userSettings_BSH.R em memoria esta atualizado -- corre source() outra vez se tiveres duvidas).")
 } else {
 
   source("R/turbine_spatial_clusters.R")
   source("R/curtailment_cluster_patterns.R")
   source("R/track_species_clusters.R")
+  source("R/turbine_critical_zone_summary.R")
 
-  turbine_dist_mat <- turbine_distance_matrix(wtg)
-
-  cluster_dt_stat   <- cluster_turbines_by_distance(turbine_dist_mat, max_dist_m = cluster_max_dist_m)
-  cluster_sens_dt   <- turbine_cluster_threshold_sensitivity(turbine_dist_mat, thresholds_m = cluster_threshold_sweep_m)
-  cluster_dt_manual <- manual_turbine_clusters_dt(manual_turbine_clusters)
-
-  # clusters que contem as turbinas de fatality_incidents -- para destacar
-  # nos plots (a vermelho) em vez de ter de os procurar a olho na legenda
-  highlight_clusters_stat   <- unique(cluster_dt_stat[turbine %in% fatality_incidents$turbine, cluster_id])
-  highlight_clusters_manual <- unique(cluster_dt_manual[turbine %in% fatality_incidents$turbine, cluster_id])
-
-  # mapas de referencia -- turbinas coloridas pelo cluster a que pertencem,
-  # para confirmar a olho que os clusters fazem sentido geograficamente
-  p_map_stat <- plot_turbine_clusters_map(
-    wtg, cluster_dt_stat, highlight_turbines = fatality_incidents$turbine,
-    title = sprintf("Statistical turbine clusters (max_dist_m=%g)", cluster_max_dist_m)
-  )
-  ggsave(
-    file.path(folder_output, "turbine_clusters_map_stat.png"),
-    plot = p_map_stat, width = 10, height = 8, dpi = 300, bg = "white"
-  )
-
-  p_map_manual <- plot_turbine_clusters_map(
-    wtg, cluster_dt_manual, highlight_turbines = fatality_incidents$turbine,
-    title = "Manual turbine sectors"
-  )
-  ggsave(
-    file.path(folder_output, "turbine_clusters_map_manual.png"),
-    plot = p_map_manual, width = 10, height = 8, dpi = 300, bg = "white"
-  )
+  run_stat   <- isTRUE(run_sections$turbine_clustering)
+  run_manual <- isTRUE(run_sections$risk_clusters)
 
 
-  ### 10.1. Curtailments por cluster de turbinas (estatistico + manual) ----
+  ### 10.0. Clusters + mapa de referencia (cada via so' corre com o seu switch) ----
 
-  curtl_cl_stat_dt <- join_curtailments_to_clusters(
-    curtl_dt_unfilt, cluster_dt_stat, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
-  )
-  if (curtl_cl_stat_dt[is.na(cluster_id), .N] > 0) {
-    message(sprintf(
-      "Aviso: %d curtailments de turbinas fora do cluster estatistico (turbina nao existe em wtg?) -- turbinas: %s",
-      curtl_cl_stat_dt[is.na(cluster_id), .N],
-      paste(sort(unique(curtl_cl_stat_dt[is.na(cluster_id), turbine])), collapse = ", ")
-    ))
+  if (run_stat) {
+    turbine_dist_mat <- turbine_distance_matrix(wtg)
+    cluster_dt_stat   <- cluster_turbines_by_distance(turbine_dist_mat, max_dist_m = cluster_max_dist_m)
+    cluster_sens_dt   <- turbine_cluster_threshold_sensitivity(turbine_dist_mat, thresholds_m = cluster_threshold_sweep_m)
+
+    # cluster que contem as turbinas de fatality_incidents -- para destacar
+    # no plot (a vermelho) em vez de ter de os procurar a olho na legenda
+    highlight_clusters_stat <- unique(cluster_dt_stat[turbine %in% fatality_incidents$turbine, cluster_id])
+
+    p_map_stat <- plot_turbine_clusters_map(
+      wtg, cluster_dt_stat, highlight_turbines = fatality_incidents$turbine,
+      title = sprintf("Statistical turbine clusters (max_dist_m=%g)", cluster_max_dist_m)
+    )
+    ggsave(
+      file.path(folder_output, "turbine_clusters_map_stat.png"),
+      plot = p_map_stat, width = 10, height = 8, dpi = 300, bg = "white"
+    )
+  } else {message("10 (via estatistica) saltada: run_sections$turbine_clustering != TRUE.")}
+
+  if (run_manual) {
+    cluster_dt_manual <- manual_turbine_clusters_dt(manual_turbine_clusters)
+    highlight_clusters_manual <- unique(cluster_dt_manual[turbine %in% fatality_incidents$turbine, cluster_id])
+
+    p_map_manual <- plot_turbine_clusters_map(
+      wtg, cluster_dt_manual, highlight_turbines = fatality_incidents$turbine,
+      title = "Manual turbine sectors"
+    )
+    ggsave(
+      file.path(folder_output, "turbine_clusters_map_manual.png"),
+      plot = p_map_manual, width = 10, height = 8, dpi = 300, bg = "white"
+    )
+  } else {message("10 (via manual/risk_clusters) saltada: run_sections$risk_clusters != TRUE.")}
+
+
+  ### 10.1. Curtailments por cluster de turbinas ----
+
+  if (run_stat) {
+    curtl_cl_stat_dt <- join_curtailments_to_clusters(
+      curtl_dt_unfilt, cluster_dt_stat, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
+    )
+    if (curtl_cl_stat_dt[is.na(cluster_id), .N] > 0) {
+      message(sprintf(
+        "Aviso: %d curtailments de turbinas fora do cluster estatistico (turbina nao existe em wtg?) -- turbinas: %s",
+        curtl_cl_stat_dt[is.na(cluster_id), .N],
+        paste(sort(unique(curtl_cl_stat_dt[is.na(cluster_id), turbine])), collapse = ", ")
+      ))
+    }
+    cluster_summary_stat    <- summarise_cluster_curtailments(curtl_cl_stat_dt)
+    cluster_weekly_stat_dt  <- summarise_cluster_curtailments_weekly(curtl_cl_stat_dt)
+    marginal_stat_dt        <- summarise_turbine_marginal_contribution(curtl_cl_stat_dt, fatality_incidents$turbine)
+    perm_stat_dt            <- permutation_test_marginal_contribution_all(
+      curtl_cl_stat_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
+    )
+
+    write_xlsx_local(
+      list(
+        Cluster_threshold_sweep    = cluster_sens_dt,
+        Stat_cluster_by_turbine    = cluster_summary_stat$by_turbine,
+        Stat_cluster_by_cluster    = cluster_summary_stat$by_cluster,
+        Stat_cluster_weekly        = cluster_weekly_stat_dt,
+        Stat_marginal_contribution = marginal_stat_dt,
+        Stat_permutation_test      = perm_stat_dt
+      ),
+      file.path(folder_output, "curtailment_cluster_patterns_statistical.xlsx")
+    )
+
+    p_curtl_stat_total <- plot_cluster_curtailments_total(
+      cluster_summary_stat, highlight_clusters = highlight_clusters_stat,
+      title = "Curtailments by statistical cluster (full period)"
+    )
+    ggsave(
+      file.path(folder_output, "cluster_curtailments_stat_total.png"),
+      plot = p_curtl_stat_total, width = 8, height = 5, dpi = 300, bg = "white"
+    )
+
+    p_curtl_stat_weekly <- plot_cluster_curtailments_weekly(
+      cluster_weekly_stat_dt, highlight_clusters = highlight_clusters_stat,
+      title = "Weekly curtailments by statistical cluster"
+    )
+    ggsave(
+      file.path(folder_output, "cluster_curtailments_stat_weekly.png"),
+      plot = p_curtl_stat_weekly, width = 9, height = 5, dpi = 300, bg = "white"
+    )
   }
-  cluster_summary_stat    <- summarise_cluster_curtailments(curtl_cl_stat_dt)
-  cluster_weekly_stat_dt  <- summarise_cluster_curtailments_weekly(curtl_cl_stat_dt)
-  marginal_stat_dt        <- summarise_turbine_marginal_contribution(curtl_cl_stat_dt, fatality_incidents$turbine)
-  perm_stat_dt            <- permutation_test_marginal_contribution_all(
-    curtl_cl_stat_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
-  )
 
-  curtl_cl_manual_dt <- join_curtailments_to_clusters(
-    curtl_dt_unfilt, cluster_dt_manual, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
-  )
-  if (curtl_cl_manual_dt[is.na(cluster_id), .N] > 0) {
-    message(sprintf(
-      "Aviso: %d curtailments de turbinas fora dos setores manuais (manual_turbine_clusters incompleto?) -- turbinas: %s",
-      curtl_cl_manual_dt[is.na(cluster_id), .N],
-      paste(sort(unique(curtl_cl_manual_dt[is.na(cluster_id), turbine])), collapse = ", ")
-    ))
+  if (run_manual) {
+    curtl_cl_manual_dt <- join_curtailments_to_clusters(
+      curtl_dt_unfilt, cluster_dt_manual, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
+    )
+    if (curtl_cl_manual_dt[is.na(cluster_id), .N] > 0) {
+      message(sprintf(
+        "Aviso: %d curtailments de turbinas fora dos setores manuais (manual_turbine_clusters incompleto?) -- turbinas: %s",
+        curtl_cl_manual_dt[is.na(cluster_id), .N],
+        paste(sort(unique(curtl_cl_manual_dt[is.na(cluster_id), turbine])), collapse = ", ")
+      ))
+    }
+    cluster_summary_manual   <- summarise_cluster_curtailments(curtl_cl_manual_dt)
+    cluster_weekly_manual_dt <- summarise_cluster_curtailments_weekly(curtl_cl_manual_dt)
+    marginal_manual_dt       <- summarise_turbine_marginal_contribution(curtl_cl_manual_dt, fatality_incidents$turbine)
+    perm_manual_dt           <- permutation_test_marginal_contribution_all(
+      curtl_cl_manual_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
+    )
+
+    write_xlsx_local(
+      list(
+        Manual_cluster_by_turbine  = cluster_summary_manual$by_turbine,
+        Manual_cluster_by_cluster  = cluster_summary_manual$by_cluster,
+        Manual_cluster_weekly      = cluster_weekly_manual_dt,
+        Manual_marginal_contrib    = marginal_manual_dt,
+        Manual_permutation_test    = perm_manual_dt
+      ),
+      file.path(folder_output, "curtailment_cluster_patterns_manual.xlsx")
+    )
+
+    p_curtl_manual_total <- plot_cluster_curtailments_total(
+      cluster_summary_manual, highlight_clusters = highlight_clusters_manual,
+      title = "Curtailments by manual sector (full period)"
+    )
+    ggsave(
+      file.path(folder_output, "cluster_curtailments_manual_total.png"),
+      plot = p_curtl_manual_total, width = 8, height = 5, dpi = 300, bg = "white"
+    )
+
+    p_curtl_manual_weekly <- plot_cluster_curtailments_weekly(
+      cluster_weekly_manual_dt, highlight_clusters = highlight_clusters_manual,
+      title = "Weekly curtailments by manual sector"
+    )
+    ggsave(
+      file.path(folder_output, "cluster_curtailments_manual_weekly.png"),
+      plot = p_curtl_manual_weekly, width = 9, height = 5, dpi = 300, bg = "white"
+    )
   }
-  cluster_summary_manual   <- summarise_cluster_curtailments(curtl_cl_manual_dt)
-  cluster_weekly_manual_dt <- summarise_cluster_curtailments_weekly(curtl_cl_manual_dt)
-  marginal_manual_dt       <- summarise_turbine_marginal_contribution(curtl_cl_manual_dt, fatality_incidents$turbine)
-  perm_manual_dt           <- permutation_test_marginal_contribution_all(
-    curtl_cl_manual_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
-  )
-
-  write_xlsx_local(
-    list(
-      Cluster_threshold_sweep    = cluster_sens_dt,
-      Stat_cluster_by_turbine    = cluster_summary_stat$by_turbine,
-      Stat_cluster_by_cluster    = cluster_summary_stat$by_cluster,
-      Stat_cluster_weekly        = cluster_weekly_stat_dt,
-      Stat_marginal_contribution = marginal_stat_dt,
-      Stat_permutation_test      = perm_stat_dt,
-      Manual_cluster_by_turbine  = cluster_summary_manual$by_turbine,
-      Manual_cluster_by_cluster  = cluster_summary_manual$by_cluster,
-      Manual_cluster_weekly      = cluster_weekly_manual_dt,
-      Manual_marginal_contrib    = marginal_manual_dt,
-      Manual_permutation_test    = perm_manual_dt
-    ),
-    file.path(folder_output, "curtailment_cluster_patterns.xlsx")
-  )
-
-  p_curtl_stat_total <- plot_cluster_curtailments_total(
-    cluster_summary_stat, highlight_clusters = highlight_clusters_stat,
-    title = "Curtailments by statistical cluster (full period)"
-  )
-  ggsave(
-    file.path(folder_output, "cluster_curtailments_stat_total.png"),
-    plot = p_curtl_stat_total, width = 8, height = 5, dpi = 300, bg = "white"
-  )
-
-  p_curtl_stat_weekly <- plot_cluster_curtailments_weekly(
-    cluster_weekly_stat_dt, highlight_clusters = highlight_clusters_stat,
-    title = "Weekly curtailments by statistical cluster"
-  )
-  ggsave(
-    file.path(folder_output, "cluster_curtailments_stat_weekly.png"),
-    plot = p_curtl_stat_weekly, width = 9, height = 5, dpi = 300, bg = "white"
-  )
-
-  p_curtl_manual_total <- plot_cluster_curtailments_total(
-    cluster_summary_manual, highlight_clusters = highlight_clusters_manual,
-    title = "Curtailments by manual sector (full period)"
-  )
-  ggsave(
-    file.path(folder_output, "cluster_curtailments_manual_total.png"),
-    plot = p_curtl_manual_total, width = 8, height = 5, dpi = 300, bg = "white"
-  )
-
-  p_curtl_manual_weekly <- plot_cluster_curtailments_weekly(
-    cluster_weekly_manual_dt, highlight_clusters = highlight_clusters_manual,
-    title = "Weekly curtailments by manual sector"
-  )
-  ggsave(
-    file.path(folder_output, "cluster_curtailments_manual_weekly.png"),
-    plot = p_curtl_manual_weekly, width = 9, height = 5, dpi = 300, bg = "white"
-  )
 
 
   ### 10.2. Ocorrencia de tracks de especie por cluster de turbinas ----
+  ###       (species_tracks_dt/species_weekly_dt/species_by_turbine_dt sao
+  ###       partilhados pelas 2 vias -- calculados 1 so' vez)
 
   species_tracks_dt <- assign_tracks_to_nearest_turbine(track_dt_unfilt, wtg, species_sel = cluster_species_sel)
   species_label_txt  <- paste(cluster_species_sel, collapse = "/")
 
   species_weekly_dt     <- summarise_track_occurrence_weekly(species_tracks_dt)
   species_by_turbine_dt <- summarise_track_occurrence_by_turbine(species_tracks_dt)
-  species_by_cluster_stat   <- summarise_track_occurrence_by_cluster(species_tracks_dt, cluster_dt_stat)
-  species_by_cluster_manual <- summarise_track_occurrence_by_cluster(species_tracks_dt, cluster_dt_manual)
 
-  write_xlsx_local(
-    list(
-      Species_weekly            = species_weekly_dt,
-      Species_by_turbine        = species_by_turbine_dt,
-      Species_stat_cluster      = species_by_cluster_stat$by_cluster,
-      Species_stat_weekly       = species_by_cluster_stat$weekly,
-      Species_manual_cluster    = species_by_cluster_manual$by_cluster,
-      Species_manual_weekly     = species_by_cluster_manual$weekly
-    ),
-    file.path(folder_output, "track_species_clusters.xlsx")
-  )
+  species_xlsx_list <- list(Species_weekly = species_weekly_dt, Species_by_turbine = species_by_turbine_dt)
 
   p_species_weekly <- plot_species_occurrence_weekly(species_weekly_dt, species_label = species_label_txt)
   ggsave(
@@ -1675,62 +1685,102 @@ if (!exists("track_dt_unfilt")) {
     plot = p_species_weekly, width = 9, height = 4, dpi = 300, bg = "white"
   )
 
-  p_species_stat_total <- plot_cluster_species_total(
-    species_by_cluster_stat, highlight_clusters = highlight_clusters_stat, species_label = species_label_txt
-  )
-  ggsave(
-    file.path(folder_output, "cluster_species_stat_total.png"),
-    plot = p_species_stat_total, width = 8, height = 5, dpi = 300, bg = "white"
-  )
+  if (run_stat) {
+    species_by_cluster_stat <- summarise_track_occurrence_by_cluster(species_tracks_dt, cluster_dt_stat)
+    species_xlsx_list <- c(species_xlsx_list, list(
+      Species_stat_cluster = species_by_cluster_stat$by_cluster,
+      Species_stat_weekly  = species_by_cluster_stat$weekly
+    ))
 
-  p_species_stat_weekly <- plot_cluster_species_weekly(
-    species_by_cluster_stat, highlight_clusters = highlight_clusters_stat, species_label = species_label_txt
-  )
-  ggsave(
-    file.path(folder_output, "cluster_species_stat_weekly.png"),
-    plot = p_species_stat_weekly, width = 9, height = 5, dpi = 300, bg = "white"
-  )
+    p_species_stat_total <- plot_cluster_species_total(
+      species_by_cluster_stat, highlight_clusters = highlight_clusters_stat, species_label = species_label_txt
+    )
+    ggsave(
+      file.path(folder_output, "cluster_species_stat_total.png"),
+      plot = p_species_stat_total, width = 8, height = 5, dpi = 300, bg = "white"
+    )
 
-  p_species_manual_total <- plot_cluster_species_total(
-    species_by_cluster_manual, highlight_clusters = highlight_clusters_manual, species_label = species_label_txt
-  )
-  ggsave(
-    file.path(folder_output, "cluster_species_manual_total.png"),
-    plot = p_species_manual_total, width = 8, height = 5, dpi = 300, bg = "white"
-  )
+    p_species_stat_weekly <- plot_cluster_species_weekly(
+      species_by_cluster_stat, highlight_clusters = highlight_clusters_stat, species_label = species_label_txt
+    )
+    ggsave(
+      file.path(folder_output, "cluster_species_stat_weekly.png"),
+      plot = p_species_stat_weekly, width = 9, height = 5, dpi = 300, bg = "white"
+    )
+  }
 
-  p_species_manual_weekly <- plot_cluster_species_weekly(
-    species_by_cluster_manual, highlight_clusters = highlight_clusters_manual, species_label = species_label_txt
-  )
-  ggsave(
-    file.path(folder_output, "cluster_species_manual_weekly.png"),
-    plot = p_species_manual_weekly, width = 9, height = 5, dpi = 300, bg = "white"
-  )
+  if (run_manual) {
+    species_by_cluster_manual <- summarise_track_occurrence_by_cluster(species_tracks_dt, cluster_dt_manual)
+    species_xlsx_list <- c(species_xlsx_list, list(
+      Species_manual_cluster = species_by_cluster_manual$by_cluster,
+      Species_manual_weekly  = species_by_cluster_manual$weekly
+    ))
+
+    p_species_manual_total <- plot_cluster_species_total(
+      species_by_cluster_manual, highlight_clusters = highlight_clusters_manual, species_label = species_label_txt
+    )
+    ggsave(
+      file.path(folder_output, "cluster_species_manual_total.png"),
+      plot = p_species_manual_total, width = 8, height = 5, dpi = 300, bg = "white"
+    )
+
+    p_species_manual_weekly <- plot_cluster_species_weekly(
+      species_by_cluster_manual, highlight_clusters = highlight_clusters_manual, species_label = species_label_txt
+    )
+    ggsave(
+      file.path(folder_output, "cluster_species_manual_weekly.png"),
+      plot = p_species_manual_weekly, width = 9, height = 5, dpi = 300, bg = "white"
+    )
+  }
+
+  write_xlsx_local(species_xlsx_list, file.path(folder_output, "track_species_clusters.xlsx"))
 
 
   ### 10.3. Sumario "zona critica" -- comparacao expedita por turbina de
   ###       interesse: cluster com muitos curtailments E muito movimento
-  ###       da especie, para estatistico e manual ----
+  ###       da especie ----
 
-  source("R/turbine_critical_zone_summary.R")
+  if (run_stat) {
+    species_cluster_rank_stat_dt <- summarise_turbine_species_cluster_rank(
+      species_tracks_dt, cluster_dt_stat, fatality_incidents$turbine
+    )
+    critical_zone_stat_dt <- summarise_turbine_critical_zone(marginal_stat_dt, species_cluster_rank_stat_dt)
+    write_xlsx_local(
+      list(Critical_zone_statistical = critical_zone_stat_dt),
+      file.path(folder_output, "turbine_critical_zone_summary_statistical.xlsx")
+    )
 
-  species_cluster_rank_stat_dt <- summarise_turbine_species_cluster_rank(
-    species_tracks_dt, cluster_dt_stat, fatality_incidents$turbine
-  )
-  species_cluster_rank_manual_dt <- summarise_turbine_species_cluster_rank(
-    species_tracks_dt, cluster_dt_manual, fatality_incidents$turbine
-  )
+    # vista combinada para o relatorio -- mesma logica de fatality_risk_summary_dt
+    # (via manual, abaixo), aqui para a via estatistica
+    stat_risk_summary_dt <- merge(
+      critical_zone_stat_dt,
+      perm_stat_dt[, .(turbine, observed_pct, expected_pct_uniform, p_value_gt_uniform)],
+      by = "turbine"
+    )
+  }
 
-  critical_zone_stat_dt   <- summarise_turbine_critical_zone(marginal_stat_dt, species_cluster_rank_stat_dt)
-  critical_zone_manual_dt <- summarise_turbine_critical_zone(marginal_manual_dt, species_cluster_rank_manual_dt)
+  if (run_manual) {
+    species_cluster_rank_manual_dt <- summarise_turbine_species_cluster_rank(
+      species_tracks_dt, cluster_dt_manual, fatality_incidents$turbine
+    )
+    critical_zone_manual_dt <- summarise_turbine_critical_zone(marginal_manual_dt, species_cluster_rank_manual_dt)
+    write_xlsx_local(
+      list(Critical_zone_manual = critical_zone_manual_dt),
+      file.path(folder_output, "turbine_critical_zone_summary_manual.xlsx")
+    )
 
-  write_xlsx_local(
-    list(
-      Critical_zone_statistical = critical_zone_stat_dt,
-      Critical_zone_manual      = critical_zone_manual_dt
-    ),
-    file.path(folder_output, "turbine_critical_zone_summary.xlsx")
-  )
+    # Sumario UNICO para o relatorio (secção "Fatality Investigation & Risk
+    # Clusters") -- junta o critical_zone_manual_dt (contributo marginal +
+    # ranking de atividade da especie) com o p-value do teste de permutacao
+    # (perm_manual_dt), so' para as turbinas de incidente. Nao substitui os
+    # 2 exports xlsx acima (mantidos tal como estavam, dados tecnicos
+    # completos) -- e' so' uma vista combinada para apresentacao.
+    fatality_risk_summary_dt <- merge(
+      critical_zone_manual_dt,
+      perm_manual_dt[, .(turbine, observed_pct, expected_pct_uniform, p_value_gt_uniform)],
+      by = "turbine"
+    )
+  }
 
 }
 
@@ -1784,7 +1834,60 @@ report_params <- list(
   shutdown_bands      = if (exists("summary_tt_bands")) summary_tt_bands else NULL,
   shutdown_plot       = if (exists("p_shutdown_time")) p_shutdown_time else NULL,
 
-  coverage3d_by_turbine = if (exists("summary_cov")) summary_cov$by_turbine else NULL
+  coverage3d_by_turbine = if (exists("summary_cov")) summary_cov$by_turbine else NULL,
+
+  safe_dist_overall    = if (exists("summary_safe_dist")) summary_safe_dist$overall else NULL,
+  safe_dist_by_species = if (exists("summary_safe_dist")) summary_safe_dist$by_species else NULL,
+  safe_dist_plot       = if (exists("p_safe_dist_hist")) p_safe_dist_hist else NULL,
+
+  fatality_signal_counts    = if (exists("fatality_summary")) fatality_summary$counts_by_signal else NULL,
+  fatality_top_candidates   = if (exists("fatality_summary")) fatality_summary$top_candidates else NULL,
+  fatality_window_response_summary = if (exists("fatality_window_response_summary_dt")) fatality_window_response_summary_dt else NULL,
+  fatality_abundance_pre_post       = if (exists("fatality_abundance_pre_post_dt")) fatality_abundance_pre_post_dt else NULL,
+
+  risk_cluster_map    = if (exists("p_map_manual")) p_map_manual else NULL,
+  risk_cluster_summary = if (exists("cluster_summary_manual")) cluster_summary_manual$by_cluster else NULL,
+  risk_fatality_summary = if (exists("fatality_risk_summary_dt")) fatality_risk_summary_dt else NULL,
+
+  stat_cluster_map     = if (exists("p_map_stat")) p_map_stat else NULL,
+  stat_cluster_summary = if (exists("cluster_summary_stat")) cluster_summary_stat$by_cluster else NULL,
+  stat_risk_summary    = if (exists("stat_risk_summary_dt")) stat_risk_summary_dt else NULL,
+
+  min_indiv_summary  = if (exists("min_indiv_summary_dt")) min_indiv_summary_dt else NULL,
+  min_indiv_plot_daily = if (exists("p_min_indiv_daily")) p_min_indiv_daily else NULL,
+
+  species_weekly_plot = if (exists("p_species_weekly")) p_species_weekly else NULL,
+
+  ## Literais de configuracao (userSettings_BSH.R) -- so' para texto
+  ## descritivo no Rmd (ver report/report_template.rmd), NAO controlam
+  ## nenhum calculo aqui. Sempre definidos independentemente dos switches
+  ## de run_sections (sao literais de settings, nao objetos calculados) --
+  ## mesmo padrao de IDF_monthly_report.R/monthly_report_template.rmd.
+  heartbeat_interval_min    = heartbeat_interval_min,
+  heartbeat_offline_gap_min = heartbeat_offline_gap_min,
+
+  curtailment_start_end_gap_sec  = curtailment_start_end_gap_sec,
+  curtailment_max_next_gap_sec   = curtailment_max_next_gap_sec,
+  curtailment_drop_pct_threshold = curtailment_drop_pct_threshold,
+  safe_shutdown_rpm               = safe_shutdown_rpm,
+
+  shutdown_time_thresholds = shutdown_time_thresholds,
+  shutdown_time_low_cut    = shutdown_time_low_cut,
+  shutdown_time_high_cut   = shutdown_time_high_cut,
+
+  safe_dist_reference_line_m   = safe_dist_reference_line_m,
+  safe_dist_rpm_threshold        = safe_dist_rpm_threshold,
+  safe_dist_already_slowing_rpm  = safe_dist_already_slowing_rpm,
+
+  track_proximity_threshold_m = track_proximity_threshold_m,
+  fatality_post_incident_days = fatality_post_incident_days,
+
+  cluster_max_dist_m = cluster_max_dist_m,
+  cluster_perm_n      = cluster_perm_n,
+  cluster_species_label = paste(cluster_species_sel, collapse = "/"),
+
+  min_individuals_bin_min      = min_individuals_bin_min,
+  min_individuals_merge_dist_m = min_individuals_merge_dist_m
 )
 
 ## Reutiliza o template Word da empresa (estilos, cabecalho/rodape com

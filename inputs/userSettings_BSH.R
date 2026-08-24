@@ -21,7 +21,8 @@ run_sections <- list(
   fatality_investigation = TRUE,  # 4 (tracks + disponibilidade + resposta na janela de cada incidente)
   coverage_3d             = FALSE,  # 5.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
   min_individuals          = TRUE,  # 6.4 (contagem minima de individuos por bin, farm-wide)
-  turbine_clustering       = TRUE   # 10 (clusters espaciais de turbinas: curtailments e tracks de especie) -- corre sobre o historico completo (_unfilt), pode ser mais lento
+  turbine_clustering       = TRUE,  # 10 (clusters ESTATISTICOS de turbinas, por distancia: curtailments e tracks de especie) -- corre sobre o historico completo (_unfilt), pode ser mais lento
+  risk_clusters            = TRUE   # 10 (clusters MANUAIS/setores, a mesma analise mas para manual_turbine_clusters -- independente do estatistico acima, liga/desliga a sua vontade)
 )
 
 
@@ -448,13 +449,19 @@ cluster_perm_n <- 999
 # coerente e nao um numero fixo de turbinas por setor).
 # Nota: BSH69 nao existe -- a numeracao das turbinas salta mesmo de BSH68
 # para BSH70 (confirmado, nao e' uma turbina em falta desta lista).
+# IDs sempre com 2 digitos (BSH01, nao BSH1) -- mesma convencao usada em
+# curtl_dt/scada_dt/track_dt e no shapefile normalizado (ver zero-padding
+# de wtg$InternalNa, secção 0 acima); Setor_E/Setor_F tinham "BSH1".."BSH9"
+# sem zero, o que fazia join_curtailments_to_clusters() (por "turbine")
+# nunca corresponder essas 9 turbinas -- mesmo bug de fundo do plot
+# espacial (2026-08).
 manual_turbine_clusters <- list(
   Setor_A = c("BSH33", "BSH34", "BSH35", "BSH36", "BSH37", "BSH38", "BSH39", "BSH40"),
   Setor_B = c("BSH41", "BSH42", "BSH43", "BSH44", "BSH45", "BSH46", "BSH47", "BSH48"),
   Setor_C = c("BSH30", "BSH31", "BSH32"),
   Setor_D = c("BSH16", "BSH17", "BSH18", "BSH19", "BSH20", "BSH21", "BSH22", "BSH23", "BSH24", "BSH25", "BSH26", "BSH27", "BSH28", "BSH29"),
-  Setor_E = c("BSH5", "BSH6", "BSH7", "BSH8", "BSH9", "BSH10", "BSH11", "BSH12", "BSH13", "BSH14", "BSH15"),
-  Setor_F = c("BSH1", "BSH2", "BSH3", "BSH4"),
+  Setor_E = c("BSH05", "BSH06", "BSH07", "BSH08", "BSH09", "BSH10", "BSH11", "BSH12", "BSH13", "BSH14", "BSH15"),
+  Setor_F = c("BSH01", "BSH02", "BSH03", "BSH04"),
   Setor_G = c("BSH49", "BSH50", "BSH51", "BSH52", "BSH53", "BSH54", "BSH55", "BSH56", "BSH57", "BSH58", "BSH59", "BSH60"),
   Setor_H = c("BSH61", "BSH62", "BSH63", "BSH64", "BSH65", "BSH66", "BSH67", "BSH68", "BSH70"),
   Setor_I = c("BSH71", "BSH72", "BSH73", "BSH74", "BSH75", "BSH76", "BSH77", "BSH78", "BSH79", "BSH80")

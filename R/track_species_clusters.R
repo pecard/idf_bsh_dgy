@@ -200,9 +200,14 @@ plot_species_occurrence_weekly <- function(weekly_dt, species_label = "Kestrel")
   ggplot2::ggplot(weekly_dt, ggplot2::aes(x = period, y = n_tracks)) +
     ggplot2::geom_line(color = "steelblue") +
     ggplot2::geom_point(color = "steelblue") +
+    # expand = c(0,0) + breaks mensais -- mesma correcao ja aplicada aos
+    # plots de cobertura diaria (R/data_coverage.R), aqui adaptada ao
+    # historico completo (varios meses) do relatorio anual
+    ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m", expand = c(0, 0)) +
     ggplot2::labs(x = "Week", y = "Number of tracks",
                   title = sprintf("Weekly track occurrence -- %s (farm-wide)", species_label)) +
-    ggplot2::theme_minimal()
+    ggplot2::theme_minimal() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 }
 
 
@@ -231,7 +236,12 @@ plot_cluster_species_weekly <- function(by_cluster_out, highlight_clusters = NUL
   ggplot2::ggplot(dt, ggplot2::aes(x = period, y = n_tracks, color = cluster_id, linewidth = is_highlight, group = cluster_id)) +
     ggplot2::geom_line() +
     ggplot2::scale_linewidth_manual(values = c(`TRUE` = 1.3, `FALSE` = 0.5), guide = "none") +
+    # expand = c(0,0) + breaks mensais -- mesma correcao ja aplicada aos
+    # plots de cobertura diaria (R/data_coverage.R), aqui adaptada ao
+    # historico completo (varios meses) do relatorio anual
+    ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%Y-%m", expand = c(0, 0)) +
     ggplot2::labs(x = "Week", y = "Number of tracks", color = "Cluster",
                   title = sprintf("Weekly tracks by cluster -- %s", species_label)) +
-    ggplot2::theme_minimal()
+    ggplot2::theme_minimal() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
 }
