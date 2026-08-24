@@ -591,11 +591,11 @@ if (exists("heartb_dt")) {
   )
   
   idf_availability_summary <- summarise_availability(idf_availability_dt)
-  
-  # writexl::write_xlsx(idf_availability_summary$by_idf,
-  #                     file.path(folder_output, "idf_availability_summary_by_idf.xlsx"))
-  # writexl::write_xlsx(idf_availability_summary$by_month,
-  #                     file.path(folder_output, "idf_availability_summary_by_month.xlsx"))
+
+  write_xlsx_local(
+    list(By_idf = idf_availability_summary$by_idf, By_month = idf_availability_summary$by_month),
+    file.path(folder_output, "idf_availability_summary.xlsx")
+  )
   
   # Unidades com mais tempo offline - usado nos 2 graficos abaixo, para
   # manterem as mesmas unidades e ficarem legiveis
@@ -1379,7 +1379,7 @@ ggsave(
   plot = p_min_indiv, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
 )
 
-p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt, date_breaks = "1 month", date_labels = "%Y-%m")
+p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt, date_breaks = "1 month", date_labels = "%Y-%m", geom_type = "bar")
 p_min_indiv_daily
 ggsave(
   file.path(folder_output, "min_individuals_daily_max.png"),
@@ -1812,6 +1812,31 @@ if (!exists("track_dt_unfilt")) {
 
 source("R/report.R")
 
+# Universo total de turbinas/unidades IDF do parque -- so' para contextualizar,
+# no relatorio, que fraccao desse universo tem dados de cobertura (secções
+# 2.1/2.2). n_idf_total e' a uniao de Primary IDF + Secondary IDF(s) (esta
+# ultima pode ter varias unidades separadas por virgula, ver
+# compare_turbine_idf_matrix(), R/turbine_idf_coverage.R) -- nao e' so' o
+# numero de unidades que ja mandaram heartbeats (esse e' um subconjunto).
+n_turbines_total <- if (exists("wtg")) nrow(wtg) else NULL
+n_idf_total <- if (exists("turbine_idf_manual_dt")) {
+  manual_dt <- data.table::as.data.table(turbine_idf_manual_dt)
+  primary   <- manual_dt[["Primary IDF"]]
+  secondary_raw <- manual_dt[["Secondary IDF(s)"]]
+  secondary <- if (!is.null(secondary_raw)) {
+    trimws(unlist(strsplit(secondary_raw[!is.na(secondary_raw) & secondary_raw != ""], ",")))
+  } else character()
+  data.table::uniqueN(c(primary[!is.na(primary) & primary != ""], secondary))
+} else NULL
+
+# Nomes (so' o basename, sem caminho) dos xlsx de anexo cujo nome inclui a
+# janela de SCADA (scada_ini/scada_end) -- usados no relatorio (report/
+# report_template.rmd) para apontar cada tabela ao seu ficheiro de anexo
+# completo, sem repetir a construcao do nome ali.
+xlsx_assess_name    <- if (exists("scada_ini")) sprintf("curtailment_response_assessment_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
+xlsx_shutdown_name  <- if (exists("scada_ini")) sprintf("curtailment_shutdown_time_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
+xlsx_safe_dist_name <- if (exists("scada_ini")) sprintf("curtailment_safe_distance_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
+
 report_params <- list(
   title         = paste("IDF Analysis Report -", project_ref),
   project_ref   = project_ref,
@@ -1856,7 +1881,26 @@ report_params <- list(
   min_indiv_summary  = if (exists("min_indiv_summary_dt")) min_indiv_summary_dt else NULL,
   min_indiv_plot_daily = if (exists("p_min_indiv_daily")) p_min_indiv_daily else NULL,
 
-  species_weekly_plot = if (exists("p_species_weekly")) p_species_weekly else NULL,
+  n_turbines_total = n_turbines_total,
+  n_idf_total      = n_idf_total,
+
+  ## Nomes (basename) dos xlsx de anexo -- 1 por tabela do relatorio, so'
+  ## para o texto "ver anexo ...xlsx" junto de cada tabela (report/
+  ## report_template.rmd). Fixos exceto os 3 que incluem a janela de SCADA
+  ## no nome (calculados acima, antes de report_params).
+  xlsx_availability        = "idf_availability_summary.xlsx",
+  xlsx_coverage_turbine    = "data_coverage_turbine_curtailments_scada.xlsx",
+  xlsx_coverage_idf        = "data_coverage_idf_heartbeats.xlsx",
+  xlsx_assess              = xlsx_assess_name,
+  xlsx_shutdown            = xlsx_shutdown_name,
+  xlsx_safe_dist           = xlsx_safe_dist_name,
+  xlsx_coverage3d          = "coverage_3d_summary.xlsx",
+  xlsx_fatality            = "fatality_track_investigation.xlsx",
+  xlsx_risk_cluster_patterns = "curtailment_cluster_patterns_manual.xlsx",
+  xlsx_risk_critical_zone    = "turbine_critical_zone_summary_manual.xlsx",
+  xlsx_stat_cluster_patterns = "curtailment_cluster_patterns_statistical.xlsx",
+  xlsx_stat_critical_zone    = "turbine_critical_zone_summary_statistical.xlsx",
+  xlsx_min_indiv           = "min_individuals_per_bin.xlsx",
 
   ## Literais de configuracao (userSettings_BSH.R) -- so' para texto
   ## descritivo no Rmd (ver report/report_template.rmd), NAO controlam
@@ -1884,7 +1928,6 @@ report_params <- list(
 
   cluster_max_dist_m = cluster_max_dist_m,
   cluster_perm_n      = cluster_perm_n,
-  cluster_species_label = paste(cluster_species_sel, collapse = "/"),
 
   min_individuals_bin_min      = min_individuals_bin_min,
   min_individuals_merge_dist_m = min_individuals_merge_dist_m

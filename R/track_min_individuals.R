@@ -247,14 +247,21 @@ summarise_daily_max_individuals <- function(bins_dt, tz = NULL) {
 ## 7. Plot diario -- maximo diario ao longo do calendario, por especie ----
 
 plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vulture", "Steppe-Eagle"),
-                                       date_breaks = "15 days", date_labels = "%d/%m/%Y") {
+                                       date_breaks = "15 days", date_labels = "%d/%m/%Y",
+                                       geom_type = c("line", "bar")) {
 
+  geom_type <- match.arg(geom_type)
   dt <- data.table::copy(daily_dt)
   if (!is.null(species_sel)) dt <- dt[spec %in% species_sel]
 
-  ggplot(dt, aes(x = day, y = max_individuals)) +
-    geom_line(colour = "steelblue") +
-    geom_point(colour = "steelblue", size = 1.2) +
+  p <- ggplot(dt, aes(x = day, y = max_individuals))
+  p <- if (geom_type == "bar") {
+    p + geom_col(fill = "steelblue")
+  } else {
+    p + geom_line(colour = "steelblue") + geom_point(colour = "steelblue", size = 1.2)
+  }
+
+  p +
     facet_wrap(~ spec, ncol = 1, scales = "free_y") +
     # expand = c(0,0) -- sem isto o ggplot acrescenta ~5% de folga de cada
     # lado do eixo x por omissao, mostrando datas fora do periodo coberto

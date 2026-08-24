@@ -157,7 +157,11 @@ plot_time_to_threshold <- function(time_to_threshold_dt, threshold_sel = NULL) {
   ggplot(dt, aes(x = time_to_threshold_sec)) +
     geom_histogram(binwidth = 5, boundary = 0, fill = "steelblue", colour = "black") +
     facet_wrap(~ threshold_lab, ncol = 1, scales = "free_y") +
-    scale_x_continuous(breaks = scales::breaks_width(10)) +
+    # expand = c(0,0) -- sem isto o ggplot acrescenta ~5% de folga de cada
+    # lado do eixo x por omissao (mesma correcao ja aplicada aos plots de
+    # cobertura diaria, R/data_coverage.R); breaks a cada 20s (nao 10s) para
+    # os rotulos nao ficarem demasiado densos
+    scale_x_continuous(breaks = scales::breaks_width(20), expand = c(0, 0)) +
     labs(
       x = "Time to reach threshold (s)",
       y = "Number of curtailments",

@@ -45,7 +45,24 @@ params:
   min_indiv_summary: !r NULL
   min_indiv_plot_daily: !r NULL
 
-  species_weekly_plot: !r NULL
+  n_turbines_total: !r NULL
+  n_idf_total: !r NULL
+
+  # Nomes (basename) dos xlsx de anexo -- 1 por tabela, para a frase "ver
+  # anexo ...xlsx" logo apos cada tabela do relatorio.
+  xlsx_availability: !r NULL
+  xlsx_coverage_turbine: !r NULL
+  xlsx_coverage_idf: !r NULL
+  xlsx_assess: !r NULL
+  xlsx_shutdown: !r NULL
+  xlsx_safe_dist: !r NULL
+  xlsx_coverage3d: !r NULL
+  xlsx_fatality: !r NULL
+  xlsx_risk_cluster_patterns: !r NULL
+  xlsx_risk_critical_zone: !r NULL
+  xlsx_stat_cluster_patterns: !r NULL
+  xlsx_stat_critical_zone: !r NULL
+  xlsx_min_indiv: !r NULL
 
   # Literais de configuracao (userSettings_BSH.R) usados so' para texto
   # descritivo -- cada secção que aplica um threshold/cut-off mostra o
@@ -71,7 +88,6 @@ params:
 
   cluster_max_dist_m: !r NULL
   cluster_perm_n: !r NULL
-  cluster_species_label: !r NULL
 
   min_individuals_bin_min: !r NULL
   min_individuals_merge_dist_m: !r NULL
@@ -177,6 +193,19 @@ recode_values <- function(x, col, mapping) {
   x[[col]][hit] <- unname(mapping[x[[col]][hit]])
   x
 }
+
+# Frase-padrao, logo apos cada tabela, a apontar para o xlsx de anexo com o
+# detalhe completo (todas as linhas/colunas) -- pedido do Paulo (2026-08)
+# para toda tabela do relatorio, nao so' as ja' identificadas como resumos
+# reduzidos. Chamar APENAS num chunk results='asis' proprio, separado do
+# chunk que desenha a tabela (report_table() depende do auto-print do
+# knit_print.flextable, que so' funciona corretamente quando essa e' a
+# UNICA expressao visivel do bloco -- ver nota "Cada tabela/plot..." acima).
+annex_note <- function(xlsx_name) {
+  if (!is.null(xlsx_name)) {
+    cat(sprintf("\n*The full table is available in the accompanying workbook: `%s`.*\n", xlsx_name))
+  }
+}
 ```
 
 <!--
@@ -221,11 +250,17 @@ Heartbeats are expected every `r params$heartbeat_interval_min` minutes; an IDF 
 <!-- Source: idf_availability_summary$by_idf <- summarise_availability(idf_availability_dt), R/availability_daylight.R -->
 ```{r availability-table}
 if (!is.null(params$availability_by_idf)) {
-  report_table(rename_display(
-    params$availability_by_idf,
-    c(idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
-  ))
+  report_table(
+    rename_display(
+      drop_cols(params$availability_by_idf, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
+      c(idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
+    ),
+    max_col_width_cm = 1.5
+  )
 }
+```
+```{r availability-annex, results='asis'}
+annex_note(params$xlsx_availability)
 ```
 
 ## Availability Calendar
@@ -234,7 +269,7 @@ Daily offline percentage per IDF unit, laid out as a calendar.
 
 <!-- Source: plot_availability_calendar(), R/availability_daylight.R -->
 ```{r availability-cal, fig.width=6.30, fig.height=9}
-if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
+if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal + ggplot2::theme(legend.position = "bottom"))
 ```
 
 ## Availability Frequency
@@ -254,22 +289,43 @@ Temporal overlap between Curtailments and SCADA (by turbine), and Heartbeats cov
 
 Number of days with data on each side, and the days where both overlap, per turbine.
 
-<!-- Source: coverage_turbine_summary <- overlap_summary_by_turbine(coverage_turbine_dt, "Curtailments", "SCADA"), R/data_coverage.R -->
-```{r coverage-turbine-table}
+<!-- Source: coverage_turbine_summary <- overlap_summary_by_turbine(coverage_turbine_dt, "Curtailments", "SCADA"), R/data_coverage.R -- pct_overlap_of_total (days_overlap/total_days) is computed here in the Rmd, not in R, purely for display -->
+```{r coverage-turbine-prep, include=FALSE}
+cov_turbine_dt <- NULL
 if (!is.null(params$coverage_turbine_summary)) {
+  cov_turbine_dt <- as.data.frame(params$coverage_turbine_summary)
+  cov_turbine_dt$pct_overlap_of_total <- round(100 * cov_turbine_dt$days_overlap / cov_turbine_dt$total_days, 1)
+}
+```
+```{r coverage-turbine-text, results='asis'}
+if (!is.null(cov_turbine_dt) && nrow(cov_turbine_dt) > 0) {
+  pct_of_farm <- ""
+  if (!is.null(params$n_turbines_total) && params$n_turbines_total > 0) {
+    pct_of_farm <- sprintf(" (%.0f%% of the %d turbines in the farm)", 100 * nrow(cov_turbine_dt) / params$n_turbines_total, params$n_turbines_total)
+  }
+  cat(sprintf(
+    "%d turbine(s)%s have overlapping Curtailments/SCADA data, with %% Overlap ranging from %.1f%% to %.1f%%.\n\n",
+    nrow(cov_turbine_dt), pct_of_farm,
+    min(cov_turbine_dt$pct_overlap_of_total, na.rm = TRUE), max(cov_turbine_dt$pct_overlap_of_total, na.rm = TRUE)
+  ))
+}
+```
+```{r coverage-turbine-table}
+if (!is.null(cov_turbine_dt)) {
   report_table(
     rename_display(
-      params$coverage_turbine_summary,
+      drop_cols(cov_turbine_dt, c("pct_a_with_overlap", "pct_b_with_overlap")),
       c(turbine = "Turbine", total_days = "Total Days", days_a = "Days Curtailments",
-        days_b = "Days SCADA", days_overlap = "Days Overlap",
-        pct_a_with_overlap = "% Curtailments Overlap", pct_b_with_overlap = "% SCADA Overlap")
+        days_b = "Days SCADA", days_overlap = "Days Overlap", pct_overlap_of_total = "% Overlap")
     ),
     col_widths_cm = c(
-      "Total Days" = 1.8, "Days Curtailments" = 1.8, "Days SCADA" = 1.8, "Days Overlap" = 1.8,
-      "% Curtailments Overlap" = 2, "% SCADA Overlap" = 2
+      "Total Days" = 1.8, "Days Curtailments" = 1.8, "Days SCADA" = 1.8, "Days Overlap" = 1.8, "% Overlap" = 1.8
     )
   )
 }
+```
+```{r coverage-turbine-annex, results='asis'}
+annex_note(params$xlsx_coverage_turbine)
 ```
 
 ## Heartbeats Coverage by IDF Unit
@@ -277,6 +333,19 @@ if (!is.null(params$coverage_turbine_summary)) {
 Days with heartbeat data, and days missing, per IDF unit.
 
 <!-- Source: coverage_idf_summary <- presence_summary_by_idf(coverage_idf_dt), R/data_coverage.R -->
+```{r coverage-idf-text, results='asis'}
+if (!is.null(params$coverage_idf_summary) && nrow(params$coverage_idf_summary) > 0) {
+  dt <- params$coverage_idf_summary
+  pct_of_total <- ""
+  if (!is.null(params$n_idf_total) && params$n_idf_total > 0) {
+    pct_of_total <- sprintf(" (%.0f%% of the %d IDF units in the farm)", 100 * nrow(dt) / params$n_idf_total, params$n_idf_total)
+  }
+  cat(sprintf(
+    "%d IDF unit(s)%s have heartbeat data, with %% Missing ranging from %.1f%% to %.1f%%.\n\n",
+    nrow(dt), pct_of_total, min(dt$pct_missing, na.rm = TRUE), max(dt$pct_missing, na.rm = TRUE)
+  ))
+}
+```
 ```{r coverage-idf-table}
 if (!is.null(params$coverage_idf_summary)) {
   report_table(
@@ -288,6 +357,9 @@ if (!is.null(params$coverage_idf_summary)) {
     col_widths_cm = c("Total Days" = 1.8, "Days with Data" = 1.8, "Days Missing" = 1.8, "% Missing" = 1.5)
   )
 }
+```
+```{r coverage-idf-annex, results='asis'}
+annex_note(params$xlsx_coverage_idf)
 ```
 
 # Curtailment Response Assessment
@@ -309,6 +381,9 @@ if (!is.null(params$assess_by_status)) {
     c(final_status = "Status", n = "N", pct = "%", pct_of_valid = "% of Valid")
   ))
 }
+```
+```{r assess-status-annex, results='asis'}
+annex_note(params$xlsx_assess)
 ```
 
 ## By Turbine
@@ -334,6 +409,9 @@ if (!is.null(params$assess_by_turbine)) {
   )
 }
 ```
+```{r assess-turbine-annex, results='asis'}
+annex_note(params$xlsx_assess)
+```
 
 # Shutdown Time
 
@@ -357,6 +435,9 @@ if (!is.null(params$shutdown_by_turbine)) {
   )
 }
 ```
+```{r shutdown-turbine-annex, results='asis'}
+annex_note(params$xlsx_shutdown)
+```
 
 ## Time to Threshold Bands
 
@@ -373,6 +454,9 @@ if (!is.null(params$shutdown_bands)) {
     )
   ))
 }
+```
+```{r shutdown-bands-annex, results='asis'}
+annex_note(params$xlsx_shutdown)
 ```
 
 ## Time to Threshold Distribution
@@ -406,6 +490,9 @@ if (!is.null(params$safe_dist_overall)) {
   )
 }
 ```
+```{r safe-dist-overall-annex, results='asis'}
+annex_note(params$xlsx_safe_dist)
+```
 
 ## By Species
 
@@ -429,6 +516,9 @@ if (!is.null(params$safe_dist_by_species)) {
   )
 }
 ```
+```{r safe-dist-species-annex, results='asis'}
+annex_note(params$xlsx_safe_dist)
+```
 
 ## Distribution
 
@@ -449,6 +539,9 @@ if (!is.null(params$coverage3d_by_turbine)) {
     c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered")
   ))
 }
+```
+```{r coverage3d-annex, results='asis'}
+annex_note(params$xlsx_coverage3d)
 ```
 
 Note: interactive 3D plots are saved separately as HTML files (folder `coverage_3d/`) and are not embedded in this document.
@@ -471,26 +564,28 @@ if (!is.null(params$fatality_signal_counts)) {
   ))
 }
 ```
+```{r fatality-signal-counts-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
 
 ## Top Candidate Tracks
 
-The tracks most likely associated with each incident -- those whose last recorded position ends closest to the turbine, among the candidate signal types.
+The tracks most likely associated with each incident -- those whose last recorded position ends closest to the turbine, among the candidate signal types. This is an adjusted summary (Incident, Turbine, Species, Triggered Curtailment and Signal only); the full table (all candidate tracks, including track ID, point counts, distances and timestamps) is in the accompanying workbook.
 
 <!-- Source: fatality_summary$top_candidates <- summarise_fatality_tracks(fatality_tracks_dt)$top_candidates, R/fatality_track_investigation.R -->
 ```{r fatality-top-candidates-table}
 if (!is.null(params$fatality_top_candidates)) {
-  report_table(
-    rename_display(
-      drop_cols(params$fatality_top_candidates, c("first_time", "last_time")),
-      c(incident_id = "Incident", turbine = "Turbine", species = "Species", track_id = "Track",
-        n_points = "Points", first_dist_m = "First Dist. (m)", last_dist_m = "Last Dist. (m)",
-        min_dist_m = "Min Dist. (m)", within_threshold = "Within Threshold",
-        last_within_threshold = "Last Within Threshold", triggered_curtailment = "Triggered Curtailment",
-        signal = "Signal")
-    ),
-    max_col_width_cm = 2.5
-  )
+  dt <- as.data.frame(params$fatality_top_candidates)
+  dt <- dt[, intersect(c("incident_id", "turbine", "species", "triggered_curtailment", "signal"), names(dt)), drop = FALSE]
+  report_table(rename_display(
+    dt,
+    c(incident_id = "Incident", turbine = "Turbine", species = "Species",
+      triggered_curtailment = "Triggered Curtailment", signal = "Signal")
+  ))
 }
+```
+```{r fatality-top-candidates-annex, results='asis'}
+annex_note(params$xlsx_fatality)
 ```
 
 ## Curtailment Response Around Each Incident
@@ -506,6 +601,9 @@ if (!is.null(params$fatality_window_response_summary)) {
   ))
 }
 ```
+```{r fatality-window-response-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
 
 ## Abundance Before/After Each Incident
 
@@ -520,6 +618,9 @@ if (!is.null(params$fatality_abundance_pre_post)) {
       peak_individuals = "Peak Individuals", mean_individuals = "Mean Individuals")
   ))
 }
+```
+```{r fatality-abundance-annex, results='asis'}
+annex_note(params$xlsx_fatality)
 ```
 
 ## Manual Risk Clusters Map
@@ -545,49 +646,56 @@ if (!is.null(params$risk_cluster_summary)) {
   ))
 }
 ```
+```{r risk-cluster-summary-annex, results='asis'}
+annex_note(params$xlsx_risk_cluster_patterns)
+```
 
 ## Risk Summary at Incident Turbines
 
-For each incident's turbine: its marginal contribution to its manual sector's curtailments, the species' track activity ranking within the sector, and a permutation-test comparison of its observed share of curtailments against what a uniform distribution across the sector's turbines would predict.
+For each incident's turbine: its share of its manual sector's curtailments (Sector Curtlms.), and its rank among the sector's turbines by that share (Curtlm. Rank).
 
 <!-- Source: fatality_risk_summary_dt <- merge(critical_zone_manual_dt, perm_manual_dt), IDF_analysis.R section 10.3 (critical_zone_manual_dt from summarise_turbine_critical_zone(), R/turbine_critical_zone_summary.R; perm_manual_dt from permutation_test_marginal_contribution_all(), R/curtailment_cluster_patterns.R) -->
 ```{r risk-fatality-summary-table}
 if (!is.null(params$risk_fatality_summary)) {
-  report_table(
-    rename_display(
-      drop_cols(params$risk_fatality_summary, c("n_clusters", "track_n_clusters")),
-      c(turbine = "Turbine", cluster_id = "Sector", n_turbines_in_cluster = "Turbines in Sector",
-        n_total = "Sector Curtailments", pct_of_cluster = "% of Sector", cluster_rank = "Curtailment Rank",
-        track_n_tracks = "Species Tracks", track_pct_of_total = "% of Sector Tracks", track_cluster_rank = "Track Rank",
-        observed_pct = "Observed %", expected_pct_uniform = "Expected % (Uniform)", p_value_gt_uniform = "p-value")
-    ),
-    max_col_width_cm = 2.3
-  )
+  dt <- as.data.frame(params$risk_fatality_summary)
+  dt <- dt[, intersect(c("turbine", "n_total", "cluster_rank"), names(dt)), drop = FALSE]
+  report_table(rename_display(
+    dt,
+    c(turbine = "Turbine", n_total = "Sector Curtlms.", cluster_rank = "Curtlm. Rank")
+  ))
+}
+```
+```{r risk-fatality-summary-annex, results='asis'}
+annex_note(params$xlsx_risk_critical_zone)
+```
+
+```{r stat-cluster-heading, results='asis'}
+# Secção inteira (titulo + subsecções) so' aparece quando
+# run_sections$turbine_clustering = TRUE (via estatistica ligada) --
+# desligada por omissao (2026-08, pedido do Paulo: a via estatistica nao
+# acrescentava clareza ao lado da via manual/risk_clusters acima). Sem esta
+# guarda, o titulo e o texto apareceriam no docx mesmo com todas as
+# tabelas/plots vazios por baixo.
+if (!is.null(params$stat_cluster_map) || !is.null(params$stat_cluster_summary) || !is.null(params$stat_risk_summary)) {
+  cat("# Turbine Clustering (Statistical)\n\n")
+  cat(sprintf(
+    "Turbines grouped by distance (max %s m between turbines in the same cluster), an alternative to the manual sectors above -- same curtailment/track data, same methodology (rank + permutation test, %s permutations), grouped instead by proximity.\n\n",
+    params$cluster_max_dist_m, params$cluster_perm_n
+  ))
 }
 ```
 
-## Species Track Occurrence (Farm-wide)
-
-Weekly occurrence of `r params$cluster_species_label` tracks assigned to their nearest turbine, farm-wide -- the shared basis for both the manual and statistical clustering views.
-
-<!-- Source: p_species_weekly <- plot_species_occurrence_weekly(species_weekly_dt), R/track_species_clusters.R -->
-```{r species-weekly-plot, fig.width=6.30, fig.height=4}
-if (!is.null(params$species_weekly_plot)) print(params$species_weekly_plot)
+```{r stat-cluster-map-heading, results='asis'}
+if (!is.null(params$stat_cluster_map)) cat("## Statistical Clusters Map\n\n")
 ```
-
-# Turbine Clustering (Statistical)
-
-Turbines grouped by distance (max `r params$cluster_max_dist_m` m between turbines in the same cluster), an alternative to the manual sectors above -- same curtailment/track data, same methodology (rank + permutation test, `r params$cluster_perm_n` permutations), grouped instead by proximity.
-
-## Statistical Clusters Map
-
 <!-- Source: p_map_stat <- plot_turbine_clusters_map(wtg, cluster_dt_stat, ...), R/turbine_spatial_clusters.R -->
 ```{r stat-cluster-map, fig.width=6.30, fig.height=5.04}
 if (!is.null(params$stat_cluster_map)) print(params$stat_cluster_map)
 ```
 
-## Curtailments by Statistical Cluster
-
+```{r stat-cluster-summary-heading, results='asis'}
+if (!is.null(params$stat_cluster_summary)) cat("## Curtailments by Statistical Cluster\n\n")
+```
 <!-- Source: cluster_summary_stat$by_cluster <- summarise_cluster_curtailments(curtl_cl_stat_dt)$by_cluster, R/curtailment_cluster_patterns.R -->
 ```{r stat-cluster-summary-table}
 if (!is.null(params$stat_cluster_summary)) {
@@ -598,11 +706,16 @@ if (!is.null(params$stat_cluster_summary)) {
   ))
 }
 ```
+```{r stat-cluster-summary-annex, results='asis'}
+annex_note(params$xlsx_stat_cluster_patterns)
+```
 
-## Risk Summary at Incident Turbines
-
-Same combined view as the manual sectors section above, computed instead over the statistical clusters.
-
+```{r stat-risk-summary-heading, results='asis'}
+if (!is.null(params$stat_risk_summary)) {
+  cat("## Risk Summary at Incident Turbines\n\n")
+  cat("Same combined view as the manual sectors section above, computed instead over the statistical clusters.\n\n")
+}
+```
 <!-- Source: stat_risk_summary_dt <- merge(critical_zone_stat_dt, perm_stat_dt), IDF_analysis.R section 10.3 -->
 ```{r stat-risk-summary-table}
 if (!is.null(params$stat_risk_summary)) {
@@ -617,6 +730,9 @@ if (!is.null(params$stat_risk_summary)) {
     max_col_width_cm = 2.3
   )
 }
+```
+```{r stat-risk-summary-annex, results='asis'}
+annex_note(params$xlsx_stat_critical_zone)
 ```
 
 # Minimum Individuals per Time Bin
@@ -635,10 +751,13 @@ if (!is.null(params$min_indiv_summary)) {
   ))
 }
 ```
+```{r min-indiv-summary-annex, results='asis'}
+annex_note(params$xlsx_min_indiv)
+```
 
 ## Daily Peak, by Species
 
-<!-- Source: plot_daily_max_individuals(min_indiv_daily_dt, date_breaks = "1 month"), R/track_min_individuals.R -->
+<!-- Source: plot_daily_max_individuals(min_indiv_daily_dt, date_breaks = "1 month", geom_type = "bar"), R/track_min_individuals.R -->
 ```{r min-indiv-daily-plot, fig.width=6.30, fig.height=9}
 if (!is.null(params$min_indiv_plot_daily)) print(params$min_indiv_plot_daily)
 ```
