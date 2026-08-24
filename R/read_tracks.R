@@ -4,9 +4,9 @@
 ## Depende de: data.table, janitor, R/read_utils.R
 ##
 
-read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv", tz = "UTC") {
+read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv", tz = "UTC", farm_pattern = NULL) {
 
-  files <- list_files_multi_dir(databases_dirs, pattern)
+  files <- list_files_multi_dir(databases_dirs, pattern, farm_pattern)
 
   vars <- c(
     'TrackId',

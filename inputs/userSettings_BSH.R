@@ -58,6 +58,15 @@ crs_projection_plannar <- 32641 # codigo CRS da projecao planar a usar
 databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-2025_BSH_DGY/IDF_PortalData/BSH"
 
+## databases_dir acima e' PARTILHADA com o projeto DGY (userSettings_DGY.R
+## aponta para a mesma pasta) -- os 4 patterns abaixo, por si so', nao
+## discriminam por parque. farm_pattern e' um filtro ADICIONAL (2a
+## passagem, por substring "BSH" em qualquer posicao do nome do ficheiro --
+## ver list_files_multi_dir(), R/read_utils.R) para excluir ficheiros do
+## DGY que estejam na mesma pasta partilhada, mesmo que a posicao exata do
+## codigo do parque varie entre convencoes de nome (ex: SCADA_..._BSH_T014.csv
+## vs SCADA_BSH014_..._BSH.csv).
+farm_pattern <- "BSH"
 
 trackreport_pattern  <- "TrackReport_" #"TrackReport.+csv"          # ex: TrackReport_20260201_....csv
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx

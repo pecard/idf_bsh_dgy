@@ -4,9 +4,9 @@
 ## Depende de: data.table, R/read_utils.R
 ##
 
-read_scada_data <- function(databases_dirs, pattern, tz = "UTC") {
+read_scada_data <- function(databases_dirs, pattern, tz = "UTC", farm_pattern = NULL) {
 
-  files <- list_files_multi_dir(databases_dirs, pattern)
+  files <- list_files_multi_dir(databases_dirs, pattern, farm_pattern)
 
   if (length(files) == 0) return(NULL)
 

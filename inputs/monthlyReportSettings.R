@@ -82,6 +82,13 @@ crs_projection_plannar <- 32641 # codigo CRS da projecao planar a usar (plot esp
 databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-2025_BSH_DGY/IDF_PortalData/BSH"
 
+## databases_dir e' partilhada com o projeto DGY -- farm_pattern filtra por
+## substring "BSH" (em qualquer posicao do nome do ficheiro) para excluir
+## ficheiros do DGY que estejam na mesma pasta partilhada (ver
+## list_files_multi_dir(), R/read_utils.R, e o mesmo ajuste em
+## userSettings_BSH.R).
+farm_pattern <- "BSH"
+
 trackreport_pattern  <- "TrackReport_"
 curtailments_pattern <- "curtail_orders|Curtailments"
 scada_pattern        <- "SCADA_.+csv"

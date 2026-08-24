@@ -5,9 +5,9 @@
 ##
 
 read_heartbeats_data <- function(databases_dirs, pattern = "Bash_Heartbeats.+csv",
-                                  tz = "UTC", exclude_idf = c("TIE-ZAR-119", "")) {
+                                  tz = "UTC", exclude_idf = c("TIE-ZAR-119", ""), farm_pattern = NULL) {
 
-  files <- list_files_multi_dir(databases_dirs, pattern)
+  files <- list_files_multi_dir(databases_dirs, pattern, farm_pattern)
 
   if (length(files) == 0) return(NULL)
 

@@ -14,13 +14,35 @@
 ## padrao apanhou em CADA diretorio -- unica forma de confirmar, a olho na
 ## consola, que um databases_dir_alt (ex: a pasta de rede do BSH) esta mesmo
 ## a ser lido, e nao so' o databases_dir local (pedido do Paulo, 2026-08).
-list_files_multi_dir <- function(databases_dirs, pattern) {
+##
+## farm_pattern (opcional): databases_dir e' partilhado entre projetos (BSH
+## e DGY apontam para a MESMA pasta local "data-raw"), e os 2 parques usam o
+## mesmo pattern por tipo de dataset (ex: scada_pattern = "SCADA_.+csv" nos
+## 2) -- sem discriminar por parque, correr o projeto BSH apanharia tambem
+## ficheiros SCADA do DGY que estejam nessa pasta partilhada, e vice-versa.
+## O codigo do parque ("BSH"/"DGY") aparece no nome do ficheiro, mas NAO
+## necessariamente na mesma posicao entre datasets/convencoes de nome (ex:
+## SCADA_20260801_20260815_BSH_T014.csv vs SCADA_BSH014_20260801_20260815_BSH.csv)
+## -- por isso farm_pattern e' aplicado como um filtro SEPARADO (2a
+## passagem, por substring em qualquer posicao), em vez de tentar embutir a
+## posicao exata do codigo num unico regex combinado com `pattern`.
+list_files_multi_dir <- function(databases_dirs, pattern, farm_pattern = NULL) {
   per_dir <- lapply(databases_dirs, function(d) list.files(d, pattern = pattern, full.names = TRUE))
   for (i in seq_along(databases_dirs)) {
     message(sprintf("list_files_multi_dir: %d ficheiro(s) '%s' em '%s'", length(per_dir[[i]]), pattern, databases_dirs[i]))
   }
 
   files <- unlist(per_dir, use.names = FALSE)
+
+  if (!is.null(farm_pattern)) {
+    n_before <- length(files)
+    files <- files[grepl(farm_pattern, basename(files))]
+    message(sprintf(
+      "list_files_multi_dir: %d de %d ficheiro(s) mantidos apos filtrar por farm_pattern = '%s'.",
+      length(files), n_before, farm_pattern
+    ))
+  }
+
   out <- files[!duplicated(basename(files))]
 
   n_dupes <- length(files) - length(out)

@@ -196,25 +196,25 @@ if (!exists("force_reread_cache_monthly")) force_reread_cache_monthly <- FALSE
 track_dt_unfilt <- reuse_or_load_cache(
   if (exists("track_dt_unfilt")) track_dt_unfilt else NULL,
   "track_dt_unfilt", file.path(folder_cache, "track_dt_unfilt.fst"),
-  function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone),
+  function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone, farm_pattern = if (exists("farm_pattern")) farm_pattern else NULL),
   force_reread = force_reread_cache_monthly, tz = proj_timezone
 )
 curtl_dt_unfilt <- reuse_or_load_cache(
   if (exists("curtl_dt_unfilt")) curtl_dt_unfilt else NULL,
   "curtl_dt_unfilt", file.path(folder_cache, "curtl_dt_unfilt.fst"),
-  function() read_curtailments_data(databases_dirs, curtailments_pattern, tz = proj_timezone),
+  function() read_curtailments_data(databases_dirs, curtailments_pattern, tz = proj_timezone, farm_pattern = if (exists("farm_pattern")) farm_pattern else NULL),
   force_reread = force_reread_cache_monthly, tz = proj_timezone
 )
 scada_dt_unfilt <- reuse_or_load_cache(
   if (exists("scada_dt_unfilt")) scada_dt_unfilt else NULL,
   "scada_dt_unfilt", file.path(folder_cache, "scada_dt_unfilt.fst"),
-  function() read_scada_data(databases_dirs, scada_pattern, tz = proj_timezone),
+  function() read_scada_data(databases_dirs, scada_pattern, tz = proj_timezone, farm_pattern = if (exists("farm_pattern")) farm_pattern else NULL),
   force_reread = force_reread_cache_monthly, tz = proj_timezone
 )
 heartb_dt_unfilt <- reuse_or_load_cache(
   if (exists("heartb_dt_unfilt")) heartb_dt_unfilt else NULL,
   "heartb_dt_unfilt", file.path(folder_cache, "heartb_dt_unfilt.fst"),
-  function() read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone),
+  function() read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone, farm_pattern = if (exists("farm_pattern")) farm_pattern else NULL),
   force_reread = force_reread_cache_monthly, tz = proj_timezone
 )
 

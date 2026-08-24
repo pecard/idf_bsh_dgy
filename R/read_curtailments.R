@@ -11,9 +11,9 @@
 ## -- ja aconteceu (2026-08).
 ##
 
-read_curtailments_data <- function(databases_dirs, pattern, tz = "UTC") {
+read_curtailments_data <- function(databases_dirs, pattern, tz = "UTC", farm_pattern = NULL) {
 
-  files <- list_files_multi_dir(databases_dirs, pattern)
+  files <- list_files_multi_dir(databases_dirs, pattern, farm_pattern)
 
   read_one_file <- function(f) {
     readxl::read_xlsx(f, sheet = 1, skip = 1) %>%
