@@ -13,7 +13,12 @@
 ## de "end"). Este script deixa testar a hipotese de dar mais tempo (uma
 ## "grace window" depois do "end") antes de decidir que um curtailment foi
 ## mesmo "missed" -- ver R/curtailment_response_grace.R,
-## classify_response_flag_grace().
+## classify_response_flag_grace(). Testa tambem a mesma ideia diretamente em
+## time_to_rpm_thresholds() (R/curtailment_shutdown_time.R,
+## compare_shutdown_time_grace()) -- essa funcao alimenta tambem a secção
+## "Shutdown Time" do relatorio (nao so' a classificacao missed/delayed),
+## pelo mesmo motivo: so' procura leituras de RPM dentro da duracao da
+## propria ordem de curtailment.
 ##
 ## Reutiliza a MESMA cache (fst) ja' gravada por uma corrida anterior de
 ## run_annual_analysis.R (ou run_annual_analysis_DGY.R) -- NAO rele os
@@ -93,6 +98,25 @@ grace_comparison_dt <- compare_grace_windows(
 )
 
 print(grace_comparison_dt)
+
+
+## ---- 1.b) Mesma ideia, mas para time_to_rpm_thresholds() diretamente --
+##           esta funcao alimenta tanto a secção "Shutdown Time" do
+##           relatorio (summarise_time_to_threshold() -- %Reached, tempo
+##           medio/mediano por limiar) como o "delayed" acima -- so' olha
+##           para leituras dentro de [start, end] da propria ordem de
+##           curtailment; grace_after_end_sec estende essa janela para
+##           [start, end + grace]. Ver se %Reached sobe e o tempo medio se
+##           torna mais realista com mais grace, para os 3 limiares (2, 1,
+##           0 rpm) em conjunto (nao so' o "1o limiar" usado na
+##           classificacao missed/delayed acima). --------------------------
+
+shutdown_time_grace_dt <- compare_shutdown_time_grace(
+  curtl_scada_dt, scada_dt_unfilt, grace_candidates_sec = grace_candidates_sec,
+  thresholds = shutdown_time_thresholds, start_end_gap_sec = curtailment_start_end_gap_sec
+)
+
+print(shutdown_time_grace_dt)
 
 
 ## ---- 2) Replot dos mesmos exemplos do relatorio, com a classificacao

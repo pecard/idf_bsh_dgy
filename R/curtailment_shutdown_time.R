@@ -30,8 +30,18 @@
 
 ## 1. Tempo ate cada limiar de RPM, por curtailment ----
 
+## grace_after_end_sec (2026-08, exploracao a pedido do Paulo -- ver
+## R/curtailment_response_grace.R e explore_curtailment_response_grace.R):
+## por omissao 0, reproduz exatamente o comportamento historico (janela de
+## procura = duracao real da propria ordem de curtailment, [start, end]).
+## > 0 estende essa janela para [start, end + grace_after_end_sec] -- alguns
+## curtailments demoram mais a atingir um limiar do que a duracao da propria
+## ordem (inercia mecanica da turbina), e ficam com time_to_threshold_sec =
+## NA (nunca atingido) so' por causa disso, nao porque a turbina nao
+## respondeu. Afeta tambem classify_response_flag() (R/curtailment_response_classify.R),
+## que usa esta funcao para decidir "missed" vs "delayed".
 time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
-                                   start_end_gap_sec = 2) {
+                                   start_end_gap_sec = 2, grace_after_end_sec = 0) {
 
   dt <- as.data.table(curtl_dt)
   dt[, curtailment_id := .I]
@@ -55,7 +65,7 @@ time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
   ## leituras RPM entre o start e o end de cada curtailment (duracao real do evento)
   rpm_dt <- scada_dt[readingname == "RPM", .(turbine = turbinelabel, datetime, rpm = value)]
 
-  windows <- dt_valid[, .(curtailment_id, turbine, window_start = start, window_end = end)]
+  windows <- dt_valid[, .(curtailment_id, turbine, window_start = start, window_end = end + grace_after_end_sec)]
 
   rpm_window <- rpm_dt[
     windows,
@@ -94,6 +104,47 @@ time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
   out <- merge(out, hits, by = c("curtailment_id", "threshold"), all.x = TRUE)
 
   setorder(out, curtailment_id, -threshold)
+  out[]
+}
+
+
+## 1.b Sweep de grace_after_end_sec -- resumo geral (todos os turbinas de
+##     curtl_dt em conjunto, por limiar) de %Reached/tempo medio para varios
+##     candidatos, para escolher um valor antes de o fixar em produtcao ----
+##
+## Custo: o join caro (time_to_rpm_thresholds()) so' corre 1 VEZ, no maior
+## grace_after_end_sec pedido -- para os candidatos mais pequenos, os hits
+## que cairam DEPOIS de end+g sao so' invalidados (voltados a NA) sobre o
+## resultado ja calculado, sem refazer o join (mesma licao de performance de
+## R/curtailment_response_grace.R, compare_grace_windows()).
+
+compare_shutdown_time_grace <- function(curtl_dt, scada_dt, grace_candidates_sec = c(0, 20, 40, 60, 90, 120),
+                                        thresholds = c(2, 1, 0), start_end_gap_sec = 2) {
+
+  max_grace <- max(grace_candidates_sec)
+  tt_max_dt <- time_to_rpm_thresholds(
+    curtl_dt, scada_dt, thresholds = thresholds,
+    start_end_gap_sec = start_end_gap_sec, grace_after_end_sec = max_grace
+  )
+
+  out <- data.table::rbindlist(lapply(grace_candidates_sec, function(g) {
+    dt <- data.table::copy(tt_max_dt)
+    beyond_grace <- !is.na(dt$hit_time) & as.numeric(difftime(dt$hit_time, dt$end, units = "secs")) > g
+    dt[beyond_grace, `:=`(hit_time = as.POSIXct(NA), time_to_threshold_sec = NA_real_)]
+
+    summary_dt <- dt[, .(
+      n_curtailments  = data.table::uniqueN(curtailment_id),
+      n_reached       = sum(!is.na(time_to_threshold_sec)),
+      pct_reached     = round(100 * sum(!is.na(time_to_threshold_sec)) / data.table::uniqueN(curtailment_id), 1),
+      mean_time_sec   = round(mean(time_to_threshold_sec, na.rm = TRUE), 1),
+      median_time_sec = round(median(time_to_threshold_sec, na.rm = TRUE), 1)
+    ), by = threshold]
+    summary_dt[, grace_after_end_sec := g]
+    summary_dt[]
+  }))
+
+  data.table::setcolorder(out, c("grace_after_end_sec", "threshold", "n_curtailments", "n_reached", "pct_reached", "mean_time_sec", "median_time_sec"))
+  data.table::setorder(out, grace_after_end_sec, -threshold)
   out[]
 }
 
