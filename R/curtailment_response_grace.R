@@ -82,15 +82,32 @@ find_grace_stop_times <- function(missed_dt, scada_dt, rpm_threshold = 1) {
   }
   data.table::setkey(rpm_dt, turbine, datetime)
 
-  qy <- missed_dt[, .(curtailment_id, turbine, start, end)]
-  match_dt <- rpm_dt[qy, on = .(turbine, datetime > end), mult = "first"]
+  # curtl_start/curtl_end (nao "start"/"end") -- bug real encontrado
+  # 2026-08: com a coluna chamada "end", o join nao-equi nao a devolvia de
+  # forma fiavel no resultado, e o difftime() mais abaixo acabava a
+  # resolver "end" para a VARIAVEL GLOBAL end (fim do periodo de analise,
+  # userSettings_BSH.R -- sourced no script que chama esta funcao), dando
+  # diferencas de meses/anos em vez de segundos. i./x. explicitos no j do
+  # join (em vez de depender da retencao automatica de colunas) e nomes
+  # que nao colidem com nenhuma variavel global evitam os 2 mecanismos
+  # possiveis do bug de uma vez -- mesmo padrao ja usado em
+  # time_to_rpm_thresholds() (window_start/window_end), R/curtailment_shutdown_time.R.
+  qy <- missed_dt[, .(curtailment_id, turbine, curtl_start = start, curtl_end = end)]
+  match_dt <- rpm_dt[
+    qy, on = .(turbine, datetime > curtl_end), mult = "first",
+    .(curtailment_id = i.curtailment_id, grace_stop_time = x.datetime)
+  ]
 
-  match_dt[, .(
-    curtailment_id,
-    grace_stop_time = datetime,
-    grace_stop_sec           = as.numeric(difftime(datetime, start, units = "secs")),
-    grace_stop_after_end_sec = as.numeric(difftime(datetime, end, units = "secs"))
+  # curtl_start/curtl_end recuperados por um merge EXPLICITO e' inequivoco
+  # (nao depende de nenhuma regra implicita de retencao de colunas do join
+  # nao-equi acima)
+  out <- merge(match_dt, qy[, .(curtailment_id, curtl_start, curtl_end)], by = "curtailment_id")
+  out[, `:=`(
+    grace_stop_sec           = as.numeric(difftime(grace_stop_time, curtl_start, units = "secs")),
+    grace_stop_after_end_sec = as.numeric(difftime(grace_stop_time, curtl_end, units = "secs"))
   )]
+
+  out[, .(curtailment_id, grace_stop_time, grace_stop_sec, grace_stop_after_end_sec)]
 }
 
 
