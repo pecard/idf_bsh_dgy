@@ -337,9 +337,7 @@ if (!is.null(cov_turbine_dt)) {
       c(turbine = "Turbine", total_days = "Total Days", days_a = "Days Curtailments",
         days_b = "Days SCADA", days_overlap = "Days Overlap", pct_overlap_of_total = "% Overlap")
     ),
-    col_widths_cm = c(
-      "Total Days" = 1.8, "Days Curtailments" = 1.8, "Days SCADA" = 1.8, "Days Overlap" = 1.8, "% Overlap" = 1.8
-    )
+    max_col_width_cm = 1.5
   )
 }
 ```
@@ -373,7 +371,7 @@ if (!is.null(params$coverage_idf_summary)) {
       c(idf = "IDF Unit", start = "From", end = "To", days_with_data = "Days with Data",
         total_days = "Total Days", days_missing = "Days Missing", pct_missing = "% Missing")
     ),
-    col_widths_cm = c("Total Days" = 1.8, "Days with Data" = 1.8, "Days Missing" = 1.8, "% Missing" = 1.5)
+    max_col_width_cm = 1.5
   )
 }
 ```
@@ -450,7 +448,7 @@ if (!is.null(params$shutdown_by_turbine)) {
         sd_time_sec = "SD (s)", min_time_sec = "Min (s)", max_time_sec = "Max (s)"
       )
     ),
-    max_col_width_cm = 2
+    max_col_width_cm = 1.5
   )
 }
 ```
@@ -502,10 +500,7 @@ if (!is.null(params$safe_dist_overall)) {
         pct_already_slowing = "% Already Slowing",
         mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
     ),
-    col_widths_cm = c(
-      "Mean React. Time (s)" = 2, "Mean Track Speed (m/s)" = 2, "% Already Slowing" = 2,
-      "Mean Safe Dist. (m)" = 2, "Median Safe Dist. (m)" = 2
-    )
+    max_col_width_cm = 1.5
   )
 }
 ```
@@ -528,10 +523,7 @@ if (!is.null(params$safe_dist_by_species)) {
         pct_already_slowing = "% Already Slowing",
         mean_min_safe_dist_m = "Mean Safe Dist. (m)", median_min_safe_dist_m = "Median Safe Dist. (m)")
     ),
-    col_widths_cm = c(
-      "Mean React. Time (s)" = 2, "Mean Track Speed (m/s)" = 2, "% Already Slowing" = 2,
-      "Mean Safe Dist. (m)" = 2, "Median Safe Dist. (m)" = 2
-    )
+    max_col_width_cm = 1.5
   )
 }
 ```
@@ -565,9 +557,9 @@ annex_note(params$xlsx_coverage3d)
 
 Note: interactive 3D plots are saved separately as HTML files (folder `coverage_3d/`) and are not embedded in this document.
 
-# Fatality Investigation & Risk Clusters
+# Fatality Investigation
 
-Investigation of the known fatality incidents (`r params$track_proximity_threshold_m` m proximity threshold to identify candidate tracks; the recorded incident date is when the carcass was found during a turbine ground survey, not the date of collision, so each incident is investigated over a window of days before that date, not the single day), combined with the manual (sector-based) turbine risk clusters -- an independent view of the same curtailment/track data, grouped by the pre-defined manual sectors (`manual_turbine_clusters`) rather than by statistical distance.
+Investigation of the known fatality incidents (`r params$track_proximity_threshold_m` m proximity threshold to identify candidate tracks; the recorded incident date is when the carcass was found during a turbine ground survey, not the date of collision, so each incident is investigated over a window of days before that date, not the single day).
 
 ## Candidate Tracks by Signal
 
@@ -576,11 +568,14 @@ Count of tracks recorded near each incident's turbine, by signal type (e.g. curt
 <!-- Source: fatality_summary$counts_by_signal <- summarise_fatality_tracks(fatality_tracks_dt)$counts_by_signal, R/fatality_track_investigation.R -->
 ```{r fatality-signal-counts-table}
 if (!is.null(params$fatality_signal_counts)) {
-  report_table(rename_display(
-    params$fatality_signal_counts,
-    c(incident_id = "Incident", turbine = "Turbine", species = "Species", signal = "Signal",
-      n_tracks = "Tracks", pct_of_incident = "% of Incident")
-  ))
+  report_table(
+    rename_display(
+      params$fatality_signal_counts,
+      c(incident_id = "Incident", turbine = "Turbine", species = "Species", signal = "Signal",
+        n_tracks = "Tracks", pct_of_incident = "% of Incident")
+    ),
+    max_col_width_cm = 1.5
+  )
 }
 ```
 ```{r fatality-signal-counts-annex, results='asis'}
@@ -631,30 +626,52 @@ Minimum-individuals abundance of the incident's species, comparing the `r params
 <!-- Source: fatality_abundance_pre_post_dt <- rbindlist over fatality_windows[[id]]$abundance <- summarise_individuals_pre_post(), R/fatality_window_analysis.R -->
 ```{r fatality-abundance-table}
 if (!is.null(params$fatality_abundance_pre_post)) {
-  report_table(rename_display(
-    params$fatality_abundance_pre_post,
-    c(incident_id = "Incident", period = "Period", n_days = "Days", n_bins = "Bins",
-      peak_individuals = "Peak Individuals", mean_individuals = "Mean Individuals")
-  ))
+  report_table(
+    rename_display(
+      params$fatality_abundance_pre_post,
+      c(incident_id = "Incident", period = "Period", n_days = "Days", n_bins = "Bins",
+        peak_individuals = "Peak Individuals", mean_individuals = "Mean Individuals")
+    ),
+    max_col_width_cm = 1.5
+  )
 }
 ```
 ```{r fatality-abundance-annex, results='asis'}
 annex_note(params$xlsx_fatality)
 ```
 
-## Manual Risk Clusters Map
+```{r cluster-section-guards, include=FALSE}
+# Secção 8 combina a via manual (antigas 7.5-7.8) e a via estatistica
+# (antiga secção 8 standalone) num so' capitulo, cada uma na sua propria
+# subsecção (8.1/8.2) -- cada uma so' aparece (titulo incluido) quando tem
+# conteudo: manual liga/desliga com run_sections$risk_clusters, estatistica
+# com run_sections$turbine_clustering (ambas em userSettings_BSH.R).
+show_manual_cluster <- !is.null(params$risk_cluster_map) || !is.null(params$risk_cluster_summary) || !is.null(params$risk_fatality_summary) || !is.null(params$species_activity_manual)
+show_stat_cluster    <- !is.null(params$stat_cluster_map) || !is.null(params$stat_cluster_summary) || !is.null(params$stat_risk_summary) || !is.null(params$species_activity_stat)
+```
 
-Turbine sectors as defined manually (`manual_turbine_clusters`), with the incident turbines highlighted.
+```{r cluster-section-heading, results='asis'}
+if (show_manual_cluster || show_stat_cluster) {
+  cat("# Turbine Clustering & Risk by Sector\n\n")
+  cat("Turbines grouped into clusters, 2 independent methods: manual sectors (pre-defined, `manual_turbine_clusters`) and statistical clusters (grouped by distance, max ", params$cluster_max_dist_m, " m between turbines in the same cluster). Each method groups the same underlying curtailment and track data differently; for each, curtailments per cluster, a permutation-test-based risk summary at the incident turbines, and species activity/risk-height exposure by cluster for the fatality-incident species (rank + permutation test, ", params$cluster_perm_n, " permutations where applicable).\n\n", sep = "")
+}
+```
 
+```{r manual-cluster-heading, results='asis'}
+if (show_manual_cluster) cat("## Manual Clustering\n\n")
+```
+
+```{r manual-cluster-map-heading, results='asis'}
+if (!is.null(params$risk_cluster_map)) cat("### Manual Risk Clusters Map\n\nTurbine sectors as defined manually (`manual_turbine_clusters`), with the incident turbines highlighted.\n\n")
+```
 <!-- Source: p_map_manual <- plot_turbine_clusters_map(wtg, cluster_dt_manual, ...), R/turbine_spatial_clusters.R -->
 ```{r risk-cluster-map, fig.width=6.30, fig.height=5.04}
 if (!is.null(params$risk_cluster_map)) print(params$risk_cluster_map)
 ```
 
-## Curtailments by Manual Sector
-
-Total curtailments per manual sector, over the full project history.
-
+```{r manual-cluster-summary-heading, results='asis'}
+if (!is.null(params$risk_cluster_summary)) cat("### Curtailments by Manual Sector\n\nTotal curtailments per manual sector, over the full project history.\n\n")
+```
 <!-- Source: cluster_summary_manual$by_cluster <- summarise_cluster_curtailments(curtl_cl_manual_dt)$by_cluster, R/curtailment_cluster_patterns.R -->
 ```{r risk-cluster-summary-table}
 if (!is.null(params$risk_cluster_summary)) {
@@ -669,10 +686,9 @@ if (!is.null(params$risk_cluster_summary)) {
 annex_note(params$xlsx_risk_cluster_patterns)
 ```
 
-## Risk Summary at Incident Turbines
-
-For each incident's turbine: its share of its manual sector's curtailments (Sector Curtlms.), and its rank among the sector's turbines by that share (Curtlm. Rank).
-
+```{r manual-risk-summary-heading, results='asis'}
+if (!is.null(params$risk_fatality_summary)) cat("### Risk Summary at Incident Turbines\n\nFor each incident's turbine: its share of its manual sector's curtailments (Sector Curtlms.), and its rank among the sector's turbines by that share (Curtlm. Rank).\n\n")
+```
 <!-- Source: fatality_risk_summary_dt <- merge(critical_zone_manual_dt, perm_manual_dt), IDF_analysis.R section 10.3 (critical_zone_manual_dt from summarise_turbine_critical_zone(), R/turbine_critical_zone_summary.R; perm_manual_dt from permutation_test_marginal_contribution_all(), R/curtailment_cluster_patterns.R) -->
 ```{r risk-fatality-summary-table}
 if (!is.null(params$risk_fatality_summary)) {
@@ -688,10 +704,16 @@ if (!is.null(params$risk_fatality_summary)) {
 annex_note(params$xlsx_risk_critical_zone)
 ```
 
-## Species Activity & Risk-Height Exposure by Cluster
-
-Complementary view, independent of curtailments: for the species involved in the known fatality incidents, farm-wide track activity and flight-height risk exposure, by manual sector, over the full project history. Track activity is the number of distinct tracks of that species whose closest-approach turbine falls in that sector; risk-height exposure is the % of that species' reliable flight-height readings (tracks with at least `r params$flight_min_track_points` points and a flight speed between `r params$flight_speed_ms_min` and `r params$flight_speed_ms_max` m/s, in that sector) that fall within the `r params$risk_height_lower`-`r params$risk_height_upper` m rotor-swept band. Both are ranked per species (rank 1 = highest); a sector ranking high on both is where this species is both most frequently present and most often flying at rotor height, relative to the other sectors -- not a measure of curtailment response or turbine performance.
-
+```{r manual-species-risk-heading, results='asis'}
+if (!is.null(params$species_activity_manual) && !is.null(params$species_risk_height_manual)) {
+  cat("### Species Activity & Risk-Height Exposure by Cluster\n\n")
+  cat(sprintf(
+    "Complementary view, independent of curtailments: for the species involved in the known fatality incidents, farm-wide track activity and flight-height risk exposure, by manual sector, over the full project history. Track activity is the number of distinct tracks of that species whose closest-approach turbine falls in that sector; risk-height exposure is the %% of that species' reliable flight-height readings (tracks with at least %s points and a flight speed between %s and %s m/s, in that sector) that fall within the %s-%s m rotor-swept band. Both are ranked per species (rank 1 = highest); a sector ranking high on both is where this species is both most frequently present and most often flying at rotor height, relative to the other sectors -- not a measure of curtailment response or turbine performance.\n\n",
+    params$flight_min_track_points, params$flight_speed_ms_min, params$flight_speed_ms_max,
+    params$risk_height_lower, params$risk_height_upper
+  ))
+}
+```
 <!-- Source: species_activity_manual_dt <- summarise_species_cluster_activity(), species_risk_height_manual_dt <- summarise_species_cluster_risk_height(), R/species_cluster_risk_ranking.R -->
 ```{r species-risk-manual-table}
 if (!is.null(params$species_activity_manual) && !is.null(params$species_risk_height_manual)) {
@@ -705,35 +727,46 @@ if (!is.null(params$species_activity_manual) && !is.null(params$species_risk_hei
     "pct_in_risk_zone", "risk_rank"
   ), names(dt)), drop = FALSE]
   dt <- dt[order(dt$spec, dt$activity_rank), ]
-  report_table(rename_display(
-    dt,
-    c(spec = "Species", cluster_id = "Sector", n_tracks = "Tracks", pct_of_total = "% of Species Tracks",
-      activity_rank = "Activity Rank", pct_in_risk_zone = "% in Risk-Height Zone", risk_rank = "Risk-Height Rank")
-  ))
+  report_table(
+    rename_display(
+      dt,
+      c(spec = "Species", cluster_id = "Sector", n_tracks = "Tracks", pct_of_total = "% of Species Tracks",
+        activity_rank = "Activity Rank", pct_in_risk_zone = "% in Risk-Height Zone", risk_rank = "Risk-Height Rank")
+    ),
+    max_col_width_cm = 1.5
+  )
 }
 ```
 ```{r species-risk-manual-annex, results='asis'}
 annex_note(params$xlsx_species_risk_manual)
 ```
 
-### Risk Context at Incident Turbines
-
-For each incident's turbine, where its sector falls in the two rankings above -- "below median" means that sector ranks in the lower half of sectors for that species on that metric (comparatively less active / less exposed than most other sectors, for that species). This describes relative standing only, using the full project history; it does not establish causality with the incident, and being below median on both metrics does not amount to a validated "low risk" threshold -- it only means the baseline activity/exposure data do not contradict treating that sector's risk as comparatively lower than the farm's other sectors.
-
+```{r manual-incident-risk-context-heading, results='asis'}
+if (!is.null(params$incident_risk_context_manual)) cat("#### Risk Context at Incident Turbines\n\nFor each incident's turbine, where its sector falls in the two rankings above -- \"below median\" means that sector ranks in the lower half of sectors for that species on that metric (comparatively less active / less exposed than most other sectors, for that species). This describes relative standing only, using the full project history; it does not establish causality with the incident, and being below median on both metrics does not amount to a validated \"low risk\" threshold -- it only means the baseline activity/exposure data do not contradict treating that sector's risk as comparatively lower than the farm's other sectors.\n\n")
+```
 <!-- Source: incident_risk_context_manual_dt <- summarise_incident_cluster_risk_context(), R/species_cluster_risk_ranking.R -->
 ```{r incident-risk-context-manual-table}
 if (!is.null(params$incident_risk_context_manual)) {
-  report_table(rename_display(
-    drop_cols(params$incident_risk_context_manual, c("below_median_activity", "below_median_risk_height", "low_baseline_risk_supported")),
-    c(incident_id = "Incident", turbine = "Turbine", species = "Species", cluster_id = "Sector",
-      n_clusters = "N Sectors", track_activity_rank = "Activity Rank", track_pct_of_total = "% of Species Tracks",
-      risk_height_rank = "Risk-Height Rank", pct_in_risk_zone = "% in Risk-Height Zone")
-  ))
+  report_table(
+    rename_display(
+      drop_cols(params$incident_risk_context_manual, c("below_median_activity", "below_median_risk_height", "low_baseline_risk_supported")),
+      c(incident_id = "Incident", turbine = "Turbine", species = "Species", cluster_id = "Sector",
+        n_clusters = "N Sectors", track_activity_rank = "Activity Rank", track_pct_of_total = "% of Species Tracks",
+        risk_height_rank = "Risk-Height Rank", pct_in_risk_zone = "% in Risk-Height Zone")
+    ),
+    max_col_width_cm = 1.5
+  )
 }
 ```
+
+```{r manual-incident-risk-context-lead, results='asis'}
+if (!is.null(params$incident_risk_context_manual)) cat("Per-incident detail:\n\n")
+```
+
 ```{r incident-risk-context-manual-text, results='asis'}
 if (!is.null(params$incident_risk_context_manual) && nrow(params$incident_risk_context_manual) > 0) {
   dt <- params$incident_risk_context_manual
+  cat("\n")
   for (i in seq_len(nrow(dt))) {
     r <- dt[i, ]
     verdict <- if (isTRUE(r$low_baseline_risk_supported)) {
@@ -754,23 +787,11 @@ if (!is.null(params$incident_risk_context_manual) && nrow(params$incident_risk_c
 ```
 
 ```{r stat-cluster-heading, results='asis'}
-# Secção inteira (titulo + subsecções) so' aparece quando
-# run_sections$turbine_clustering = TRUE (via estatistica ligada) --
-# desligada por omissao (2026-08, pedido do Paulo: a via estatistica nao
-# acrescentava clareza ao lado da via manual/risk_clusters acima). Sem esta
-# guarda, o titulo e o texto apareceriam no docx mesmo com todas as
-# tabelas/plots vazios por baixo.
-if (!is.null(params$stat_cluster_map) || !is.null(params$stat_cluster_summary) || !is.null(params$stat_risk_summary)) {
-  cat("# Turbine Clustering (Statistical)\n\n")
-  cat(sprintf(
-    "Turbines grouped by distance (max %s m between turbines in the same cluster), an alternative to the manual sectors above -- same curtailment/track data, same methodology (rank + permutation test, %s permutations), grouped instead by proximity.\n\n",
-    params$cluster_max_dist_m, params$cluster_perm_n
-  ))
-}
+if (show_stat_cluster) cat("## Statistical Clustering\n\n")
 ```
 
 ```{r stat-cluster-map-heading, results='asis'}
-if (!is.null(params$stat_cluster_map)) cat("## Statistical Clusters Map\n\n")
+if (!is.null(params$stat_cluster_map)) cat("### Statistical Clusters Map\n\n")
 ```
 <!-- Source: p_map_stat <- plot_turbine_clusters_map(wtg, cluster_dt_stat, ...), R/turbine_spatial_clusters.R -->
 ```{r stat-cluster-map, fig.width=6.30, fig.height=5.04}
@@ -778,7 +799,7 @@ if (!is.null(params$stat_cluster_map)) print(params$stat_cluster_map)
 ```
 
 ```{r stat-cluster-summary-heading, results='asis'}
-if (!is.null(params$stat_cluster_summary)) cat("## Curtailments by Statistical Cluster\n\n")
+if (!is.null(params$stat_cluster_summary)) cat("### Curtailments by Statistical Cluster\n\n")
 ```
 <!-- Source: cluster_summary_stat$by_cluster <- summarise_cluster_curtailments(curtl_cl_stat_dt)$by_cluster, R/curtailment_cluster_patterns.R -->
 ```{r stat-cluster-summary-table}
@@ -796,7 +817,7 @@ annex_note(params$xlsx_stat_cluster_patterns)
 
 ```{r stat-risk-summary-heading, results='asis'}
 if (!is.null(params$stat_risk_summary)) {
-  cat("## Risk Summary at Incident Turbines\n\n")
+  cat("### Risk Summary at Incident Turbines\n\n")
   cat("Same combined view as the manual sectors section above, computed instead over the statistical clusters.\n\n")
 }
 ```
@@ -816,7 +837,7 @@ if (!is.null(params$stat_risk_summary)) {
         track_pct_of_total = "% of Cluster Tracks", track_cluster_rank = "Track Rank",
         observed_pct = "Observed %")
     ),
-    max_col_width_cm = 2.3
+    max_col_width_cm = 1.5
   )
 }
 ```
@@ -826,7 +847,7 @@ annex_note(params$xlsx_stat_critical_zone)
 
 ```{r stat-species-risk-heading, results='asis'}
 if (!is.null(params$species_activity_stat) && !is.null(params$species_risk_height_stat)) {
-  cat("## Species Activity & Risk-Height Exposure by Cluster\n\n")
+  cat("### Species Activity & Risk-Height Exposure by Cluster\n\n")
   cat(sprintf(
     "Same complementary view as the manual sectors section above, computed instead over the statistical clusters: farm-wide track activity and flight-height risk exposure, for the species involved in the known fatality incidents, over the full project history (tracks with at least %s points and a flight speed between %s and %s m/s; risk-height band %s-%s m).\n\n",
     params$flight_min_track_points, params$flight_speed_ms_min, params$flight_speed_ms_max,
@@ -846,11 +867,14 @@ if (!is.null(params$species_activity_stat) && !is.null(params$species_risk_heigh
     "pct_in_risk_zone", "risk_rank"
   ), names(dt)), drop = FALSE]
   dt <- dt[order(dt$spec, dt$activity_rank), ]
-  report_table(rename_display(
-    dt,
-    c(spec = "Species", cluster_id = "Cluster", n_tracks = "Tracks", pct_of_total = "% of Species Tracks",
-      activity_rank = "Activity Rank", pct_in_risk_zone = "% in Risk-Height Zone", risk_rank = "Risk-Height Rank")
-  ))
+  report_table(
+    rename_display(
+      dt,
+      c(spec = "Species", cluster_id = "Cluster", n_tracks = "Tracks", pct_of_total = "% of Species Tracks",
+        activity_rank = "Activity Rank", pct_in_risk_zone = "% in Risk-Height Zone", risk_rank = "Risk-Height Rank")
+    ),
+    max_col_width_cm = 1.5
+  )
 }
 ```
 ```{r species-risk-stat-annex, results='asis'}
@@ -858,21 +882,30 @@ annex_note(params$xlsx_species_risk_stat)
 ```
 
 ```{r stat-incident-risk-context-heading, results='asis'}
-if (!is.null(params$incident_risk_context_stat)) cat("### Risk Context at Incident Turbines\n\n")
+if (!is.null(params$incident_risk_context_stat)) cat("#### Risk Context at Incident Turbines\n\n")
 ```
 ```{r incident-risk-context-stat-table}
 if (!is.null(params$incident_risk_context_stat)) {
-  report_table(rename_display(
-    drop_cols(params$incident_risk_context_stat, c("below_median_activity", "below_median_risk_height", "low_baseline_risk_supported")),
-    c(incident_id = "Incident", turbine = "Turbine", species = "Species", cluster_id = "Cluster",
-      n_clusters = "N Clusters", track_activity_rank = "Activity Rank", track_pct_of_total = "% of Species Tracks",
-      risk_height_rank = "Risk-Height Rank", pct_in_risk_zone = "% in Risk-Height Zone")
-  ))
+  report_table(
+    rename_display(
+      drop_cols(params$incident_risk_context_stat, c("below_median_activity", "below_median_risk_height", "low_baseline_risk_supported")),
+      c(incident_id = "Incident", turbine = "Turbine", species = "Species", cluster_id = "Cluster",
+        n_clusters = "N Clusters", track_activity_rank = "Activity Rank", track_pct_of_total = "% of Species Tracks",
+        risk_height_rank = "Risk-Height Rank", pct_in_risk_zone = "% in Risk-Height Zone")
+    ),
+    max_col_width_cm = 1.5
+  )
 }
 ```
+
+```{r stat-incident-risk-context-lead, results='asis'}
+if (!is.null(params$incident_risk_context_stat)) cat("Per-incident detail:\n\n")
+```
+
 ```{r incident-risk-context-stat-text, results='asis'}
 if (!is.null(params$incident_risk_context_stat) && nrow(params$incident_risk_context_stat) > 0) {
   dt <- params$incident_risk_context_stat
+  cat("\n")
   for (i in seq_len(nrow(dt))) {
     r <- dt[i, ]
     verdict <- if (isTRUE(r$low_baseline_risk_supported)) {

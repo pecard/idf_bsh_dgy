@@ -133,6 +133,32 @@ cat(paste0('Analysis date: ', format(Sys.time(), "%Y-%m-%d"), '\n'))
 cat(paste0('Script version: ', script_version, '\n'))
 sink()
 
+## Versao do codigo que gerou este relatorio especifico (para o docx, ver
+## report_params abaixo) -- mesma logica de IDF_monthly_report.R
+## (get_code_version()): identifica o commit exato (e se havia alteracoes
+## locais nao commitadas) que produziu CADA relatorio ja emitido, ao
+## contrario de script_version acima (nome da pasta do script, nao rastreia
+## commits). "unknown" so' se isto nao for um checkout git ou o git nao
+## estiver disponivel -- nunca aborta o relatorio por causa disto.
+get_code_version <- function() {
+  run_git <- function(args) {
+    tryCatch(system2("git", args, stdout = TRUE, stderr = FALSE), error = function(e) character(0))
+  }
+  hash <- run_git(c("log", "-1", "--format=%h"))
+  if (length(hash) == 0L || !nzchar(hash[1])) {
+    return("unknown (not a git checkout, or git unavailable)")
+  }
+  commit_date <- run_git(c("log", "-1", "--format=%ci"))
+  dirty <- length(run_git(c("status", "--porcelain"))) > 0L
+  out <- if (length(commit_date) > 0L && nzchar(commit_date[1])) {
+    sprintf("%s (%s)", hash[1], commit_date[1])
+  } else {
+    hash[1]
+  }
+  if (dirty) paste0(out, " + uncommitted local changes") else out
+}
+code_version <- get_code_version()
+
 
 
 ## 
@@ -1900,7 +1926,7 @@ report_params <- list(
   report_end    = as.character(report_end),
   analysis_date = format(Sys.time(), "%Y-%m-%d"),
   username      = username,
-  code_version  = if (exists("script_version")) script_version else "unknown",
+  code_version  = if (exists("code_version")) code_version else "unknown",
 
   availability_by_idf    = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
   availability_plot_cal  = if (exists("p_availability_cal")) p_availability_cal else NULL,
