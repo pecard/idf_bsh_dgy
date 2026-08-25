@@ -243,6 +243,14 @@ curtailment_latency_decline_pct <- 0.10
 # mesmo valor de userSettings_BSH.R -- ver comentario la' para o racional
 curtailment_cutin_rpm <- 3
 
+# Exemplos ilustrativos de perfil de RPM (secção "Example Response
+# Profiles") -- mesmos valores de userSettings_BSH.R, ver o comentario la'
+# para o racional. Ver select_latency_examples()/plot_curtailment_events_rpm(),
+# R/curtailment_response_latency.R / R/curtailment_forensic_trace.R.
+curtailment_example_n                 <- 3
+curtailment_example_window_before_min <- 1
+curtailment_example_window_after_min  <- 3
+
 safe_dist_rpm_threshold  <- 2
 safe_dist_speed_trim_q   <- 0.95
 safe_dist_reference_line_m <- 600
