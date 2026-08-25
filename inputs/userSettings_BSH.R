@@ -73,6 +73,12 @@ databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-
 ## (bug encontrado 2026-08, corrida real: "0 de 1 ficheiro(s) mantidos").
 farm_pattern <- "BSH|Bash"
 
+## Identificador curto e limpo do parque (sem regex/alternancia, ao
+## contrario de farm_pattern acima) -- usado so' para nao colidir com
+## outros parques na pasta cache/ e outputs/AAAAMMDD_<farm_code>/ partilhadas
+## (ver IDF_analysis.R, logo apos o source() deste ficheiro).
+farm_code <- "BSH"
+
 trackreport_pattern  <- "TrackReport_" #"TrackReport.+csv"          # ex: TrackReport_20260201_....csv
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
 scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_20260201_....csv
@@ -237,6 +243,33 @@ shutdown_time_thresholds <- c(2, 1, 0) # limiares de rpm a avaliar (rpm)
 shutdown_time_low_cut    <- 40 # segundos
 shutdown_time_high_cut   <- 50 # segundos
 
+# tempo extra (s) alem do "end" da propria ordem de curtailment, dado tanto
+# ao shutdown time (3.6) como a latencia de resposta (3.6b) antes de um
+# evento contar como "sem resposta" -- turbinas podem so' completar a
+# paragem depois do fim da ordem (inercia mecanica). Adotado 2026-08 a
+# partir da exploracao em explore_curtailment_response_buffer.R
+# (R/curtailment_response_buffer.R, R/curtailment_response_latency.R).
+shutdown_time_buffer_sec <- 60
+
+
+## -- 3.6b. Response latency (tempo ate a turbina COMECAR a reagir) --
+
+# queda relativa (fracao do RPM de baseline no start) que conta como
+# inicio de resposta -- ver R/curtailment_response_latency.R. Mesmo valor
+# de curtailment_drop_pct_threshold (3.5) mas mecanismo diferente: aquele
+# so' olha para a leitura SCADA seguinte ao sinal (~10s depois); este
+# procura em toda a janela [start, end + shutdown_time_buffer_sec].
+curtailment_latency_decline_pct <- 0.10
+
+# rpm; velocidade de cut-in tipica (abaixo disto a turbina nao esta a
+# produzir energia) -- curtailments cujo RPM no start ja esta abaixo deste
+# valor sao excluidos da latencia/no-response (nao ha resposta
+# significativa para medir numa turbina ja parada), mas ficam contados a
+# parte (n_below_cutin/pct_below_cutin). Pedido do Paulo (2026-08) a
+# partir de 3 exemplos "no-response" cujo RPM de baseline ja estava perto
+# de 0. Afeta tambem time_to_rpm_thresholds() (3.6).
+curtailment_cutin_rpm <- 3
+
 
 ## -- 3.7. Safe distance (metodologia KNE) --
 
@@ -385,14 +418,14 @@ min_individuals_merge_dist_m <- 200
 # abundancia sao agregadas nesta mesma escala, para poderem ser comparadas)
 response_timeline_unit <- "week"
 
-# Exemplos ilustrativos de perfil de RPM -- para cada categoria (missed/
-# delayed, mesma classificacao de response_flag_dt acima), ate'
+# Exemplos ilustrativos de perfil de RPM -- para cada categoria (no_response/
+# slowest, a partir de latency_dt, secção 3.6b), ate'
 # curtailment_example_n eventos sao escolhidos e desenhados (RPM +
 # linhas verticais de inicio/fim do curtailment), janela de
 # curtailment_example_window_before_min antes e
 # curtailment_example_window_after_min depois do INICIO do curtailment.
-# Ver select_curtailment_examples()/plot_curtailment_events_rpm(),
-# R/curtailment_forensic_trace.R.
+# Ver select_latency_examples()/plot_curtailment_events_rpm(),
+# R/curtailment_response_latency.R / R/curtailment_forensic_trace.R.
 curtailment_example_n                  <- 3
 curtailment_example_window_before_min  <- 1
 curtailment_example_window_after_min   <- 3

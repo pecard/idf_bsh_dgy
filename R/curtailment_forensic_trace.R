@@ -303,6 +303,11 @@ plot_curtailment_events_rpm <- function(events_dt, scada_dt, window_before_min =
 
   ggplot2::ggplot() +
     ggplot2::geom_line(data = rpm_dt_all, ggplot2::aes(x = datetime, y = value), colour = "#e8792f") +
+    # pontos sobre a linha -- 1 por leitura real de SCADA, para se perceber
+    # a que instante exato corresponde cada valor (pedido do Paulo, 2026-08
+    # -- a linha sozinha nao deixava ver onde estavam as leituras reais,
+    # so' a interpolacao entre elas)
+    ggplot2::geom_point(data = rpm_dt_all, ggplot2::aes(x = datetime, y = value), colour = "#e8792f", size = 1.2) +
     ggplot2::geom_vline(
       data = events_long,
       ggplot2::aes(xintercept = event_time, colour = event_type, linetype = event_type),
@@ -310,8 +315,17 @@ plot_curtailment_events_rpm <- function(events_dt, scada_dt, window_before_min =
     ) +
     ggplot2::scale_colour_manual(values = c("Curtailment start" = "steelblue", "Curtailment stop" = "darkred"), name = NULL) +
     ggplot2::scale_linetype_manual(values = c("Curtailment start" = "solid", "Curtailment stop" = "dashed"), name = NULL) +
+    # breaks fixos de 30s (nao os automaticos do ggplot, que variavam
+    # consoante a largura da janela de cada evento) e rotulos hh:mm:ss,
+    # verticais para nao sobrepor com breaks tao proximos -- pedido do
+    # Paulo, 2026-08
+    ggplot2::scale_x_datetime(date_breaks = "30 sec", date_labels = "%H:%M:%S") +
     ggplot2::facet_wrap(~ label, ncol = 1, scales = "free_x") +
     ggplot2::labs(x = NULL, y = "RPM", title = title) +
     ggplot2::theme_minimal() +
-    ggplot2::theme(legend.position = "bottom", strip.text = ggplot2::element_text(face = "bold", size = 8))
+    ggplot2::theme(
+      legend.position = "bottom",
+      strip.text = ggplot2::element_text(face = "bold", size = 8),
+      axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1)
+    )
 }

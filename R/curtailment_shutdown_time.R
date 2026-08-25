@@ -30,17 +30,35 @@
 
 ## 1. Tempo ate cada limiar de RPM, por curtailment ----
 
+## buffer_after_end_sec (2026-08, exploracao a pedido do Paulo -- ver
+## R/curtailment_response_buffer.R e explore_curtailment_response_buffer.R):
+## por omissao 0, reproduz exatamente o comportamento historico (janela de
+## procura = duracao real da propria ordem de curtailment, [start, end]).
+## > 0 estende essa janela para [start, end + buffer_after_end_sec] -- alguns
+## curtailments demoram mais a atingir um limiar do que a duracao da propria
+## ordem (inercia mecanica da turbina), e ficam com time_to_threshold_sec =
+## NA (nunca atingido) so' por causa disso, nao porque a turbina nao
+## respondeu. Afeta tambem classify_response_flag() (R/curtailment_response_classify.R),
+## que usa esta funcao para decidir "missed" vs "delayed".
+##
+## cutin_rpm (por omissao 0, sem efeito -- ver a mesma logica em
+## time_to_first_decline(), R/curtailment_response_latency.R): curtailments
+## cujo RPM no "start" ja esta abaixo da velocidade de cut-in tipica de
+## producao de energia ficam de fora -- uma turbina ja parada nao tem um
+## "tempo ate parar" significativo para medir (seria ~0 so' por ja estar
+## la', nao por ter respondido depressa).
 time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
-                                   start_end_gap_sec = 2) {
+                                   start_end_gap_sec = 2, buffer_after_end_sec = 0, cutin_rpm = 0) {
 
   dt <- as.data.table(curtl_dt)
   dt[, curtailment_id := .I]
 
-  ## baseline no start (tolerancia apertada) -- so seguimos curtailments com match fiavel
+  ## baseline no start (tolerancia apertada) -- so seguimos curtailments com
+  ## match fiavel E acima do cut-in
   start_events <- dt[, .(id = curtailment_id, turbine, event_time = start)]
   start_match  <- match_nearest_rpm(start_events, scada_dt, max_gap_sec = start_end_gap_sec)
 
-  valid_ids <- start_match[valid_match == TRUE, id]
+  valid_ids <- start_match[valid_match == TRUE & rpm >= cutin_rpm, id]
   dt_valid  <- dt[curtailment_id %in% valid_ids]
 
   if (nrow(dt_valid) == 0L) {
@@ -55,7 +73,7 @@ time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
   ## leituras RPM entre o start e o end de cada curtailment (duracao real do evento)
   rpm_dt <- scada_dt[readingname == "RPM", .(turbine = turbinelabel, datetime, rpm = value)]
 
-  windows <- dt_valid[, .(curtailment_id, turbine, window_start = start, window_end = end)]
+  windows <- dt_valid[, .(curtailment_id, turbine, window_start = start, window_end = end + buffer_after_end_sec)]
 
   rpm_window <- rpm_dt[
     windows,
@@ -94,6 +112,47 @@ time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
   out <- merge(out, hits, by = c("curtailment_id", "threshold"), all.x = TRUE)
 
   setorder(out, curtailment_id, -threshold)
+  out[]
+}
+
+
+## 1.b Sweep de buffer_after_end_sec -- resumo geral (todos os turbinas de
+##     curtl_dt em conjunto, por limiar) de %Reached/tempo medio para varios
+##     candidatos, para escolher um valor antes de o fixar em produtcao ----
+##
+## Custo: o join caro (time_to_rpm_thresholds()) so' corre 1 VEZ, no maior
+## buffer_after_end_sec pedido -- para os candidatos mais pequenos, os hits
+## que cairam DEPOIS de end+g sao so' invalidados (voltados a NA) sobre o
+## resultado ja calculado, sem refazer o join (mesma licao de performance de
+## R/curtailment_response_buffer.R, compare_buffer_windows()).
+
+compare_shutdown_time_buffer <- function(curtl_dt, scada_dt, buffer_candidates_sec = c(0, 20, 40, 60, 90, 120),
+                                        thresholds = c(2, 1, 0), start_end_gap_sec = 2, cutin_rpm = 0) {
+
+  max_buffer <- max(buffer_candidates_sec)
+  tt_max_dt <- time_to_rpm_thresholds(
+    curtl_dt, scada_dt, thresholds = thresholds,
+    start_end_gap_sec = start_end_gap_sec, buffer_after_end_sec = max_buffer, cutin_rpm = cutin_rpm
+  )
+
+  out <- data.table::rbindlist(lapply(buffer_candidates_sec, function(g) {
+    dt <- data.table::copy(tt_max_dt)
+    beyond_buffer <- !is.na(dt$hit_time) & as.numeric(difftime(dt$hit_time, dt$end, units = "secs")) > g
+    dt[beyond_buffer, `:=`(hit_time = as.POSIXct(NA), time_to_threshold_sec = NA_real_)]
+
+    summary_dt <- dt[, .(
+      n_curtailments  = data.table::uniqueN(curtailment_id),
+      n_reached       = sum(!is.na(time_to_threshold_sec)),
+      pct_reached     = round(100 * sum(!is.na(time_to_threshold_sec)) / data.table::uniqueN(curtailment_id), 1),
+      mean_time_sec   = round(mean(time_to_threshold_sec, na.rm = TRUE), 1),
+      median_time_sec = round(median(time_to_threshold_sec, na.rm = TRUE), 1)
+    ), by = threshold]
+    summary_dt[, buffer_after_end_sec := g]
+    summary_dt[]
+  }))
+
+  data.table::setcolorder(out, c("buffer_after_end_sec", "threshold", "n_curtailments", "n_reached", "pct_reached", "mean_time_sec", "median_time_sec"))
+  data.table::setorder(out, buffer_after_end_sec, -threshold)
   out[]
 }
 

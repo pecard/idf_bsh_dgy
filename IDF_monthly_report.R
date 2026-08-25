@@ -634,7 +634,8 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   ### 5.2 Tempo ate atingir limiares de RPM (2, 1, 0), por curtailment
   tt_dt <- time_to_rpm_thresholds(
     curtl_scada_dt, scada_dt, thresholds = shutdown_time_thresholds,
-    start_end_gap_sec = curtailment_start_end_gap_sec
+    start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec,
+    cutin_rpm = curtailment_cutin_rpm
   )
   summary_tt_by_turbine <- summarise_time_to_threshold(tt_dt)
   summary_tt_bands      <- summarise_time_to_threshold_bands(
@@ -654,6 +655,76 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   ggsave(
     file.path(folder_output, sprintf("curtailment_shutdown_time_hist_%s.png", report_month)),
     plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
+  )
+
+  ### 5.2b Latencia de resposta e eventos sem resposta -- ver
+  ### R/curtailment_response_latency.R e a nota equivalente em
+  ### IDF_analysis.R secção 3.6b.
+  source("R/curtailment_response_latency.R")
+
+  latency_dt <- time_to_first_decline(
+    curtl_scada_dt, scada_dt, decline_pct_threshold = curtailment_latency_decline_pct,
+    start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec,
+    cutin_rpm = curtailment_cutin_rpm
+  )
+  summary_latency            <- summarise_latency(latency_dt)
+  summary_latency_by_turbine <- summarise_latency_by_turbine(latency_dt)
+  summary_latency_bands      <- summarise_latency_bands(latency_dt)
+
+  write_xlsx_local(
+    list(
+      Latency    = latency_dt,
+      Overall    = summary_latency,
+      By_turbine = summary_latency_by_turbine,
+      Bands      = summary_latency_bands
+    ),
+    file.path(folder_output, sprintf("curtailment_response_latency_%s.xlsx", report_month))
+  )
+
+  p_latency <- plot_latency_histogram(latency_dt)
+  ggsave(
+    file.path(folder_output, sprintf("curtailment_response_latency_hist_%s.png", report_month)),
+    plot = p_latency, width = 180, height = 120, units = "mm", dpi = 300, bg = "white"
+  )
+
+  ### 5.2c Exemplos ilustrativos de perfil de RPM -- mesma logica de
+  ### IDF_analysis.R secção 8 (no_response/slowest a partir de latency_dt),
+  ### aqui dentro da mesma secção 5 em vez de depender de uma secção de
+  ### fenologia separada (o relatorio mensal nao tem essa secção).
+  source("R/curtailment_forensic_trace.R")
+
+  no_response_examples_dt      <- select_latency_examples(latency_dt, "no_response", n = curtailment_example_n)
+  slowest_response_examples_dt <- select_latency_examples(latency_dt, "slowest", n = curtailment_example_n)
+
+  p_no_response_examples <- plot_curtailment_events_rpm(
+    no_response_examples_dt, scada_dt,
+    window_before_min = curtailment_example_window_before_min,
+    window_after_min = curtailment_example_window_after_min,
+    title = "No-Response Events -- RPM Profile (Examples)"
+  )
+  if (!is.null(p_no_response_examples)) {
+    ggsave(
+      file.path(folder_output, sprintf("curtailment_examples_no_response_rpm_%s.png", report_month)),
+      plot = p_no_response_examples, width = 16, height = 15, units = "cm", dpi = 300, bg = "white"
+    )
+  }
+
+  p_slowest_response_examples <- plot_curtailment_events_rpm(
+    slowest_response_examples_dt, scada_dt,
+    window_before_min = curtailment_example_window_before_min,
+    window_after_min = curtailment_example_window_after_min,
+    title = "Slowest Responses -- RPM Profile (Examples)"
+  )
+  if (!is.null(p_slowest_response_examples)) {
+    ggsave(
+      file.path(folder_output, sprintf("curtailment_examples_slowest_response_rpm_%s.png", report_month)),
+      plot = p_slowest_response_examples, width = 16, height = 15, units = "cm", dpi = 300, bg = "white"
+    )
+  }
+
+  write_xlsx_local(
+    list(No_response_examples = no_response_examples_dt, Slowest_response_examples = slowest_response_examples_dt),
+    file.path(folder_output, sprintf("curtailment_response_examples_%s.xlsx", report_month))
   )
 
   ### 5.3 Safe distance (metodologia KNE)
@@ -916,8 +987,17 @@ monthly_report_params <- list(
 
   short_track_summary_dt = if (exists("monthly_short_track_summary_dt")) monthly_short_track_summary_dt else NULL,
 
-  assess_by_status  = if (exists("summary_assess")) summary_assess$by_status else NULL,
-  assess_by_turbine = if (exists("summary_assess")) summary_assess$by_turbine else NULL,
+  latency_by_turbine      = if (exists("summary_latency_by_turbine")) summary_latency_by_turbine else NULL,
+  latency_bands           = if (exists("summary_latency_bands")) summary_latency_bands else NULL,
+  latency_plot            = if (exists("p_latency")) p_latency else NULL,
+  latency_n_below_cutin   = if (exists("summary_latency")) summary_latency$n_below_cutin else NULL,
+  latency_pct_below_cutin = if (exists("summary_latency")) summary_latency$pct_below_cutin else NULL,
+
+  no_response_examples_plot      = if (exists("p_no_response_examples")) p_no_response_examples else NULL,
+  slowest_response_examples_plot = if (exists("p_slowest_response_examples")) p_slowest_response_examples else NULL,
+  n_no_response_examples         = if (exists("no_response_examples_dt")) nrow(no_response_examples_dt) else NULL,
+  n_slowest_examples             = if (exists("slowest_response_examples_dt")) nrow(slowest_response_examples_dt) else NULL,
+  xlsx_curtailment_examples      = if (exists("report_month")) sprintf("curtailment_response_examples_%s.xlsx", report_month) else NULL,
 
   shutdown_by_turbine = if (exists("summary_tt_by_turbine")) summary_tt_by_turbine else NULL,
   shutdown_bands      = if (exists("summary_tt_bands")) summary_tt_bands else NULL,
@@ -963,6 +1043,13 @@ monthly_report_params <- list(
   shutdown_time_thresholds = shutdown_time_thresholds,
   shutdown_time_low_cut  = shutdown_time_low_cut,
   shutdown_time_high_cut = shutdown_time_high_cut,
+  shutdown_time_buffer_sec = shutdown_time_buffer_sec,
+
+  curtailment_latency_decline_pct = curtailment_latency_decline_pct,
+  curtailment_cutin_rpm           = curtailment_cutin_rpm,
+
+  curtailment_example_window_before_min = curtailment_example_window_before_min,
+  curtailment_example_window_after_min  = curtailment_example_window_after_min,
 
   safe_dist_reference_line_m    = safe_dist_reference_line_m,
   safe_dist_rpm_threshold        = safe_dist_rpm_threshold,
