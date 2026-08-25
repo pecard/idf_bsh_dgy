@@ -14,64 +14,128 @@
 ## side-by-side antes de decidir se isto deve passar a ser o comportamento
 ## por omissao (e, se sim, com que grace_after_end_sec).
 ##
+## Nota de performance (2026-08, apos o Paulo reportar demoras): a 1ª
+## versao deste ficheiro recalculava classify_response_flag() (o roll join
+## caro com scada_dt) uma vez por CADA grace_after_end_sec testado, e para
+## cada curtailment "missed" fazia um for loop com um filtro NAO indexado
+## sobre a tabela de RPM completa (todas as turbinas, historico completo).
+## Com N candidatos de grace window e M curtailments "missed", isso e'
+## O(N x M x tamanho da tabela de RPM) -- lento mesmo com poucos exemplos.
+## Esta versao separa o trabalho caro (classify_response_flag(), 1 vez so')
+## do trabalho por-candidato (barato): find_grace_stop_times() calcula, de
+## uma vez, a 1ª leitura de RPM abaixo do limiar depois do "end" de CADA
+## curtailment "missed" (1 non-equi join do data.table, sem for loop nem
+## table scan por evento); apply_grace_window() so' compara esse instante
+## contra cada grace_after_end_sec candidato (comparacao vetorizada,
+## essencialmente instantanea). compare_grace_windows() e'
+## classify_response_flag_grace() usam os 2 -- o sweep de varios candidatos
+## deixa de ter custo extra por candidato.
+##
 ## Depende de: data.table, R/curtailment_response.R, R/curtailment_shutdown_time.R,
 ## R/curtailment_response_classify.R (fazer source destes 3 antes)
 ##
 
 
-## grace_after_end_sec: janela adicional (segundos) DEPOIS do "end" da
-## ordem de curtailment onde se procura a primeira leitura de SCADA com
-## RPM < rpm_threshold. Se encontrada dentro dessa janela, o evento deixa
-## de ser "missed" e passa a "delayed" (parou, mas mais tarde que o
-## esperado pela duracao da propria ordem) -- coerente com as outras 3
-## categorias (missed/delayed/ok/no_data). grace_after_end_sec = 0 reproduz
-## exatamente classify_response_flag() (sem reclassificacao nenhuma).
+## Para cada curtailment "missed" (1 linha por curtailment_id/turbine/
+## start/end), encontra a 1ª leitura de SCADA com RPM < rpm_threshold
+## DEPOIS do "end" -- sem limite de tempo aqui (o limite de
+## grace_after_end_sec e' aplicado depois, em apply_grace_window(), sem
+## precisar de refazer este calculo). Devolve 1 linha por curtailment_id
+## de missed_dt, com grace_stop_time = NA se nao houver nenhuma leitura
+## abaixo do limiar depois do "end" (turbina nunca mais para, ou os dados
+## de SCADA acabam antes disso).
 ##
-## Colunas adicionais no resultado, so' preenchidas para os eventos
-## reclassificados: grace_stop_time (1ª leitura SCADA < rpm_threshold
-## dentro da janela extra) e grace_stop_sec (esse instante, em segundos
-## desde o INICIO do curtailment -- diretamente comparavel a
-## time_to_first_threshold_sec).
+## Implementacao: 1 non-equi rolling join (rpm_dt[missed_dt, on = .(turbine,
+## datetime > end), mult = "first"]) -- o data.table usa pesquisa binaria
+## pela key, nao um table scan; e' o equivalente eficiente de "para cada
+## evento, a proxima leitura depois de X", sem for loop.
+
+find_grace_stop_times <- function(missed_dt, scada_dt, rpm_threshold = 1) {
+
+  empty <- data.table::data.table(
+    curtailment_id = integer(), grace_stop_time = as.POSIXct(character()), grace_stop_sec = numeric()
+  )
+  if (nrow(missed_dt) == 0L) return(empty)
+
+  turbines_of_interest <- unique(missed_dt$turbine)
+  # filtrar por turbina E por rpm < limiar ANTES do join -- so' as turbinas
+  # e leituras relevantes ficam na tabela usada pelo join, nao o SCADA
+  # inteiro do parque
+  rpm_dt <- scada_dt[
+    readingname == "RPM" & turbinelabel %in% turbines_of_interest & value < rpm_threshold,
+    .(turbine = turbinelabel, datetime, rpm = value)
+  ]
+  if (nrow(rpm_dt) == 0L) {
+    out <- data.table::copy(missed_dt)[, `:=`(grace_stop_time = as.POSIXct(NA), grace_stop_sec = NA_real_)]
+    return(out[, .(curtailment_id, grace_stop_time, grace_stop_sec)])
+  }
+  data.table::setkey(rpm_dt, turbine, datetime)
+
+  qy <- missed_dt[, .(curtailment_id, turbine, start, end)]
+  match_dt <- rpm_dt[qy, on = .(turbine, datetime > end), mult = "first"]
+
+  match_dt[, .(
+    curtailment_id,
+    grace_stop_time = datetime,
+    grace_stop_sec  = as.numeric(difftime(datetime, start, units = "secs"))
+  )]
+}
+
+
+## Reclassifica "missed" -> "delayed" onde grace_stop_time (de
+## find_grace_stop_times(), calculado 1 vez so') cai dentro de
+## grace_after_end_sec depois do "end" -- so' um merge + comparacao
+## vetorizada, seguro para chamar repetidamente com valores diferentes de
+## grace_after_end_sec sem recalcular nada caro.
+
+apply_grace_window <- function(base_dt, grace_stop_dt, grace_after_end_sec) {
+
+  out <- merge(base_dt, grace_stop_dt, by = "curtailment_id", all.x = TRUE)
+
+  accept <- out$response_flag == "missed" &
+    !is.na(out$grace_stop_time) &
+    as.numeric(difftime(out$grace_stop_time, out$end, units = "secs")) <= grace_after_end_sec
+
+  out[accept, response_flag := "delayed"]
+  out[]
+}
+
+
+## Wrapper de conveniencia para um SO' valor de grace_after_end_sec (usado
+## no script para replotar os exemplos com uma classificacao especifica) --
+## grace_after_end_sec = 0 reproduz exatamente classify_response_flag(),
+## sem reclassificacao nenhuma.
 
 classify_response_flag_grace <- function(curtl_dt, scada_dt, grace_after_end_sec = 20,
                                          start_end_gap_sec = 2, max_next_gap_sec = 20,
                                          drop_pct_threshold = 0.10, rpm_threshold = 1,
                                          shutdown_thresholds = c(2, 1, 0), shutdown_high_cut_sec = 50) {
 
-  out <- classify_response_flag(
+  base_dt <- classify_response_flag(
     curtl_dt, scada_dt, start_end_gap_sec = start_end_gap_sec,
     max_next_gap_sec = max_next_gap_sec, drop_pct_threshold = drop_pct_threshold,
     rpm_threshold = rpm_threshold, shutdown_thresholds = shutdown_thresholds,
     shutdown_high_cut_sec = shutdown_high_cut_sec
   )
 
+  # so' adiciona grace_stop_time/sec "vazias" aqui quando apply_grace_window()
+  # NAO vai correr (early return) -- caso contrario o merge() la' dentro ja'
+  # traz essas 2 colunas, e adiciona-las aqui tambem causava colisao de
+  # nomes (merge() sufixava .x/.y em vez de manter os nomes simples)
   tz <- attr(curtl_dt$start, "tzone")
-  out[, grace_stop_time := as.POSIXct(NA, tz = tz)]
-  out[, grace_stop_sec  := NA_real_]
-
-  if (nrow(out) == 0L || grace_after_end_sec <= 0) return(out[])
-
-  missed_idx <- which(out$response_flag == "missed")
-  if (length(missed_idx) == 0L) return(out[])
-
-  rpm_dt <- scada_dt[readingname == "RPM", .(turbine = turbinelabel, datetime, rpm = value)]
-  data.table::setkey(rpm_dt, turbine, datetime)
-
-  for (i in missed_idx) {
-    ev <- out[i]
-    window_end <- ev$end + grace_after_end_sec
-    cand <- rpm_dt[turbine == ev$turbine & datetime > ev$end & datetime <= window_end & rpm < rpm_threshold]
-    if (nrow(cand) > 0L) {
-      data.table::setorder(cand, datetime)
-      out[i, `:=`(
-        response_flag  = "delayed",
-        grace_stop_time = cand$datetime[1],
-        grace_stop_sec  = as.numeric(difftime(cand$datetime[1], ev$start, units = "secs"))
-      )]
-    }
+  add_empty_grace_cols <- function(dt) {
+    dt[, grace_stop_time := as.POSIXct(NA, tz = tz)]
+    dt[, grace_stop_sec  := NA_real_]
+    dt[]
   }
 
-  out[]
+  if (nrow(base_dt) == 0L || grace_after_end_sec <= 0) return(add_empty_grace_cols(base_dt))
+
+  missed_dt <- base_dt[response_flag == "missed"]
+  if (nrow(missed_dt) == 0L) return(add_empty_grace_cols(base_dt))
+
+  grace_stop_dt <- find_grace_stop_times(missed_dt, scada_dt, rpm_threshold = rpm_threshold)
+  apply_grace_window(base_dt, grace_stop_dt, grace_after_end_sec)[]
 }
 
 
@@ -79,19 +143,27 @@ classify_response_flag_grace <- function(curtl_dt, scada_dt, grace_after_end_sec
 ## eventos ficam em cada response_flag (mesmas colunas de
 ## summarise_response_by_flag(), R/curtailment_response_classify.R, com
 ## grace_after_end_sec como coluna extra para comparar lado a lado).
+##
+## classify_response_flag() e find_grace_stop_times() (as 2 partes caras)
+## so' correm 1 vez cada, independentemente de quantos valores existirem em
+## grace_candidates_sec -- ver nota de performance no topo do ficheiro.
 
 compare_grace_windows <- function(curtl_dt, scada_dt, grace_candidates_sec = c(0, 20, 40, 60, 90, 120),
                                   start_end_gap_sec = 2, max_next_gap_sec = 20,
                                   drop_pct_threshold = 0.10, rpm_threshold = 1,
                                   shutdown_thresholds = c(2, 1, 0), shutdown_high_cut_sec = 50) {
 
+  base_dt <- classify_response_flag(
+    curtl_dt, scada_dt, start_end_gap_sec = start_end_gap_sec,
+    max_next_gap_sec = max_next_gap_sec, drop_pct_threshold = drop_pct_threshold,
+    rpm_threshold = rpm_threshold, shutdown_thresholds = shutdown_thresholds,
+    shutdown_high_cut_sec = shutdown_high_cut_sec
+  )
+  missed_dt <- base_dt[response_flag == "missed"]
+  grace_stop_dt <- find_grace_stop_times(missed_dt, scada_dt, rpm_threshold = rpm_threshold)
+
   out <- data.table::rbindlist(lapply(grace_candidates_sec, function(g) {
-    dt <- classify_response_flag_grace(
-      curtl_dt, scada_dt, grace_after_end_sec = g,
-      start_end_gap_sec = start_end_gap_sec, max_next_gap_sec = max_next_gap_sec,
-      drop_pct_threshold = drop_pct_threshold, rpm_threshold = rpm_threshold,
-      shutdown_thresholds = shutdown_thresholds, shutdown_high_cut_sec = shutdown_high_cut_sec
-    )
+    dt <- if (g <= 0 || nrow(missed_dt) == 0L) base_dt else apply_grace_window(base_dt, grace_stop_dt, g)
     by_flag <- summarise_response_by_flag(dt)
     by_flag[, grace_after_end_sec := g]
     by_flag[]
