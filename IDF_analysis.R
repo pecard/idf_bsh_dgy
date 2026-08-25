@@ -1592,6 +1592,10 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
       plot = p_pair$response_plot, width = 8, height = 4, dpi = 300, bg = "white"
     )
     ggsave(
+      file.path(folder_output, paste0("latency_timeline_", sp_slug, ".png")),
+      plot = p_pair$latency_plot, width = 8, height = 4, dpi = 300, bg = "white"
+    )
+    ggsave(
       file.path(folder_output, paste0("abundance_timeline_", sp_slug, ".png")),
       plot = p_pair$abundance_plot, width = 8, height = 4, dpi = 300, bg = "white"
     )

@@ -113,10 +113,18 @@ summarise_abundance_timeline <- function(bins_dt, unit = "week") {
 }
 
 
-## 3. Plots -- resposta (% no-response events) e abundancia, alinhados no
-##    mesmo eixo temporal (2 plots separados, nao um eixo duplo -- mais
-##    legivel e menos enganador; combinar/empilhar visualmente ao inserir
-##    no relatorio) ----
+## 3. Plots -- resposta (% no-response events), latencia (media/mediana) e
+##    abundancia, alinhados no mesmo eixo temporal (plots separados, nao um
+##    eixo duplo -- mais legivel e menos enganador; combinar/empilhar
+##    visualmente ao inserir no relatorio) ----
+##
+## latency_plot -- pedido do Paulo (2026-08) depois de ver que, com
+## no-response praticamente a 0 farm-wide (secção "No-Response Events" do
+## relatorio), o plot de % no-response sozinho fica quase sempre achatado
+## perto de 0 -- pouco informativo sobre se a VELOCIDADE tipica de resposta
+## varia com a epoca. mean/median_latency_sec (de summarise_latency_timeline())
+## sao continuas, por isso mostram essa variacao mesmo quando quase todos os
+## curtailments respondem (so' nao respondem devagar ou depressa).
 
 plot_response_vs_phenology <- function(timeline_dt, abundance_dt, species_sel) {
 
@@ -128,11 +136,20 @@ plot_response_vs_phenology <- function(timeline_dt, abundance_dt, species_sel) {
         title = "No-response events over time") +
     theme_minimal()
 
+  p_latency <- ggplot(timeline_dt, aes(x = period)) +
+    geom_line(aes(y = mean_latency_sec, colour = "Mean")) +
+    geom_point(aes(y = mean_latency_sec, colour = "Mean"), size = 1) +
+    geom_line(aes(y = median_latency_sec, colour = "Median")) +
+    geom_point(aes(y = median_latency_sec, colour = "Median"), size = 1) +
+    scale_colour_manual(values = c(Mean = "steelblue", Median = "darkorange")) +
+    labs(x = NULL, y = "Latency (s)", colour = NULL, title = "Response latency over time") +
+    theme_minimal()
+
   p_abundance <- ggplot(aband, aes(x = period, y = peak_individuals, colour = spec)) +
     geom_line() +
     geom_point(size = 1) +
     labs(x = "Period", y = "Peak individuals", colour = NULL, title = "Bird abundance over time") +
     theme_minimal()
 
-  list(response_plot = p_response, abundance_plot = p_abundance)
+  list(response_plot = p_response, latency_plot = p_latency, abundance_plot = p_abundance)
 }
