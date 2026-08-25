@@ -1527,15 +1527,7 @@ write_xlsx_local(
 
 if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
 
-  source("R/curtailment_response_classify.R")
   source("R/curtailment_response_timeline.R")
-
-  response_flag_dt <- classify_response_flag(
-    curtl_scada_dt, scada_dt,
-    start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
-    drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
-    shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
-  )
 
   # Exemplos ilustrativos de perfil de RPM -- ate curtailment_example_n
   # curtailments "no_response"/"slowest" (mesma classificacao de
@@ -1582,7 +1574,7 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
     file.path(folder_output, "curtailment_response_examples.xlsx")
   )
 
-  response_timeline_dt  <- summarise_response_timeline(response_flag_dt, unit = response_timeline_unit)
+  response_timeline_dt  <- summarise_latency_timeline(latency_dt, unit = response_timeline_unit)
   abundance_timeline_dt <- summarise_abundance_timeline(min_indiv_bins_dt, unit = response_timeline_unit)
 
   write_xlsx_local(
