@@ -8,6 +8,7 @@ params:
   report_end: ""
   analysis_date: ""
   username: ""
+  code_version: ""
 
   availability_by_idf: !r NULL
   availability_plot_cal: !r NULL
@@ -235,7 +236,9 @@ Report period: `r params$report_start` to `r params$report_end`
 
 Analysis date: `r params$analysis_date`
 
-Technician: `r params$username`
+Responsible Team: `r params$username`
+
+Code version: `r params$code_version`
 
 This report is descriptive and fully automated, generated end-to-end by an R code pipeline. It presents the metrics produced by the IDF analysis pipeline over the full project history to date, without further interpretation, except where an explicit threshold (e.g. the KNE safe-distance reference line, shutdown-time bands) is already part of the pre-defined methodology.
 
@@ -719,13 +722,18 @@ if (!is.null(params$stat_risk_summary)) {
 <!-- Source: stat_risk_summary_dt <- merge(critical_zone_stat_dt, perm_stat_dt), IDF_analysis.R section 10.3 -->
 ```{r stat-risk-summary-table}
 if (!is.null(params$stat_risk_summary)) {
+  dt <- as.data.frame(params$stat_risk_summary)
+  dt <- dt[, intersect(c(
+    "turbine", "cluster_id", "n_total", "pct_of_cluster", "cluster_rank",
+    "track_pct_of_total", "track_cluster_rank", "observed_pct"
+  ), names(dt)), drop = FALSE]
   report_table(
     rename_display(
-      drop_cols(params$stat_risk_summary, c("n_clusters", "track_n_clusters")),
-      c(turbine = "Turbine", cluster_id = "Cluster", n_turbines_in_cluster = "Turbines in Cluster",
-        n_total = "Cluster Curtailments", pct_of_cluster = "% of Cluster", cluster_rank = "Curtailment Rank",
-        track_n_tracks = "Species Tracks", track_pct_of_total = "% of Cluster Tracks", track_cluster_rank = "Track Rank",
-        observed_pct = "Observed %", expected_pct_uniform = "Expected % (Uniform)", p_value_gt_uniform = "p-value")
+      dt,
+      c(turbine = "Turbine", cluster_id = "Cluster", n_total = "Cluster Curtailments",
+        pct_of_cluster = "% of Cluster", cluster_rank = "Curtailment Rank",
+        track_pct_of_total = "% of Cluster Tracks", track_cluster_rank = "Track Rank",
+        observed_pct = "Observed %")
     ),
     max_col_width_cm = 2.3
   )
@@ -737,7 +745,7 @@ annex_note(params$xlsx_stat_critical_zone)
 
 # Minimum Individuals per Time Bin
 
-Minimum number of distinct individuals per priority species detected in the same `r params$min_individuals_bin_min`-minute time bin (2 tracks count as 1 individual when within `r params$min_individuals_merge_dist_m` m of each other), farm-wide, summarised by day, over the full project history.
+Minimum number of distinct individuals per priority species detected in the same `r params$min_individuals_bin_min`-minute time bin, farm-wide (pooling tracks from every IDF unit) and summarised by day, over the full project history. Within each bin, two or more tracks of the *same* species are counted as a single individual when their positions are within `r params$min_individuals_merge_dist_m` m of each other; tracks of different species are never merged with one another.
 
 ## Summary
 
@@ -758,7 +766,7 @@ annex_note(params$xlsx_min_indiv)
 ## Daily Peak, by Species
 
 <!-- Source: plot_daily_max_individuals(min_indiv_daily_dt, date_breaks = "1 month", geom_type = "bar"), R/track_min_individuals.R -->
-```{r min-indiv-daily-plot, fig.width=6.30, fig.height=9}
+```{r min-indiv-daily-plot, fig.width=6.30, fig.height=6.30}
 if (!is.null(params$min_indiv_plot_daily)) print(params$min_indiv_plot_daily)
 ```
 

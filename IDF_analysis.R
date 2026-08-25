@@ -1844,6 +1844,7 @@ report_params <- list(
   report_end    = as.character(report_end),
   analysis_date = format(Sys.time(), "%Y-%m-%d"),
   username      = username,
+  code_version  = if (exists("script_version")) script_version else "unknown",
 
   availability_by_idf    = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
   availability_plot_cal  = if (exists("p_availability_cal")) p_availability_cal else NULL,
