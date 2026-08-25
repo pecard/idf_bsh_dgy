@@ -1782,6 +1782,62 @@ if (!exists("track_dt_unfilt")) {
     )
   }
 
+
+  ### 10.4. Atividade e exposicao ao risco-altura, por cluster, para as
+  ###       especies dos incidentes de fatalidade (complementa 10.3 -- em
+  ###       vez do contributo marginal para curtailments, aqui olhamos para
+  ###       a atividade de voo da propria especie, no historico completo,
+  ###       para dar contexto de base sobre se o cluster de cada turbina de
+  ###       incidente se destaca ou nao dos restantes clusters) ----
+
+  source("R/species_cluster_risk_ranking.R")
+  source("R/bio_flight_metrics.R")
+
+  incident_species_sel <- unique(fatality_incidents$species)
+  incident_flight_base_dt <- flight_metrics_base(
+    track_dt_unfilt, incident_species_sel,
+    min_track_points = flight_min_track_points,
+    speed_ms_min = flight_speed_ms_min, speed_ms_max = flight_speed_ms_max
+  )
+
+  if (run_stat) {
+    incident_tracks_stat_dt <- assign_species_to_clusters(track_dt_unfilt, wtg, cluster_dt_stat, incident_species_sel)
+    species_activity_stat_dt <- summarise_species_cluster_activity(incident_tracks_stat_dt)
+    species_risk_height_stat_dt <- summarise_species_cluster_risk_height(
+      incident_flight_base_dt, incident_tracks_stat_dt, riskHeight_lower, riskHeight_upper
+    )
+    incident_risk_context_stat_dt <- summarise_incident_cluster_risk_context(
+      fatality_incidents, cluster_dt_stat, species_activity_stat_dt, species_risk_height_stat_dt
+    )
+    write_xlsx_local(
+      list(
+        Species_cluster_activity   = species_activity_stat_dt,
+        Species_cluster_risk_height = species_risk_height_stat_dt,
+        Incident_cluster_context    = incident_risk_context_stat_dt
+      ),
+      file.path(folder_output, "species_cluster_risk_ranking_statistical.xlsx")
+    )
+  }
+
+  if (run_manual) {
+    incident_tracks_manual_dt <- assign_species_to_clusters(track_dt_unfilt, wtg, cluster_dt_manual, incident_species_sel)
+    species_activity_manual_dt <- summarise_species_cluster_activity(incident_tracks_manual_dt)
+    species_risk_height_manual_dt <- summarise_species_cluster_risk_height(
+      incident_flight_base_dt, incident_tracks_manual_dt, riskHeight_lower, riskHeight_upper
+    )
+    incident_risk_context_manual_dt <- summarise_incident_cluster_risk_context(
+      fatality_incidents, cluster_dt_manual, species_activity_manual_dt, species_risk_height_manual_dt
+    )
+    write_xlsx_local(
+      list(
+        Species_cluster_activity   = species_activity_manual_dt,
+        Species_cluster_risk_height = species_risk_height_manual_dt,
+        Incident_cluster_context    = incident_risk_context_manual_dt
+      ),
+      file.path(folder_output, "species_cluster_risk_ranking_manual.xlsx")
+    )
+  }
+
 }
 
 
@@ -1875,9 +1931,17 @@ report_params <- list(
   risk_cluster_summary = if (exists("cluster_summary_manual")) cluster_summary_manual$by_cluster else NULL,
   risk_fatality_summary = if (exists("fatality_risk_summary_dt")) fatality_risk_summary_dt else NULL,
 
+  species_activity_manual    = if (exists("species_activity_manual_dt")) species_activity_manual_dt else NULL,
+  species_risk_height_manual = if (exists("species_risk_height_manual_dt")) species_risk_height_manual_dt else NULL,
+  incident_risk_context_manual = if (exists("incident_risk_context_manual_dt")) incident_risk_context_manual_dt else NULL,
+
   stat_cluster_map     = if (exists("p_map_stat")) p_map_stat else NULL,
   stat_cluster_summary = if (exists("cluster_summary_stat")) cluster_summary_stat$by_cluster else NULL,
   stat_risk_summary    = if (exists("stat_risk_summary_dt")) stat_risk_summary_dt else NULL,
+
+  species_activity_stat    = if (exists("species_activity_stat_dt")) species_activity_stat_dt else NULL,
+  species_risk_height_stat = if (exists("species_risk_height_stat_dt")) species_risk_height_stat_dt else NULL,
+  incident_risk_context_stat = if (exists("incident_risk_context_stat_dt")) incident_risk_context_stat_dt else NULL,
 
   min_indiv_summary  = if (exists("min_indiv_summary_dt")) min_indiv_summary_dt else NULL,
   min_indiv_plot_daily = if (exists("p_min_indiv_daily")) p_min_indiv_daily else NULL,
@@ -1901,6 +1965,8 @@ report_params <- list(
   xlsx_risk_critical_zone    = "turbine_critical_zone_summary_manual.xlsx",
   xlsx_stat_cluster_patterns = "curtailment_cluster_patterns_statistical.xlsx",
   xlsx_stat_critical_zone    = "turbine_critical_zone_summary_statistical.xlsx",
+  xlsx_species_risk_manual   = "species_cluster_risk_ranking_manual.xlsx",
+  xlsx_species_risk_stat     = "species_cluster_risk_ranking_statistical.xlsx",
   xlsx_min_indiv           = "min_individuals_per_bin.xlsx",
 
   ## Literais de configuracao (userSettings_BSH.R) -- so' para texto
@@ -1926,6 +1992,12 @@ report_params <- list(
 
   track_proximity_threshold_m = track_proximity_threshold_m,
   fatality_post_incident_days = fatality_post_incident_days,
+
+  flight_min_track_points = flight_min_track_points,
+  flight_speed_ms_min     = flight_speed_ms_min,
+  flight_speed_ms_max     = flight_speed_ms_max,
+  risk_height_lower        = riskHeight_lower,
+  risk_height_upper        = riskHeight_upper,
 
   cluster_max_dist_m = cluster_max_dist_m,
   cluster_perm_n      = cluster_perm_n,

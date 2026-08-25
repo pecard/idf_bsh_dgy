@@ -39,9 +39,17 @@ params:
   risk_cluster_summary: !r NULL
   risk_fatality_summary: !r NULL
 
+  species_activity_manual: !r NULL
+  species_risk_height_manual: !r NULL
+  incident_risk_context_manual: !r NULL
+
   stat_cluster_map: !r NULL
   stat_cluster_summary: !r NULL
   stat_risk_summary: !r NULL
+
+  species_activity_stat: !r NULL
+  species_risk_height_stat: !r NULL
+  incident_risk_context_stat: !r NULL
 
   min_indiv_summary: !r NULL
   min_indiv_plot_daily: !r NULL
@@ -63,6 +71,8 @@ params:
   xlsx_risk_critical_zone: !r NULL
   xlsx_stat_cluster_patterns: !r NULL
   xlsx_stat_critical_zone: !r NULL
+  xlsx_species_risk_manual: !r NULL
+  xlsx_species_risk_stat: !r NULL
   xlsx_min_indiv: !r NULL
 
   # Literais de configuracao (userSettings_BSH.R) usados so' para texto
@@ -86,6 +96,12 @@ params:
 
   track_proximity_threshold_m: !r NULL
   fatality_post_incident_days: !r NULL
+
+  flight_min_track_points: !r NULL
+  flight_speed_ms_min: !r NULL
+  flight_speed_ms_max: !r NULL
+  risk_height_lower: !r NULL
+  risk_height_upper: !r NULL
 
   cluster_max_dist_m: !r NULL
   cluster_perm_n: !r NULL
@@ -672,6 +688,71 @@ if (!is.null(params$risk_fatality_summary)) {
 annex_note(params$xlsx_risk_critical_zone)
 ```
 
+## Species Activity & Risk-Height Exposure by Cluster
+
+Complementary view, independent of curtailments: for the species involved in the known fatality incidents, farm-wide track activity and flight-height risk exposure, by manual sector, over the full project history. Track activity is the number of distinct tracks of that species whose closest-approach turbine falls in that sector; risk-height exposure is the % of that species' reliable flight-height readings (tracks with at least `r params$flight_min_track_points` points and a flight speed between `r params$flight_speed_ms_min` and `r params$flight_speed_ms_max` m/s, in that sector) that fall within the `r params$risk_height_lower`-`r params$risk_height_upper` m rotor-swept band. Both are ranked per species (rank 1 = highest); a sector ranking high on both is where this species is both most frequently present and most often flying at rotor height, relative to the other sectors -- not a measure of curtailment response or turbine performance.
+
+<!-- Source: species_activity_manual_dt <- summarise_species_cluster_activity(), species_risk_height_manual_dt <- summarise_species_cluster_risk_height(), R/species_cluster_risk_ranking.R -->
+```{r species-risk-manual-table}
+if (!is.null(params$species_activity_manual) && !is.null(params$species_risk_height_manual)) {
+  dt <- merge(
+    as.data.frame(params$species_activity_manual),
+    as.data.frame(params$species_risk_height_manual),
+    by = c("spec", "cluster_id"), all = TRUE
+  )
+  dt <- dt[, intersect(c(
+    "spec", "cluster_id", "n_tracks", "pct_of_total", "activity_rank",
+    "pct_in_risk_zone", "risk_rank"
+  ), names(dt)), drop = FALSE]
+  dt <- dt[order(dt$spec, dt$activity_rank), ]
+  report_table(rename_display(
+    dt,
+    c(spec = "Species", cluster_id = "Sector", n_tracks = "Tracks", pct_of_total = "% of Species Tracks",
+      activity_rank = "Activity Rank", pct_in_risk_zone = "% in Risk-Height Zone", risk_rank = "Risk-Height Rank")
+  ))
+}
+```
+```{r species-risk-manual-annex, results='asis'}
+annex_note(params$xlsx_species_risk_manual)
+```
+
+### Risk Context at Incident Turbines
+
+For each incident's turbine, where its sector falls in the two rankings above -- "below median" means that sector ranks in the lower half of sectors for that species on that metric (comparatively less active / less exposed than most other sectors, for that species). This describes relative standing only, using the full project history; it does not establish causality with the incident, and being below median on both metrics does not amount to a validated "low risk" threshold -- it only means the baseline activity/exposure data do not contradict treating that sector's risk as comparatively lower than the farm's other sectors.
+
+<!-- Source: incident_risk_context_manual_dt <- summarise_incident_cluster_risk_context(), R/species_cluster_risk_ranking.R -->
+```{r incident-risk-context-manual-table}
+if (!is.null(params$incident_risk_context_manual)) {
+  report_table(rename_display(
+    drop_cols(params$incident_risk_context_manual, c("below_median_activity", "below_median_risk_height", "low_baseline_risk_supported")),
+    c(incident_id = "Incident", turbine = "Turbine", species = "Species", cluster_id = "Sector",
+      n_clusters = "N Sectors", track_activity_rank = "Activity Rank", track_pct_of_total = "% of Species Tracks",
+      risk_height_rank = "Risk-Height Rank", pct_in_risk_zone = "% in Risk-Height Zone")
+  ))
+}
+```
+```{r incident-risk-context-manual-text, results='asis'}
+if (!is.null(params$incident_risk_context_manual) && nrow(params$incident_risk_context_manual) > 0) {
+  dt <- params$incident_risk_context_manual
+  for (i in seq_len(nrow(dt))) {
+    r <- dt[i, ]
+    verdict <- if (isTRUE(r$low_baseline_risk_supported)) {
+      "its sector is below median on both metrics, so the baseline activity/exposure data do not contradict treating this sector's risk as comparatively lower than the farm's other sectors"
+    } else {
+      "its sector is not below median on both metrics, so these data do not support treating this sector's risk as comparatively low"
+    }
+    cat(sprintf(
+      "- **%s** (%s, %s): sector %s ranks %s of %s by track activity (%s%% of the species' farm-wide tracks) and %s of %s by time in the risk-height zone (%s%%) -- %s.\n",
+      r$incident_id, r$turbine, r$species, r$cluster_id,
+      r$track_activity_rank, r$n_clusters, r$track_pct_of_total,
+      r$risk_height_rank, r$n_clusters, r$pct_in_risk_zone,
+      verdict
+    ))
+  }
+  cat("\n")
+}
+```
+
 ```{r stat-cluster-heading, results='asis'}
 # Secção inteira (titulo + subsecções) so' aparece quando
 # run_sections$turbine_clustering = TRUE (via estatistica ligada) --
@@ -741,6 +822,74 @@ if (!is.null(params$stat_risk_summary)) {
 ```
 ```{r stat-risk-summary-annex, results='asis'}
 annex_note(params$xlsx_stat_critical_zone)
+```
+
+```{r stat-species-risk-heading, results='asis'}
+if (!is.null(params$species_activity_stat) && !is.null(params$species_risk_height_stat)) {
+  cat("## Species Activity & Risk-Height Exposure by Cluster\n\n")
+  cat(sprintf(
+    "Same complementary view as the manual sectors section above, computed instead over the statistical clusters: farm-wide track activity and flight-height risk exposure, for the species involved in the known fatality incidents, over the full project history (tracks with at least %s points and a flight speed between %s and %s m/s; risk-height band %s-%s m).\n\n",
+    params$flight_min_track_points, params$flight_speed_ms_min, params$flight_speed_ms_max,
+    params$risk_height_lower, params$risk_height_upper
+  ))
+}
+```
+```{r species-risk-stat-table}
+if (!is.null(params$species_activity_stat) && !is.null(params$species_risk_height_stat)) {
+  dt <- merge(
+    as.data.frame(params$species_activity_stat),
+    as.data.frame(params$species_risk_height_stat),
+    by = c("spec", "cluster_id"), all = TRUE
+  )
+  dt <- dt[, intersect(c(
+    "spec", "cluster_id", "n_tracks", "pct_of_total", "activity_rank",
+    "pct_in_risk_zone", "risk_rank"
+  ), names(dt)), drop = FALSE]
+  dt <- dt[order(dt$spec, dt$activity_rank), ]
+  report_table(rename_display(
+    dt,
+    c(spec = "Species", cluster_id = "Cluster", n_tracks = "Tracks", pct_of_total = "% of Species Tracks",
+      activity_rank = "Activity Rank", pct_in_risk_zone = "% in Risk-Height Zone", risk_rank = "Risk-Height Rank")
+  ))
+}
+```
+```{r species-risk-stat-annex, results='asis'}
+annex_note(params$xlsx_species_risk_stat)
+```
+
+```{r stat-incident-risk-context-heading, results='asis'}
+if (!is.null(params$incident_risk_context_stat)) cat("### Risk Context at Incident Turbines\n\n")
+```
+```{r incident-risk-context-stat-table}
+if (!is.null(params$incident_risk_context_stat)) {
+  report_table(rename_display(
+    drop_cols(params$incident_risk_context_stat, c("below_median_activity", "below_median_risk_height", "low_baseline_risk_supported")),
+    c(incident_id = "Incident", turbine = "Turbine", species = "Species", cluster_id = "Cluster",
+      n_clusters = "N Clusters", track_activity_rank = "Activity Rank", track_pct_of_total = "% of Species Tracks",
+      risk_height_rank = "Risk-Height Rank", pct_in_risk_zone = "% in Risk-Height Zone")
+  ))
+}
+```
+```{r incident-risk-context-stat-text, results='asis'}
+if (!is.null(params$incident_risk_context_stat) && nrow(params$incident_risk_context_stat) > 0) {
+  dt <- params$incident_risk_context_stat
+  for (i in seq_len(nrow(dt))) {
+    r <- dt[i, ]
+    verdict <- if (isTRUE(r$low_baseline_risk_supported)) {
+      "its cluster is below median on both metrics, so the baseline activity/exposure data do not contradict treating this cluster's risk as comparatively lower than the farm's other clusters"
+    } else {
+      "its cluster is not below median on both metrics, so these data do not support treating this cluster's risk as comparatively low"
+    }
+    cat(sprintf(
+      "- **%s** (%s, %s): cluster %s ranks %s of %s by track activity (%s%% of the species' farm-wide tracks) and %s of %s by time in the risk-height zone (%s%%) -- %s.\n",
+      r$incident_id, r$turbine, r$species, r$cluster_id,
+      r$track_activity_rank, r$n_clusters, r$track_pct_of_total,
+      r$risk_height_rank, r$n_clusters, r$pct_in_risk_zone,
+      verdict
+    ))
+  }
+  cat("\n")
+}
 ```
 
 # Minimum Individuals per Time Bin
