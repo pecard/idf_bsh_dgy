@@ -528,32 +528,38 @@ annex_note(params$xlsx_latency)
 ```
 
 ```{r example-response-heading, results='asis'}
-if (!is.null(params$no_response_examples_plot) || !is.null(params$slowest_response_examples_plot)) {
-  cat("## Example Response Profiles\n\n")
-  cat(sprintf(
-    "Illustrative examples: RPM profile of individual curtailments, with the curtailment start and stop overlaid, for a window of %s minute(s) before and %s minutes after the curtailment start -- examples below are the most illustrative available (slowest: the longest latencies; no-response: the most recent), not a random or representative sample.\n\n",
-    params$curtailment_example_window_before_min, params$curtailment_example_window_after_min
-  ))
-}
+cat("## Example Response Profiles\n\n")
+cat(sprintf(
+  "Illustrative examples: RPM profile of individual curtailments, with the curtailment start and stop overlaid, for a window of %s minute(s) before and %s minutes after the curtailment start -- examples below are the most illustrative available (slowest: the longest latencies; no-response: the most recent), not a random or representative sample. Sections below are always shown, with the underlying counts, even when there are no examples to plot for a given category.\n\n",
+  params$curtailment_example_window_before_min, params$curtailment_example_window_after_min
+))
 ```
 
 ```{r no-response-examples-heading, results='asis'}
-if (!is.null(params$no_response_examples_plot)) cat(sprintf("### No-Response Events (%s example(s))\n\n", params$n_no_response_examples))
+cat(sprintf("### No-Response Events (%s example(s))\n\n", params$n_no_response_examples))
 ```
 <!-- Source: select_latency_examples(latency_dt, "no_response"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
-```{r no-response-examples-plot, fig.width=6.30, fig.height=9}
-if (!is.null(params$no_response_examples_plot)) print(params$no_response_examples_plot)
+```{r no-response-examples-plot, fig.width=6.30, fig.height=5.91, results='asis'}
+if (!is.null(params$no_response_examples_plot)) {
+  print(params$no_response_examples_plot)
+} else {
+  cat("No no-response events were recorded in this reporting period -- no example plot is shown.\n\n")
+}
 ```
 
 ```{r slowest-examples-heading, results='asis'}
-if (!is.null(params$slowest_response_examples_plot)) cat(sprintf("### Slowest Responses (%s example(s))\n\n", params$n_slowest_examples))
+cat(sprintf("### Slowest Responses (%s example(s))\n\n", params$n_slowest_examples))
 ```
 <!-- Source: select_latency_examples(latency_dt, "slowest"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
-```{r slowest-examples-plot, fig.width=6.30, fig.height=9}
-if (!is.null(params$slowest_response_examples_plot)) print(params$slowest_response_examples_plot)
+```{r slowest-examples-plot, fig.width=6.30, fig.height=5.91, results='asis'}
+if (!is.null(params$slowest_response_examples_plot)) {
+  print(params$slowest_response_examples_plot)
+} else {
+  cat("No curtailments with a detected response were available in this reporting period -- no example plot is shown.\n\n")
+}
 ```
 ```{r curtailment-examples-annex, results='asis'}
-if (!is.null(params$no_response_examples_plot) || !is.null(params$slowest_response_examples_plot)) annex_note(params$xlsx_curtailment_examples)
+annex_note(params$xlsx_curtailment_examples)
 ```
 
 # Safe Distance (KNE Methodology)

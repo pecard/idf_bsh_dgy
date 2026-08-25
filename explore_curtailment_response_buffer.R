@@ -22,6 +22,19 @@
 ## window, se rpm_threshold (nao drop_pct_threshold -- ver secção 1.a) e'
 ## demasiado apertado.
 ##
+## Estado (2026-08): a secção 4 (Latency Test) e' o que foi efetivamente
+## adotado em producao (IDF_analysis.R/IDF_monthly_report.R, com
+## curtailment_latency_decline_pct/shutdown_time_buffer_sec/curtailment_cutin_rpm)
+## -- ja' inclui o filtro de cutin_rpm (curtailments abaixo da velocidade de
+## cut-in no start ficam de fora do no-response, ver R/curtailment_response_latency.R).
+## As secções 1-3 (classify_response_flag()/buffer window sobre
+## missed/delayed) exploram o esquema ANTERIOR, que a secção "Curtailment
+## Response & Latency" do relatorio ja' nao usa -- ficam so' como registo de
+## como se chegou a' decisao de adotar latencia em vez de missed/delayed
+## (classify_response_flag() continua em uso NOUTRAS secções do relatorio,
+## nao relacionadas -- a timeline de resposta vs. fenologia e a janela de
+## incidentes de fatalidade -- mas essas nao sao afetadas por cutin_rpm).
+##
 ## Reutiliza a MESMA cache (fst) ja' gravada por uma corrida anterior de
 ## run_annual_analysis.R (ou run_annual_analysis_DGY.R) -- NAO rele os
 ## ficheiros brutos, so' os 2 datasets grandes precisos aqui
@@ -149,7 +162,8 @@ print(rpm_threshold_sweep_dt)
 
 shutdown_time_buffer_dt <- compare_shutdown_time_buffer(
   curtl_scada_dt, scada_dt_unfilt, buffer_candidates_sec = buffer_candidates_sec,
-  thresholds = shutdown_time_thresholds, start_end_gap_sec = curtailment_start_end_gap_sec
+  thresholds = shutdown_time_thresholds, start_end_gap_sec = curtailment_start_end_gap_sec,
+  cutin_rpm = curtailment_cutin_rpm
 )
 
 print(shutdown_time_buffer_dt)

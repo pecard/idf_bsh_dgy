@@ -1558,7 +1558,7 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
   if (!is.null(p_no_response_examples)) {
     ggsave(
       file.path(folder_output, "curtailment_examples_no_response_rpm.png"),
-      plot = p_no_response_examples, width = 16, height = 3 * max(1, nrow(no_response_examples_dt)),
+      plot = p_no_response_examples, width = 16, height = 15,
       units = "cm", dpi = 300, bg = "white"
     )
   }
@@ -1572,7 +1572,7 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
   if (!is.null(p_slowest_response_examples)) {
     ggsave(
       file.path(folder_output, "curtailment_examples_slowest_response_rpm.png"),
-      plot = p_slowest_response_examples, width = 16, height = 3 * max(1, nrow(slowest_response_examples_dt)),
+      plot = p_slowest_response_examples, width = 16, height = 15,
       units = "cm", dpi = 300, bg = "white"
     )
   }
