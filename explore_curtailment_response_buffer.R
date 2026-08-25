@@ -49,6 +49,7 @@ source("R/curtailment_response.R")
 source("R/curtailment_shutdown_time.R")
 source("R/curtailment_response_classify.R")
 source("R/curtailment_response_buffer.R")
+source("R/curtailment_response_latency.R")
 source("R/curtailment_forensic_trace.R")
 
 ## cache/<farm_code>/ (layout atual) -- se ainda nao existir, tenta cache/
@@ -215,3 +216,29 @@ print(delayed_examples_current[, .(
   start_rpm, start_match_valid, end_rpm, end_match_valid,
   final_status, time_to_first_threshold_sec, response_flag
 )])
+
+
+## ---- 4) Latency Test -- tempo desde o "start" ate a turbina COMECAR a
+##         reagir (nao ate parar) -- pergunta separada da dos "missed"/
+##         "delayed" acima. A equipa de desenvolvimento do IDF sugere uma
+##         latencia esperada de ~20s; o Paulo acha que pode ser maior,
+##         ~30s. Ver R/curtailment_response_latency.R para o racional do
+##         limiar RELATIVO (decline_pct_threshold, fracao do RPM de
+##         baseline) em vez de um valor absoluto de RPM. ------------------
+
+latency_threshold_sweep_dt <- compare_latency_thresholds(curtl_scada_dt, scada_dt_unfilt)
+print(latency_threshold_sweep_dt)
+
+## Detalhe (media/mediana, % <=20s, % <=30s) para um limiar especifico --
+## ajustar consoante o que vires no sweep acima
+latency_dt <- time_to_first_decline(curtl_scada_dt, scada_dt_unfilt, decline_pct_threshold = 0.10)
+latency_summary <- summarise_latency(latency_dt)
+cat(sprintf(
+  "\nLatencia (decline_pct_threshold=0.10): %d/%d curtailments com deteção (%.1f%%), media=%.1fs, mediana=%.1fs\n",
+  latency_summary$n_reached, latency_summary$n_curtailments, latency_summary$pct_reached,
+  latency_summary$mean_latency_sec, latency_summary$median_latency_sec
+))
+print(latency_summary$bands)
+
+p_latency <- plot_latency_histogram(latency_dt)
+p_latency
