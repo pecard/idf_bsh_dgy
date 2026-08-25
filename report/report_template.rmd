@@ -30,6 +30,11 @@ params:
   safe_dist_by_species: !r NULL
   safe_dist_plot: !r NULL
 
+  missed_examples_plot: !r NULL
+  delayed_examples_plot: !r NULL
+  n_missed_examples: !r NULL
+  n_delayed_examples: !r NULL
+
   fatality_signal_counts: !r NULL
   fatality_top_candidates: !r NULL
   fatality_window_response_summary: !r NULL
@@ -73,6 +78,7 @@ params:
   xlsx_stat_critical_zone: !r NULL
   xlsx_species_risk_manual: !r NULL
   xlsx_species_risk_stat: !r NULL
+  xlsx_curtailment_examples: !r NULL
   xlsx_min_indiv: !r NULL
 
   # Literais de configuracao (userSettings_BSH.R) usados so' para texto
@@ -89,6 +95,9 @@ params:
   shutdown_time_thresholds: !r NULL
   shutdown_time_low_cut: !r NULL
   shutdown_time_high_cut: !r NULL
+
+  curtailment_example_window_before_min: !r NULL
+  curtailment_example_window_after_min: !r NULL
 
   safe_dist_reference_line_m: !r NULL
   safe_dist_rpm_threshold: !r NULL
@@ -428,6 +437,35 @@ if (!is.null(params$assess_by_turbine)) {
 ```
 ```{r assess-turbine-annex, results='asis'}
 annex_note(params$xlsx_assess)
+```
+
+```{r example-response-heading, results='asis'}
+if (!is.null(params$missed_examples_plot) || !is.null(params$delayed_examples_plot)) {
+  cat("## Example Response Profiles\n\n")
+  cat(sprintf(
+    "Illustrative examples: RPM profile of individual curtailments, with the curtailment start and stop overlaid, for a window of %s minute(s) before and %s minutes after the curtailment start. These use a finer classification than the Status table above: **missed** (turbine confirmed not to have stopped) and **delayed** (turbine did stop, but slower than the agreed cut-off) -- examples below are the most illustrative available (delayed: the longest delays; missed: the most recent), not a random or representative sample.\n\n",
+    params$curtailment_example_window_before_min, params$curtailment_example_window_after_min
+  ))
+}
+```
+
+```{r missed-examples-heading, results='asis'}
+if (!is.null(params$missed_examples_plot)) cat(sprintf("### Missed Curtailments (%s example(s))\n\n", params$n_missed_examples))
+```
+<!-- Source: select_curtailment_examples(response_flag_dt, "missed"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
+```{r missed-examples-plot, fig.width=6.30, fig.height=9}
+if (!is.null(params$missed_examples_plot)) print(params$missed_examples_plot)
+```
+
+```{r delayed-examples-heading, results='asis'}
+if (!is.null(params$delayed_examples_plot)) cat(sprintf("### Delayed Curtailments (%s example(s))\n\n", params$n_delayed_examples))
+```
+<!-- Source: select_curtailment_examples(response_flag_dt, "delayed"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
+```{r delayed-examples-plot, fig.width=6.30, fig.height=9}
+if (!is.null(params$delayed_examples_plot)) print(params$delayed_examples_plot)
+```
+```{r curtailment-examples-annex, results='asis'}
+if (!is.null(params$missed_examples_plot) || !is.null(params$delayed_examples_plot)) annex_note(params$xlsx_curtailment_examples)
 ```
 
 # Shutdown Time

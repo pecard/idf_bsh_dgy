@@ -1475,6 +1475,50 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
     shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
   )
 
+  # Exemplos ilustrativos de perfil de RPM -- ate curtailment_example_n
+  # curtailments "missed"/"delayed" (mesma classificacao de response_flag_dt
+  # acima), com o perfil de RPM e as linhas verticais de inicio/fim do
+  # curtailment, numa janela curta a volta do inicio de cada evento. Ver
+  # select_curtailment_examples()/plot_curtailment_events_rpm(),
+  # R/curtailment_forensic_trace.R.
+  source("R/curtailment_forensic_trace.R")
+
+  missed_examples_dt  <- select_curtailment_examples(response_flag_dt, "missed", n = curtailment_example_n)
+  delayed_examples_dt <- select_curtailment_examples(response_flag_dt, "delayed", n = curtailment_example_n)
+
+  p_missed_examples <- plot_curtailment_events_rpm(
+    missed_examples_dt, scada_dt,
+    window_before_min = curtailment_example_window_before_min,
+    window_after_min = curtailment_example_window_after_min,
+    title = "Missed Curtailments -- RPM Profile (Examples)"
+  )
+  if (!is.null(p_missed_examples)) {
+    ggsave(
+      file.path(folder_output, "curtailment_examples_missed_rpm.png"),
+      plot = p_missed_examples, width = 16, height = 3 * max(1, nrow(missed_examples_dt)),
+      units = "cm", dpi = 300, bg = "white"
+    )
+  }
+
+  p_delayed_examples <- plot_curtailment_events_rpm(
+    delayed_examples_dt, scada_dt,
+    window_before_min = curtailment_example_window_before_min,
+    window_after_min = curtailment_example_window_after_min,
+    title = "Delayed Curtailments -- RPM Profile (Examples)"
+  )
+  if (!is.null(p_delayed_examples)) {
+    ggsave(
+      file.path(folder_output, "curtailment_examples_delayed_rpm.png"),
+      plot = p_delayed_examples, width = 16, height = 3 * max(1, nrow(delayed_examples_dt)),
+      units = "cm", dpi = 300, bg = "white"
+    )
+  }
+
+  write_xlsx_local(
+    list(Missed_examples = missed_examples_dt, Delayed_examples = delayed_examples_dt),
+    file.path(folder_output, "curtailment_response_examples.xlsx")
+  )
+
   response_timeline_dt  <- summarise_response_timeline(response_flag_dt, unit = response_timeline_unit)
   abundance_timeline_dt <- summarise_abundance_timeline(min_indiv_bins_dt, unit = response_timeline_unit)
 
@@ -1948,6 +1992,11 @@ report_params <- list(
   safe_dist_by_species = if (exists("summary_safe_dist")) summary_safe_dist$by_species else NULL,
   safe_dist_plot       = if (exists("p_safe_dist_hist")) p_safe_dist_hist else NULL,
 
+  missed_examples_plot  = if (exists("p_missed_examples")) p_missed_examples else NULL,
+  delayed_examples_plot = if (exists("p_delayed_examples")) p_delayed_examples else NULL,
+  n_missed_examples     = if (exists("missed_examples_dt")) nrow(missed_examples_dt) else NULL,
+  n_delayed_examples    = if (exists("delayed_examples_dt")) nrow(delayed_examples_dt) else NULL,
+
   fatality_signal_counts    = if (exists("fatality_summary")) fatality_summary$counts_by_signal else NULL,
   fatality_top_candidates   = if (exists("fatality_summary")) fatality_summary$top_candidates else NULL,
   fatality_window_response_summary = if (exists("fatality_window_response_summary_dt")) fatality_window_response_summary_dt else NULL,
@@ -1993,6 +2042,7 @@ report_params <- list(
   xlsx_stat_critical_zone    = "turbine_critical_zone_summary_statistical.xlsx",
   xlsx_species_risk_manual   = "species_cluster_risk_ranking_manual.xlsx",
   xlsx_species_risk_stat     = "species_cluster_risk_ranking_statistical.xlsx",
+  xlsx_curtailment_examples = "curtailment_response_examples.xlsx",
   xlsx_min_indiv           = "min_individuals_per_bin.xlsx",
 
   ## Literais de configuracao (userSettings_BSH.R) -- so' para texto
@@ -2011,6 +2061,9 @@ report_params <- list(
   shutdown_time_thresholds = shutdown_time_thresholds,
   shutdown_time_low_cut    = shutdown_time_low_cut,
   shutdown_time_high_cut   = shutdown_time_high_cut,
+
+  curtailment_example_window_before_min = curtailment_example_window_before_min,
+  curtailment_example_window_after_min  = curtailment_example_window_after_min,
 
   safe_dist_reference_line_m   = safe_dist_reference_line_m,
   safe_dist_rpm_threshold        = safe_dist_rpm_threshold,

@@ -233,3 +233,85 @@ plot_forensic_rpm <- function(forensic_dt, scada_dt, turbine_id, date,
     showlegend = TRUE
   )
 }
+
+
+## 4. Exemplos ilustrativos (estatico, ggplot -- para o relatorio Word, ao
+##    contrario do plot_forensic_rpm() acima, interativo/plotly, pensado
+##    para investigacao ad-hoc) ----
+##
+## Escolhe ate n curtailments de uma categoria de response_flag (ver
+## R/curtailment_response_classify.R -- "missed": confirmado que nao parou;
+## "delayed": parou mas demorou mais que o cut-off) para ilustrar
+## visualmente no relatorio. "delayed" ordena pelo atraso (mais ilustrativo
+## primeiro, o time_to_first_threshold_sec e' uma metrica natural de
+## severidade); "missed" nao tem uma metrica de severidade (e' uma falha
+## binaria), por isso usa-se simplesmente os mais recentes.
+
+select_curtailment_examples <- function(response_dt, flag, n = 3) {
+
+  dt <- response_dt[response_flag == flag]
+  if (nrow(dt) == 0L) return(dt)
+
+  if (flag == "delayed") {
+    data.table::setorder(dt, -time_to_first_threshold_sec)
+  } else {
+    data.table::setorder(dt, -start)
+  }
+  dt[seq_len(min(n, .N))]
+}
+
+
+## Perfil de RPM (linha) com o inicio e o fim do curtailment (linhas
+## verticais), 1 painel por evento (facet_wrap, ncol=1, scales="free_x" --
+## cada evento tem a sua propria janela de tempo, nao faz sentido um eixo x
+## partilhado). Janela: [start - window_before_min, start + window_after_min]
+## -- relativa ao INICIO do curtailment, nao ao fim.
+##
+## events_dt: 1 ou mais linhas de response_dt (classify_response_flag()) --
+## tipicamente o resultado de select_curtailment_examples() acima, mas
+## aceita qualquer subconjunto com as colunas turbine/species/start/end.
+## Devolve NULL se events_dt estiver vazio ou nao houver dados de SCADA na
+## janela de nenhum evento (mesmo padrao de NULL-on-empty-data ja usado em
+## R/curtailment_safe_distance.R, para o ggsave() do lado de fora poder
+## saltar em seguranca).
+
+plot_curtailment_events_rpm <- function(events_dt, scada_dt, window_before_min = 1, window_after_min = 3, title = NULL) {
+
+  if (nrow(events_dt) == 0L) return(NULL)
+
+  events_dt <- data.table::copy(events_dt)
+  events_dt[, label := sprintf("%s -- %s (%s)", turbine, format(start, "%Y-%m-%d %H:%M:%S"), species)]
+  # factor com os niveis na ordem de selecao (ex: "delayed" mais grave primeiro)
+  # -- sem isto facet_wrap reordena os paineis alfabeticamente
+  events_dt[, label := factor(label, levels = label)]
+
+  rpm_dt_all <- data.table::rbindlist(lapply(seq_len(nrow(events_dt)), function(i) {
+    ev <- events_dt[i]
+    t_ini <- ev$start - window_before_min * 60
+    t_end <- ev$start + window_after_min * 60
+    scada_dt[
+      turbinelabel == ev$turbine & readingname == "RPM" & datetime >= t_ini & datetime <= t_end,
+      .(label = ev$label, datetime, value)
+    ]
+  }))
+  if (nrow(rpm_dt_all) == 0L) return(NULL)
+
+  events_long <- data.table::rbindlist(list(
+    events_dt[, .(label, event_time = start, event_type = "Curtailment start")],
+    events_dt[, .(label, event_time = end, event_type = "Curtailment stop")]
+  ))
+
+  ggplot2::ggplot() +
+    ggplot2::geom_line(data = rpm_dt_all, ggplot2::aes(x = datetime, y = value), colour = "#e8792f") +
+    ggplot2::geom_vline(
+      data = events_long,
+      ggplot2::aes(xintercept = event_time, colour = event_type, linetype = event_type),
+      linewidth = 0.7
+    ) +
+    ggplot2::scale_colour_manual(values = c("Curtailment start" = "steelblue", "Curtailment stop" = "darkred"), name = NULL) +
+    ggplot2::scale_linetype_manual(values = c("Curtailment start" = "solid", "Curtailment stop" = "dashed"), name = NULL) +
+    ggplot2::facet_wrap(~ label, ncol = 1, scales = "free_x") +
+    ggplot2::labs(x = NULL, y = "RPM", title = title) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(legend.position = "bottom", strip.text = ggplot2::element_text(face = "bold", size = 8))
+}

@@ -385,6 +385,18 @@ min_individuals_merge_dist_m <- 200
 # abundancia sao agregadas nesta mesma escala, para poderem ser comparadas)
 response_timeline_unit <- "week"
 
+# Exemplos ilustrativos de perfil de RPM -- para cada categoria (missed/
+# delayed, mesma classificacao de response_flag_dt acima), ate'
+# curtailment_example_n eventos sao escolhidos e desenhados (RPM +
+# linhas verticais de inicio/fim do curtailment), janela de
+# curtailment_example_window_before_min antes e
+# curtailment_example_window_after_min depois do INICIO do curtailment.
+# Ver select_curtailment_examples()/plot_curtailment_events_rpm(),
+# R/curtailment_forensic_trace.R.
+curtailment_example_n                  <- 3
+curtailment_example_window_before_min  <- 1
+curtailment_example_window_after_min   <- 3
+
 
 ## -- 9. Turbine recent activity (apoio a matriz de decisao do protocolo
 ##       de resposta a outages do IdentiFlight) --
