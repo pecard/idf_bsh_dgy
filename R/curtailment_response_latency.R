@@ -20,31 +20,40 @@
 ## decline_pct_threshold evita essa distorcao: mede sempre "caiu X% face
 ## ao proprio ponto de partida", seja qual for esse ponto de partida.
 ##
-## Ainda exploratorio -- nao faz parte do pipeline de producao
-## (IDF_analysis.R nunca chama isto). Ver explore_curtailment_response_buffer.R,
-## secção "Latency Test".
+## Adotado em producao 2026-08 (IDF_analysis.R secção 3.5b/IDF_monthly_report.R
+## secção 5b) com decline_pct_threshold=0.10 (mesmo valor de
+## curtailment_drop_pct_threshold, mas mecanismo diferente -- ver nota em
+## time_to_first_decline() abaixo) e buffer_after_end_sec=shutdown_time_buffer_sec
+## (partilhado com time_to_rpm_thresholds(), R/curtailment_shutdown_time.R).
+## Um "no-response event" (secção "No-Response Events" do relatorio) e' um
+## curtailment sem decline_pct_threshold detetado dentro dessa janela --
+## nem sequer uma resposta parcial, nao so' uma resposta lenta.
 ##
 ## Depende de: data.table, R/curtailment_response.R (usa match_nearest_rpm())
 ##
 ## Uso:
 ##   source("R/curtailment_response.R")
 ##   source("R/curtailment_response_latency.R")
-##   lat_dt <- time_to_first_decline(curtl_scada_dt, scada_dt, decline_pct_threshold = 0.10)
-##   summarise_latency(lat_dt)
-##   sweep_dt <- compare_latency_thresholds(curtl_scada_dt, scada_dt)
+##   latency_dt <- time_to_first_decline(curtl_dt, scada_dt, decline_pct_threshold = 0.10, buffer_after_end_sec = 60)
+##   summarise_latency(latency_dt)
+##   summarise_latency_bands(latency_dt)
+##   summarise_latency_by_turbine(latency_dt)
 ##
 
 
 ## 1. Tempo ate a 1a queda relativa significativa de RPM, por curtailment ----
 ##
-## window_after_start_sec limita a procura (por omissao 180s, bem acima de
-## qualquer latencia razoavel discutida) -- so' para nao ter de varrer o
-## SCADA indefinidamente em curtailments muito longos; nao afeta o
-## resultado em si porque procuramos sempre a PRIMEIRA leitura que cumpre
-## o limiar (min(datetime)), nao a ultima.
+## buffer_after_end_sec (por omissao 0, mesmo comportamento de
+## time_to_rpm_thresholds()): a janela de procura e' [start, end +
+## buffer_after_end_sec] -- ligada a duracao REAL de cada curtailment (nao
+## um offset fixo desde o start), o mesmo padrao ja usado em
+## time_to_rpm_thresholds(). Procuramos sempre a PRIMEIRA leitura que
+## cumpre o limiar (min(datetime)), por isso alargar a janela nunca muda
+## um resultado ja encontrado, so' pode encontrar um mais tarde nos casos
+## que antes ficavam sem deteção.
 
 time_to_first_decline <- function(curtl_dt, scada_dt, decline_pct_threshold = 0.10,
-                                  start_end_gap_sec = 2, window_after_start_sec = 180) {
+                                  start_end_gap_sec = 2, buffer_after_end_sec = 0) {
 
   dt <- as.data.table(curtl_dt)
   dt[, curtailment_id := .I]
@@ -68,7 +77,7 @@ time_to_first_decline <- function(curtl_dt, scada_dt, decline_pct_threshold = 0.
 
   windows <- merge(
     dt_valid[, .(curtailment_id, turbine, window_start = start,
-                window_end = start + window_after_start_sec)],
+                window_end = end + buffer_after_end_sec)],
     start_rpm_dt, by = "curtailment_id"
   )
 
@@ -103,61 +112,115 @@ time_to_first_decline <- function(curtl_dt, scada_dt, decline_pct_threshold = 0.
 }
 
 
-## 2. Resumo -- media/mediana e % de curtailments com latencia dentro de
-##    varios cortes (ex: <=20s vs <=30s, para comparar a sugestao da
-##    equipa do IDF com a hipotese do Paulo) ----
+## 2. Resumo farm-wide -- 1 linha, com n reached/no-response e media/mediana ----
+##
+## n_no_response/pct_no_response = complemento de n_reached/pct_reached --
+## e' a definicao de "no-response event" usada na secção "No-Response
+## Events" do relatorio: nenhuma queda >= decline_pct_threshold detetada
+## dentro da janela de procura (nem sequer uma resposta parcial).
 
-summarise_latency <- function(latency_dt, cutoffs_sec = c(20, 30, 40, 60)) {
+summarise_latency <- function(latency_dt) {
 
   n_total   <- nrow(latency_dt)
   n_reached <- sum(!is.na(latency_dt$latency_sec))
 
-  bands <- data.table::rbindlist(lapply(cutoffs_sec, function(cutoff) {
-    data.table::data.table(
-      cutoff_sec        = cutoff,
-      pct_within_cutoff = round(100 * sum(latency_dt$latency_sec <= cutoff, na.rm = TRUE) / n_reached, 1)
-    )
-  }))
-
-  list(
-    n_curtailments      = n_total,
-    n_reached           = n_reached,
-    pct_reached         = round(100 * n_reached / n_total, 1),
-    mean_latency_sec    = round(mean(latency_dt$latency_sec, na.rm = TRUE), 1),
-    median_latency_sec  = round(median(latency_dt$latency_sec, na.rm = TRUE), 1),
-    bands               = bands
+  data.table::data.table(
+    n_curtailments     = n_total,
+    n_reached          = n_reached,
+    pct_reached        = round(100 * n_reached / n_total, 1),
+    n_no_response      = n_total - n_reached,
+    pct_no_response    = round(100 * (n_total - n_reached) / n_total, 1),
+    mean_latency_sec   = round(mean(latency_dt$latency_sec, na.rm = TRUE), 1),
+    median_latency_sec = round(median(latency_dt$latency_sec, na.rm = TRUE), 1)
   )
 }
 
 
-## 3. Sweep de decline_pct_threshold -- ver se a latencia estimada e'
-##    sensivel a escolha do limiar relativo (ex: 5% vs 10% vs 20%) ----
+## 3. Bandas -- % de curtailments (dos que tiveram deteção) com latencia
+##    dentro de varios cortes (ex: <=20s vs <=30s, para comparar a sugestao
+##    da equipa do IDF com a hipotese do Paulo) ----
 
-compare_latency_thresholds <- function(curtl_dt, scada_dt,
-                                       decline_pct_candidates = c(0.05, 0.10, 0.20),
-                                       start_end_gap_sec = 2, window_after_start_sec = 180) {
+summarise_latency_bands <- function(latency_dt, cutoffs_sec = c(20, 30, 40, 60)) {
 
-  data.table::rbindlist(lapply(decline_pct_candidates, function(p) {
-    lat_dt <- time_to_first_decline(
-      curtl_dt, scada_dt, decline_pct_threshold = p,
-      start_end_gap_sec = start_end_gap_sec, window_after_start_sec = window_after_start_sec
-    )
-    summ <- summarise_latency(lat_dt)
+  n_reached <- sum(!is.na(latency_dt$latency_sec))
+
+  data.table::rbindlist(lapply(cutoffs_sec, function(cutoff) {
     data.table::data.table(
-      decline_pct_threshold = p,
-      n_curtailments        = summ$n_curtailments,
-      n_reached             = summ$n_reached,
-      pct_reached           = summ$pct_reached,
-      mean_latency_sec      = summ$mean_latency_sec,
-      median_latency_sec    = summ$median_latency_sec,
-      pct_within_20s        = summ$bands[cutoff_sec == 20, pct_within_cutoff],
-      pct_within_30s        = summ$bands[cutoff_sec == 30, pct_within_cutoff]
+      cutoff_sec        = cutoff,
+      pct_within_cutoff = if (n_reached == 0L) NA_real_ else
+        round(100 * sum(latency_dt$latency_sec <= cutoff, na.rm = TRUE) / n_reached, 1)
     )
   }))
 }
 
 
-## 4. Histograma da distribuicao de latencia, com marcadores nos 20s/30s
+## 4. Resumo por turbina -- mesmas colunas de summarise_latency(), 1 linha
+##    por turbina, para identificar turbinas com latencia/no-response
+##    sistematicamente mais alta ----
+
+summarise_latency_by_turbine <- function(latency_dt) {
+
+  by_turbine <- latency_dt[, {
+    n_reached <- sum(!is.na(latency_sec))
+    .(
+      n_curtailments     = .N,
+      n_reached          = n_reached,
+      pct_reached        = round(100 * n_reached / .N, 1),
+      n_no_response      = .N - n_reached,
+      pct_no_response    = round(100 * (.N - n_reached) / .N, 1),
+      mean_latency_sec   = round(mean(latency_sec, na.rm = TRUE), 1),
+      median_latency_sec = round(median(latency_sec, na.rm = TRUE), 1)
+    )
+  }, by = turbine]
+
+  data.table::setorder(by_turbine, -pct_no_response)
+  by_turbine[]
+}
+
+
+## 5. Sweep de decline_pct_threshold -- exploratorio, ver se a latencia
+##    estimada e' sensivel a escolha do limiar relativo (ex: 5% vs 10% vs
+##    20%). Nao usado em producao (IDF_analysis.R usa sempre um so' valor,
+##    curtailment_latency_decline_pct). ----
+
+compare_latency_thresholds <- function(curtl_dt, scada_dt,
+                                       decline_pct_candidates = c(0.05, 0.10, 0.20),
+                                       start_end_gap_sec = 2, buffer_after_end_sec = 0) {
+
+  data.table::rbindlist(lapply(decline_pct_candidates, function(p) {
+    lat_dt <- time_to_first_decline(
+      curtl_dt, scada_dt, decline_pct_threshold = p,
+      start_end_gap_sec = start_end_gap_sec, buffer_after_end_sec = buffer_after_end_sec
+    )
+    summ  <- summarise_latency(lat_dt)
+    bands <- summarise_latency_bands(lat_dt)
+    summ[, decline_pct_threshold := p]
+    summ[, pct_within_20s := bands[cutoff_sec == 20, pct_within_cutoff]]
+    summ[, pct_within_30s := bands[cutoff_sec == 30, pct_within_cutoff]]
+    data.table::setcolorder(summ, c("decline_pct_threshold", setdiff(names(summ), "decline_pct_threshold")))
+    summ[]
+  }))
+}
+
+
+## 6. Exemplos para plot -- "no_response": sem deteção, os mais recentes
+##    primeiro; "slowest": maior latencia registada, entre os que tiveram
+##    deteção. Mesmo padrao de select_curtailment_examples()
+##    (R/curtailment_forensic_trace.R), adaptado a latency_dt (que nao tem
+##    coluna response_flag). ----
+
+select_latency_examples <- function(latency_dt, type = c("no_response", "slowest"), n = 3) {
+
+  type <- match.arg(type)
+  dt <- if (type == "no_response") latency_dt[is.na(latency_sec)] else latency_dt[!is.na(latency_sec)]
+  if (nrow(dt) == 0L) return(dt)
+
+  if (type == "slowest") data.table::setorder(dt, -latency_sec) else data.table::setorder(dt, -start)
+  dt[seq_len(min(n, .N))]
+}
+
+
+## 7. Histograma da distribuicao de latencia, com marcadores nos 20s/30s
 ##    em discussao ----
 
 plot_latency_histogram <- function(latency_dt, cutoffs_sec = c(20, 30)) {

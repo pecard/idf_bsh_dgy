@@ -269,6 +269,14 @@ shutdown_time_thresholds <- c(2, 1, 0)
 shutdown_time_low_cut    <- 40
 shutdown_time_high_cut   <- 50
 
+# mesmo valor de userSettings_BSH.R -- ver o comentario la' para o racional
+shutdown_time_buffer_sec <- 60
+
+
+## -- 3.6b. Response latency (tempo ate a turbina COMECAR a reagir) --
+
+curtailment_latency_decline_pct <- 0.10
+
 
 ## -- 3.7. Safe distance (metodologia KNE) --
 

@@ -17,8 +17,9 @@ params:
   coverage_turbine_summary: !r NULL
   coverage_idf_summary: !r NULL
 
-  assess_by_status: !r NULL
-  assess_by_turbine: !r NULL
+  latency_by_turbine: !r NULL
+  latency_bands: !r NULL
+  latency_plot: !r NULL
 
   shutdown_by_turbine: !r NULL
   shutdown_bands: !r NULL
@@ -30,10 +31,10 @@ params:
   safe_dist_by_species: !r NULL
   safe_dist_plot: !r NULL
 
-  missed_examples_plot: !r NULL
-  delayed_examples_plot: !r NULL
-  n_missed_examples: !r NULL
-  n_delayed_examples: !r NULL
+  no_response_examples_plot: !r NULL
+  slowest_response_examples_plot: !r NULL
+  n_no_response_examples: !r NULL
+  n_slowest_examples: !r NULL
 
   fatality_signal_counts: !r NULL
   fatality_top_candidates: !r NULL
@@ -67,7 +68,7 @@ params:
   xlsx_availability: !r NULL
   xlsx_coverage_turbine: !r NULL
   xlsx_coverage_idf: !r NULL
-  xlsx_assess: !r NULL
+  xlsx_latency: !r NULL
   xlsx_shutdown: !r NULL
   xlsx_safe_dist: !r NULL
   xlsx_coverage3d: !r NULL
@@ -95,6 +96,9 @@ params:
   shutdown_time_thresholds: !r NULL
   shutdown_time_low_cut: !r NULL
   shutdown_time_high_cut: !r NULL
+  shutdown_time_buffer_sec: !r NULL
+
+  curtailment_latency_decline_pct: !r NULL
 
   curtailment_example_window_before_min: !r NULL
   curtailment_example_window_after_min: !r NULL
@@ -388,91 +392,62 @@ if (!is.null(params$coverage_idf_summary)) {
 annex_note(params$xlsx_coverage_idf)
 ```
 
-# Curtailment Response Assessment
+# Curtailment Response & Latency
 
-Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, over the full project history to date. The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s; an immediate response is recorded when RPM drops by at least `r params$curtailment_drop_pct_threshold * 100`% within `r params$curtailment_max_next_gap_sec` s of the signal; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`.
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, over the full project history to date. The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. Both response latency and shutdown time below allow up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order for this to happen.
 
-## By Status
+## Response Latency
 
-- **already_stopped**: RPM was already below the stop threshold at the moment of the curtailment signal.
-- **full_stop_by_end**: RPM dropped below the stop threshold by the end of the curtailment order.
-- **partial_or_no_stop**: RPM was still at or above the stop threshold when the curtailment order ended.
-- **no_data**: no SCADA reading within the matching tolerance at the start and/or end signal, so the outcome could not be determined.
+Time from the curtailment signal to the first SCADA reading showing the decline defined above, by turbine.
 
-<!-- Source: summary_assess$by_status <- summarise_curtailment_assessment(assess_dt)$by_status, R/curtailment_response.R -->
-```{r assess-status-table}
-if (!is.null(params$assess_by_status)) {
-  report_table(rename_display(
-    drop_cols(params$assess_by_status, c("mean_duration_sec", "median_duration_sec")),
-    c(final_status = "Status", n = "N", pct = "%", pct_of_valid = "% of Valid")
-  ))
-}
-```
-```{r assess-status-annex, results='asis'}
-annex_note(params$xlsx_assess)
-```
-
-## By Turbine
-
-Same assessment, broken down by turbine.
-
-<!-- Source: summary_assess$by_turbine <- summarise_curtailment_assessment(assess_dt)$by_turbine, R/curtailment_response.R -->
-```{r assess-turbine-table}
-if (!is.null(params$assess_by_turbine)) {
+<!-- Source: summarise_latency_by_turbine(latency_dt), R/curtailment_response_latency.R -->
+```{r latency-turbine-table}
+if (!is.null(params$latency_by_turbine)) {
   report_table(
     rename_display(
-      drop_cols(params$assess_by_turbine, c(
-        "n_no_immediate_response", "n_already_stopped", "n_full_stop_by_end",
-        "n_partial_or_no_stop", "n_no_data", "mean_rpm_delta_pct"
-      )),
+      drop_cols(params$latency_by_turbine, c("n_no_response", "pct_no_response")),
       c(
-        turbine = "Turbine", n_curtailments = "Curtailments",
-        n_valid_matches = "Valid Matches", no_immediate_response_pct = "No Immed. Resp. %",
-        missed_pct = "Missed %"
+        turbine = "Turbine", n_curtailments = "Curtailments", n_reached = "Reached",
+        pct_reached = "% Reached", mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)"
       )
     ),
-    max_col_width_cm = 2.5
+    max_col_width_cm = 2
   )
 }
 ```
-```{r assess-turbine-annex, results='asis'}
-annex_note(params$xlsx_assess)
+```{r latency-turbine-annex, results='asis'}
+annex_note(params$xlsx_latency)
 ```
 
-```{r example-response-heading, results='asis'}
-if (!is.null(params$missed_examples_plot) || !is.null(params$delayed_examples_plot)) {
-  cat("## Example Response Profiles\n\n")
-  cat(sprintf(
-    "Illustrative examples: RPM profile of individual curtailments, with the curtailment start and stop overlaid, for a window of %s minute(s) before and %s minutes after the curtailment start. These use a finer classification than the Status table above: **missed** (turbine confirmed not to have stopped) and **delayed** (turbine did stop, but slower than the agreed cut-off) -- examples below are the most illustrative available (delayed: the longest delays; missed: the most recent), not a random or representative sample.\n\n",
-    params$curtailment_example_window_before_min, params$curtailment_example_window_after_min
+### Response Latency Bands
+
+Of the curtailments where a decline was detected, share with latency within each cut-off.
+
+<!-- Source: summarise_latency_bands(latency_dt), R/curtailment_response_latency.R -->
+```{r latency-bands-table}
+if (!is.null(params$latency_bands)) {
+  report_table(rename_display(
+    params$latency_bands,
+    c(cutoff_sec = "Cut-off (s)", pct_within_cutoff = "% Within Cut-off")
   ))
 }
 ```
-
-```{r missed-examples-heading, results='asis'}
-if (!is.null(params$missed_examples_plot)) cat(sprintf("### Missed Curtailments (%s example(s))\n\n", params$n_missed_examples))
-```
-<!-- Source: select_curtailment_examples(response_flag_dt, "missed"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
-```{r missed-examples-plot, fig.width=6.30, fig.height=9}
-if (!is.null(params$missed_examples_plot)) print(params$missed_examples_plot)
+```{r latency-bands-annex, results='asis'}
+annex_note(params$xlsx_latency)
 ```
 
-```{r delayed-examples-heading, results='asis'}
-if (!is.null(params$delayed_examples_plot)) cat(sprintf("### Delayed Curtailments (%s example(s))\n\n", params$n_delayed_examples))
-```
-<!-- Source: select_curtailment_examples(response_flag_dt, "delayed"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
-```{r delayed-examples-plot, fig.width=6.30, fig.height=9}
-if (!is.null(params$delayed_examples_plot)) print(params$delayed_examples_plot)
-```
-```{r curtailment-examples-annex, results='asis'}
-if (!is.null(params$missed_examples_plot) || !is.null(params$delayed_examples_plot)) annex_note(params$xlsx_curtailment_examples)
+### Response Latency Distribution
+
+<!-- Source: plot_latency_histogram(latency_dt), R/curtailment_response_latency.R -->
+```{r latency-plot, fig.width=6.30, fig.height=4}
+if (!is.null(params$latency_plot)) print(params$latency_plot)
 ```
 
-# Shutdown Time
+## Shutdown Time
 
 Time from curtailment signal to reaching each RPM threshold, by turbine -- 3 thresholds evaluated: `r paste(params$shutdown_time_thresholds, collapse = ", ")` rpm. Bands below/above the agreed cut-offs are reported as-is, without further interpretation.
 
-## Time to Threshold by Turbine
+### Time to Threshold by Turbine
 
 <!-- Source: summarise_time_to_threshold(tt_dt), R/curtailment_shutdown_time.R -->
 ```{r shutdown-turbine-table}
@@ -494,7 +469,7 @@ if (!is.null(params$shutdown_by_turbine)) {
 annex_note(params$xlsx_shutdown)
 ```
 
-## Time to Threshold Bands
+### Time to Threshold Bands
 
 A curtailment counts as "below cut" when it reached the threshold in under `r params$shutdown_time_low_cut` s (fast), and "above cut" when it took more than `r params$shutdown_time_high_cut` s (slow); cases in between count towards neither band.
 
@@ -514,11 +489,65 @@ if (!is.null(params$shutdown_bands)) {
 annex_note(params$xlsx_shutdown)
 ```
 
-## Time to Threshold Distribution
+### Time to Threshold Distribution
 
 <!-- Source: plot_time_to_threshold(), R/curtailment_shutdown_time.R -->
 ```{r shutdown-plot, fig.width=6.30, fig.height=6}
 if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
+```
+
+## No-Response Events
+
+A no-response event is a curtailment for which no decline of `r params$curtailment_latency_decline_pct * 100`% or more was detected within the allowance window (up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order), by turbine.
+
+<!-- Source: summarise_latency_by_turbine(latency_dt), R/curtailment_response_latency.R -->
+```{r no-response-turbine-table}
+if (!is.null(params$latency_by_turbine)) {
+  report_table(
+    rename_display(
+      drop_cols(params$latency_by_turbine, c(
+        "n_reached", "pct_reached", "mean_latency_sec", "median_latency_sec"
+      )),
+      c(
+        turbine = "Turbine", n_curtailments = "Curtailments",
+        n_no_response = "No Response", pct_no_response = "% No Response"
+      )
+    ),
+    max_col_width_cm = 2.5
+  )
+}
+```
+```{r no-response-turbine-annex, results='asis'}
+annex_note(params$xlsx_latency)
+```
+
+```{r example-response-heading, results='asis'}
+if (!is.null(params$no_response_examples_plot) || !is.null(params$slowest_response_examples_plot)) {
+  cat("## Example Response Profiles\n\n")
+  cat(sprintf(
+    "Illustrative examples: RPM profile of individual curtailments, with the curtailment start and stop overlaid, for a window of %s minute(s) before and %s minutes after the curtailment start -- examples below are the most illustrative available (slowest: the longest latencies; no-response: the most recent), not a random or representative sample.\n\n",
+    params$curtailment_example_window_before_min, params$curtailment_example_window_after_min
+  ))
+}
+```
+
+```{r no-response-examples-heading, results='asis'}
+if (!is.null(params$no_response_examples_plot)) cat(sprintf("### No-Response Events (%s example(s))\n\n", params$n_no_response_examples))
+```
+<!-- Source: select_latency_examples(latency_dt, "no_response"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
+```{r no-response-examples-plot, fig.width=6.30, fig.height=9}
+if (!is.null(params$no_response_examples_plot)) print(params$no_response_examples_plot)
+```
+
+```{r slowest-examples-heading, results='asis'}
+if (!is.null(params$slowest_response_examples_plot)) cat(sprintf("### Slowest Responses (%s example(s))\n\n", params$n_slowest_examples))
+```
+<!-- Source: select_latency_examples(latency_dt, "slowest"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
+```{r slowest-examples-plot, fig.width=6.30, fig.height=9}
+if (!is.null(params$slowest_response_examples_plot)) print(params$slowest_response_examples_plot)
+```
+```{r curtailment-examples-annex, results='asis'}
+if (!is.null(params$no_response_examples_plot) || !is.null(params$slowest_response_examples_plot)) annex_note(params$xlsx_curtailment_examples)
 ```
 
 # Safe Distance (KNE Methodology)
@@ -642,7 +671,7 @@ annex_note(params$xlsx_fatality)
 
 ## Curtailment Response Around Each Incident
 
-Response outcome (same categories as the farm-wide Curtailment Response Assessment section above) restricted to each incident's turbine and window of days before/after the incident.
+Response outcome (ok/delayed/missed/no_data, see R/curtailment_response_classify.R) restricted to each incident's turbine and window of days before/after the incident.
 
 <!-- Source: fatality_window_response_summary_dt <- rbindlist over fatality_windows[[id]]$curtailment_response$by_flag, R/fatality_window_analysis.R -->
 ```{r fatality-window-response-table}

@@ -235,6 +235,11 @@ shutdown_time_thresholds <- c(2, 1, 0)
 shutdown_time_low_cut    <- 40
 shutdown_time_high_cut   <- 50
 
+# mesmo valor de userSettings_BSH.R -- ver comentario la' para o racional
+shutdown_time_buffer_sec <- 60
+
+curtailment_latency_decline_pct <- 0.10
+
 safe_dist_rpm_threshold  <- 2
 safe_dist_speed_trim_q   <- 0.95
 safe_dist_reference_line_m <- 600

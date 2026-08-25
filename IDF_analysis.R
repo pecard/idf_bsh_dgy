@@ -1021,13 +1021,13 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
   
   tt_dt <- time_to_rpm_thresholds(
     curtl_scada_dt, scada_dt, thresholds = shutdown_time_thresholds,
-    start_end_gap_sec = curtailment_start_end_gap_sec
+    start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec
   )
   summary_tt_by_turbine <- summarise_time_to_threshold(tt_dt)
   summary_tt_bands      <- summarise_time_to_threshold_bands(
     tt_dt, low_cut = shutdown_time_low_cut, high_cut = shutdown_time_high_cut
   )
-  
+
   write_xlsx_local(
     list(
       Time_to_threshold = tt_dt,
@@ -1036,11 +1036,42 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     ),
     file.path(folder_output, paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end), ".xlsx"))
   )
-  
+
   p_shutdown_time <- plot_time_to_threshold(tt_dt)
   ggsave(
     file.path(folder_output, paste0("curtailment_shutdown_time_hist_", date(scada_ini), "to", date(scada_end), ".png")),
     plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
+  )
+
+  ### 3.6b. Latencia de resposta e eventos sem resposta ----
+  ## Ver R/curtailment_response_latency.R -- pergunta diferente do shutdown
+  ## time acima (quanto tempo ate a turbina ATINGIR um RPM baixo): esta
+  ## mede quanto tempo ate a turbina COMECAR a reagir. Um "no-response
+  ## event" e' um curtailment sem decline_pct_threshold detetado dentro da
+  ## mesma janela de folga usada no shutdown time (shutdown_time_buffer_sec).
+
+  source("R/curtailment_response_latency.R")
+
+  latency_dt <- time_to_first_decline(
+    curtl_scada_dt, scada_dt, decline_pct_threshold = curtailment_latency_decline_pct,
+    start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec
+  )
+  summary_latency_by_turbine <- summarise_latency_by_turbine(latency_dt)
+  summary_latency_bands      <- summarise_latency_bands(latency_dt)
+
+  write_xlsx_local(
+    list(
+      Latency    = latency_dt,
+      By_turbine = summary_latency_by_turbine,
+      Bands      = summary_latency_bands
+    ),
+    file.path(folder_output, paste0("curtailment_response_latency_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+  )
+
+  p_latency <- plot_latency_histogram(latency_dt)
+  ggsave(
+    file.path(folder_output, paste0("curtailment_response_latency_hist_", date(scada_ini), "to", date(scada_end), ".png")),
+    plot = p_latency, width = 180, height = 120, units = "mm", dpi = 300, bg = "white"
   )
 
   ### 3.7. Safe distance (metodologia KNE) ----
@@ -1503,46 +1534,47 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
   )
 
   # Exemplos ilustrativos de perfil de RPM -- ate curtailment_example_n
-  # curtailments "missed"/"delayed" (mesma classificacao de response_flag_dt
-  # acima), com o perfil de RPM e as linhas verticais de inicio/fim do
-  # curtailment, numa janela curta a volta do inicio de cada evento. Ver
-  # select_curtailment_examples()/plot_curtailment_events_rpm(),
+  # curtailments "no_response"/"slowest" (mesma classificacao de
+  # latency_dt, secção 3.6b acima), com o perfil de RPM e as linhas
+  # verticais de inicio/fim do curtailment, numa janela curta a volta do
+  # inicio de cada evento. Ver select_latency_examples(),
+  # R/curtailment_response_latency.R, e plot_curtailment_events_rpm(),
   # R/curtailment_forensic_trace.R.
   source("R/curtailment_forensic_trace.R")
 
-  missed_examples_dt  <- select_curtailment_examples(response_flag_dt, "missed", n = curtailment_example_n)
-  delayed_examples_dt <- select_curtailment_examples(response_flag_dt, "delayed", n = curtailment_example_n)
+  no_response_examples_dt      <- select_latency_examples(latency_dt, "no_response", n = curtailment_example_n)
+  slowest_response_examples_dt <- select_latency_examples(latency_dt, "slowest", n = curtailment_example_n)
 
-  p_missed_examples <- plot_curtailment_events_rpm(
-    missed_examples_dt, scada_dt,
+  p_no_response_examples <- plot_curtailment_events_rpm(
+    no_response_examples_dt, scada_dt,
     window_before_min = curtailment_example_window_before_min,
     window_after_min = curtailment_example_window_after_min,
-    title = "Missed Curtailments -- RPM Profile (Examples)"
+    title = "No-Response Events -- RPM Profile (Examples)"
   )
-  if (!is.null(p_missed_examples)) {
+  if (!is.null(p_no_response_examples)) {
     ggsave(
-      file.path(folder_output, "curtailment_examples_missed_rpm.png"),
-      plot = p_missed_examples, width = 16, height = 3 * max(1, nrow(missed_examples_dt)),
+      file.path(folder_output, "curtailment_examples_no_response_rpm.png"),
+      plot = p_no_response_examples, width = 16, height = 3 * max(1, nrow(no_response_examples_dt)),
       units = "cm", dpi = 300, bg = "white"
     )
   }
 
-  p_delayed_examples <- plot_curtailment_events_rpm(
-    delayed_examples_dt, scada_dt,
+  p_slowest_response_examples <- plot_curtailment_events_rpm(
+    slowest_response_examples_dt, scada_dt,
     window_before_min = curtailment_example_window_before_min,
     window_after_min = curtailment_example_window_after_min,
-    title = "Delayed Curtailments -- RPM Profile (Examples)"
+    title = "Slowest Responses -- RPM Profile (Examples)"
   )
-  if (!is.null(p_delayed_examples)) {
+  if (!is.null(p_slowest_response_examples)) {
     ggsave(
-      file.path(folder_output, "curtailment_examples_delayed_rpm.png"),
-      plot = p_delayed_examples, width = 16, height = 3 * max(1, nrow(delayed_examples_dt)),
+      file.path(folder_output, "curtailment_examples_slowest_response_rpm.png"),
+      plot = p_slowest_response_examples, width = 16, height = 3 * max(1, nrow(slowest_response_examples_dt)),
       units = "cm", dpi = 300, bg = "white"
     )
   }
 
   write_xlsx_local(
-    list(Missed_examples = missed_examples_dt, Delayed_examples = delayed_examples_dt),
+    list(No_response_examples = no_response_examples_dt, Slowest_response_examples = slowest_response_examples_dt),
     file.path(folder_output, "curtailment_response_examples.xlsx")
   )
 
@@ -1986,7 +2018,7 @@ n_idf_total <- if (exists("turbine_idf_manual_dt")) {
 # janela de SCADA (scada_ini/scada_end) -- usados no relatorio (report/
 # report_template.rmd) para apontar cada tabela ao seu ficheiro de anexo
 # completo, sem repetir a construcao do nome ali.
-xlsx_assess_name    <- if (exists("scada_ini")) sprintf("curtailment_response_assessment_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
+xlsx_latency_name   <- if (exists("scada_ini")) sprintf("curtailment_response_latency_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
 xlsx_shutdown_name  <- if (exists("scada_ini")) sprintf("curtailment_shutdown_time_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
 xlsx_safe_dist_name <- if (exists("scada_ini")) sprintf("curtailment_safe_distance_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
 
@@ -2006,8 +2038,9 @@ report_params <- list(
   coverage_turbine_summary = if (exists("coverage_turbine_summary")) coverage_turbine_summary else NULL,
   coverage_idf_summary     = if (exists("coverage_idf_summary")) coverage_idf_summary else NULL,
 
-  assess_by_status  = if (exists("summary_assess")) summary_assess$by_status else NULL,
-  assess_by_turbine = if (exists("summary_assess")) summary_assess$by_turbine else NULL,
+  latency_by_turbine = if (exists("summary_latency_by_turbine")) summary_latency_by_turbine else NULL,
+  latency_bands      = if (exists("summary_latency_bands")) summary_latency_bands else NULL,
+  latency_plot       = if (exists("p_latency")) p_latency else NULL,
 
   shutdown_by_turbine = if (exists("summary_tt_by_turbine")) summary_tt_by_turbine else NULL,
   shutdown_bands      = if (exists("summary_tt_bands")) summary_tt_bands else NULL,
@@ -2019,10 +2052,10 @@ report_params <- list(
   safe_dist_by_species = if (exists("summary_safe_dist")) summary_safe_dist$by_species else NULL,
   safe_dist_plot       = if (exists("p_safe_dist_hist")) p_safe_dist_hist else NULL,
 
-  missed_examples_plot  = if (exists("p_missed_examples")) p_missed_examples else NULL,
-  delayed_examples_plot = if (exists("p_delayed_examples")) p_delayed_examples else NULL,
-  n_missed_examples     = if (exists("missed_examples_dt")) nrow(missed_examples_dt) else NULL,
-  n_delayed_examples    = if (exists("delayed_examples_dt")) nrow(delayed_examples_dt) else NULL,
+  no_response_examples_plot  = if (exists("p_no_response_examples")) p_no_response_examples else NULL,
+  slowest_response_examples_plot = if (exists("p_slowest_response_examples")) p_slowest_response_examples else NULL,
+  n_no_response_examples     = if (exists("no_response_examples_dt")) nrow(no_response_examples_dt) else NULL,
+  n_slowest_examples         = if (exists("slowest_response_examples_dt")) nrow(slowest_response_examples_dt) else NULL,
 
   fatality_signal_counts    = if (exists("fatality_summary")) fatality_summary$counts_by_signal else NULL,
   fatality_top_candidates   = if (exists("fatality_summary")) fatality_summary$top_candidates else NULL,
@@ -2058,7 +2091,7 @@ report_params <- list(
   xlsx_availability        = "idf_availability_summary.xlsx",
   xlsx_coverage_turbine    = "data_coverage_turbine_curtailments_scada.xlsx",
   xlsx_coverage_idf        = "data_coverage_idf_heartbeats.xlsx",
-  xlsx_assess              = xlsx_assess_name,
+  xlsx_latency             = xlsx_latency_name,
   xlsx_shutdown            = xlsx_shutdown_name,
   xlsx_safe_dist           = xlsx_safe_dist_name,
   xlsx_coverage3d          = "coverage_3d_summary.xlsx",
@@ -2088,6 +2121,9 @@ report_params <- list(
   shutdown_time_thresholds = shutdown_time_thresholds,
   shutdown_time_low_cut    = shutdown_time_low_cut,
   shutdown_time_high_cut   = shutdown_time_high_cut,
+  shutdown_time_buffer_sec = shutdown_time_buffer_sec,
+
+  curtailment_latency_decline_pct = curtailment_latency_decline_pct,
 
   curtailment_example_window_before_min = curtailment_example_window_before_min,
   curtailment_example_window_after_min  = curtailment_example_window_after_min,

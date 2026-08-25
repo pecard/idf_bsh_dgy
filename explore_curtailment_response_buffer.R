@@ -226,19 +226,21 @@ print(delayed_examples_current[, .(
 ##         limiar RELATIVO (decline_pct_threshold, fracao do RPM de
 ##         baseline) em vez de um valor absoluto de RPM. ------------------
 
-latency_threshold_sweep_dt <- compare_latency_thresholds(curtl_scada_dt, scada_dt_unfilt)
+latency_threshold_sweep_dt <- compare_latency_thresholds(
+  curtl_scada_dt, scada_dt_unfilt, buffer_after_end_sec = shutdown_time_buffer_sec
+)
 print(latency_threshold_sweep_dt)
 
-## Detalhe (media/mediana, % <=20s, % <=30s) para um limiar especifico --
-## ajustar consoante o que vires no sweep acima
-latency_dt <- time_to_first_decline(curtl_scada_dt, scada_dt_unfilt, decline_pct_threshold = 0.10)
+## Detalhe (media/mediana, % <=20s, % <=30s) para o limiar de producao
+## (curtailment_latency_decline_pct/shutdown_time_buffer_sec -- userSettings_BSH.R)
+latency_dt <- time_to_first_decline(
+  curtl_scada_dt, scada_dt_unfilt, decline_pct_threshold = curtailment_latency_decline_pct,
+  buffer_after_end_sec = shutdown_time_buffer_sec
+)
 latency_summary <- summarise_latency(latency_dt)
-cat(sprintf(
-  "\nLatencia (decline_pct_threshold=0.10): %d/%d curtailments com deteção (%.1f%%), media=%.1fs, mediana=%.1fs\n",
-  latency_summary$n_reached, latency_summary$n_curtailments, latency_summary$pct_reached,
-  latency_summary$mean_latency_sec, latency_summary$median_latency_sec
-))
-print(latency_summary$bands)
+print(latency_summary)
+print(summarise_latency_bands(latency_dt))
+print(summarise_latency_by_turbine(latency_dt))
 
 p_latency <- plot_latency_histogram(latency_dt)
 p_latency

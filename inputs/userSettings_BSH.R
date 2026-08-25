@@ -243,6 +243,24 @@ shutdown_time_thresholds <- c(2, 1, 0) # limiares de rpm a avaliar (rpm)
 shutdown_time_low_cut    <- 40 # segundos
 shutdown_time_high_cut   <- 50 # segundos
 
+# tempo extra (s) alem do "end" da propria ordem de curtailment, dado tanto
+# ao shutdown time (3.6) como a latencia de resposta (3.6b) antes de um
+# evento contar como "sem resposta" -- turbinas podem so' completar a
+# paragem depois do fim da ordem (inercia mecanica). Adotado 2026-08 a
+# partir da exploracao em explore_curtailment_response_buffer.R
+# (R/curtailment_response_buffer.R, R/curtailment_response_latency.R).
+shutdown_time_buffer_sec <- 60
+
+
+## -- 3.6b. Response latency (tempo ate a turbina COMECAR a reagir) --
+
+# queda relativa (fracao do RPM de baseline no start) que conta como
+# inicio de resposta -- ver R/curtailment_response_latency.R. Mesmo valor
+# de curtailment_drop_pct_threshold (3.5) mas mecanismo diferente: aquele
+# so' olha para a leitura SCADA seguinte ao sinal (~10s depois); este
+# procura em toda a janela [start, end + shutdown_time_buffer_sec].
+curtailment_latency_decline_pct <- 0.10
+
 
 ## -- 3.7. Safe distance (metodologia KNE) --
 
