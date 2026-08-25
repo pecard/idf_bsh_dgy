@@ -50,10 +50,19 @@
 ## pela key, nao um table scan; e' o equivalente eficiente de "para cada
 ## evento, a proxima leitura depois de X", sem for loop.
 
+## Nota: grace_stop_sec e' relativo ao INICIO do curtailment (start), tal
+## como time_to_first_threshold_sec (para serem diretamente comparaveis).
+## grace_stop_after_end_sec e' relativo ao FIM da ordem (end) -- e' esse
+## valor, nao grace_stop_sec, que e' comparado contra grace_after_end_sec
+## em apply_grace_window(); incluido aqui tambem so' para tornar a
+## inspecao/debug mais direta (evita ter de subtrair a duracao da ordem a
+## olho para perceber se um evento cai dentro da janela).
+
 find_grace_stop_times <- function(missed_dt, scada_dt, rpm_threshold = 1) {
 
   empty <- data.table::data.table(
-    curtailment_id = integer(), grace_stop_time = as.POSIXct(character()), grace_stop_sec = numeric()
+    curtailment_id = integer(), grace_stop_time = as.POSIXct(character()),
+    grace_stop_sec = numeric(), grace_stop_after_end_sec = numeric()
   )
   if (nrow(missed_dt) == 0L) return(empty)
 
@@ -66,8 +75,10 @@ find_grace_stop_times <- function(missed_dt, scada_dt, rpm_threshold = 1) {
     .(turbine = turbinelabel, datetime, rpm = value)
   ]
   if (nrow(rpm_dt) == 0L) {
-    out <- data.table::copy(missed_dt)[, `:=`(grace_stop_time = as.POSIXct(NA), grace_stop_sec = NA_real_)]
-    return(out[, .(curtailment_id, grace_stop_time, grace_stop_sec)])
+    out <- data.table::copy(missed_dt)[, `:=`(
+      grace_stop_time = as.POSIXct(NA), grace_stop_sec = NA_real_, grace_stop_after_end_sec = NA_real_
+    )]
+    return(out[, .(curtailment_id, grace_stop_time, grace_stop_sec, grace_stop_after_end_sec)])
   }
   data.table::setkey(rpm_dt, turbine, datetime)
 
@@ -77,7 +88,8 @@ find_grace_stop_times <- function(missed_dt, scada_dt, rpm_threshold = 1) {
   match_dt[, .(
     curtailment_id,
     grace_stop_time = datetime,
-    grace_stop_sec  = as.numeric(difftime(datetime, start, units = "secs"))
+    grace_stop_sec           = as.numeric(difftime(datetime, start, units = "secs")),
+    grace_stop_after_end_sec = as.numeric(difftime(datetime, end, units = "secs"))
   )]
 }
 
@@ -90,11 +102,20 @@ find_grace_stop_times <- function(missed_dt, scada_dt, rpm_threshold = 1) {
 
 apply_grace_window <- function(base_dt, grace_stop_dt, grace_after_end_sec) {
 
-  out <- merge(base_dt, grace_stop_dt, by = "curtailment_id", all.x = TRUE)
+  # data.table::copy() explicito -- merge.data.table() pode devolver
+  # colunas nao tocadas pelo join (ex: response_flag, que vem so' de
+  # base_dt) como o MESMO objeto em memoria de base_dt, nao uma copia. Sem
+  # este copy(), o := abaixo mutava base_dt por referencia -- bug real
+  # encontrado 2026-08: numa sweep que reutiliza o mesmo base_dt em varias
+  # chamadas (compare_grace_windows()), a mutacao da 1ª chamada "vazava"
+  # para todas as seguintes, fazendo TODOS os "missed" passarem a
+  # "delayed" logo no 1o grace_after_end_sec testado, em vez de subir
+  # gradualmente como devia.
+  out <- data.table::copy(merge(base_dt, grace_stop_dt, by = "curtailment_id", all.x = TRUE))
 
   accept <- out$response_flag == "missed" &
-    !is.na(out$grace_stop_time) &
-    as.numeric(difftime(out$grace_stop_time, out$end, units = "secs")) <= grace_after_end_sec
+    !is.na(out$grace_stop_after_end_sec) &
+    out$grace_stop_after_end_sec <= grace_after_end_sec
 
   out[accept, response_flag := "delayed"]
   out[]
@@ -118,14 +139,16 @@ classify_response_flag_grace <- function(curtl_dt, scada_dt, grace_after_end_sec
     shutdown_high_cut_sec = shutdown_high_cut_sec
   )
 
-  # so' adiciona grace_stop_time/sec "vazias" aqui quando apply_grace_window()
-  # NAO vai correr (early return) -- caso contrario o merge() la' dentro ja'
-  # traz essas 2 colunas, e adiciona-las aqui tambem causava colisao de
-  # nomes (merge() sufixava .x/.y em vez de manter os nomes simples)
+  # so' adiciona as colunas grace_stop_* "vazias" aqui quando
+  # apply_grace_window() NAO vai correr (early return) -- caso contrario o
+  # merge() la' dentro ja' as traz, e adiciona-las aqui tambem causava
+  # colisao de nomes (merge() sufixava .x/.y em vez de manter os nomes
+  # simples)
   tz <- attr(curtl_dt$start, "tzone")
   add_empty_grace_cols <- function(dt) {
     dt[, grace_stop_time := as.POSIXct(NA, tz = tz)]
     dt[, grace_stop_sec  := NA_real_]
+    dt[, grace_stop_after_end_sec := NA_real_]
     dt[]
   }
 

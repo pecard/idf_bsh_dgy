@@ -149,11 +149,14 @@ p_missed_new
 p_delayed_new
 
 ## Casos reclassificados "missed" -> "delayed" com este grace_for_plots --
-## grace_stop_sec e' quanto tempo (desde o INICIO do curtailment) ate' a
-## turbina realmente cair abaixo do limiar, jah incluindo a grace window
+## grace_stop_sec e' desde o INICIO do curtailment (comparavel a
+## time_to_first_threshold_sec); grace_stop_after_end_sec e' desde o FIM da
+## ordem -- e' este ultimo que e' comparado contra grace_after_end_sec, por
+## isso deve aparecer sempre <= grace_for_plots aqui (bom sanity check: se
+## nao aparecer, algo esta errado)
 reclassified_dt <- response_flag_grace_dt[!is.na(grace_stop_time)]
 cat(sprintf("\n%d curtailment(s) reclassificados missed -> delayed com grace_after_end_sec=%s:\n", nrow(reclassified_dt), grace_for_plots))
-print(reclassified_dt[, .(turbine, track_id, species, start, end, time_to_first_threshold_sec, grace_stop_sec)])
+print(reclassified_dt[, .(turbine, track_id, species, start, end, time_to_first_threshold_sec, grace_stop_sec, grace_stop_after_end_sec)])
 
 
 ## ---- 3) Inspecao detalhada dos casos "delayed" ATUAIS (grace=0) -- ex:
