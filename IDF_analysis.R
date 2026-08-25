@@ -87,12 +87,7 @@ tryCatch({
   ))
 })
 folder_input <- "inputs"
-folder_output <- file.path("outputs",format(Sys.time(), "%Y%m%d"))
-folder_output_DC <- file.path("outputs",format(Sys.time(), "%Y%m%d"),"DC")
-
-dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
 dir.create(folder_input, showWarnings = FALSE, recursive = TRUE)
-dir.create(folder_output_DC, showWarnings = FALSE, recursive = TRUE)
 
 ##Import scripts
 folder_script <- "scripts\\"
@@ -105,8 +100,25 @@ folder_script_IDF <- "scripts_IDF"
 
 ##USER SETTINGS##
 #Alterar para o ficheiro de settings do projeto a analisar (ex: "userSettings_BSH.R", "userSettings_DGY.R")
-project_settings_file <- "userSettings_BSH.R"
+#Definir project_settings_file ANTES de dar source a este script (ver
+#run_annual_analysis.R/run_annual_analysis_DGY.R) para escolher o parque
+#sem duplicar este ficheiro -- BSH continua a omissao se nao for definido
+#antes (mesmo padrao de force_reread_cache, abaixo).
+if (!exists("project_settings_file")) project_settings_file <- "userSettings_BSH.R"
 source(file.path(folder_input, project_settings_file)) #Import user defined settings #(e.g. model parameters, etc)
+
+## folder_output/cache SO' podem ser definidos DEPOIS do settings file
+## acima (precisam de farm_code, para nao colidir entre parques -- ver
+## nota em farm_code, userSettings_BSH.R/userSettings_DGY.R). Sem isto,
+## BSH e DGY partilhavam a mesma pasta cache/ e outputs/AAAAMMDD/, e uma
+## corrida de um parque podia ler ou sobrescrever silenciosamente a cache
+## do outro (bug real, encontrado 2026-08 ao ligar o pipeline do DGY).
+farm_code <- if (exists("farm_code")) farm_code else "default"
+folder_output    <- file.path("outputs", paste0(format(Sys.time(), "%Y%m%d"), "_", farm_code))
+folder_output_DC <- file.path(folder_output, "DC")
+
+dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
+dir.create(folder_output_DC, showWarnings = FALSE, recursive = TRUE)
 #databases_dir <- file.path("..") #get files from dir that is one level up
 #folder_subsample <- file.path(databases_dir,"subsample_last_tracksonly")
 
@@ -239,13 +251,26 @@ if (file.exists(turbine_idf_matrix_file)) {
   )
 }
 
-#Tier scheme
-tier <- readxl::read_xlsx(file.path(folder_input, tier_start_scheme_filename))
-
+#Tier scheme -- so' usado a jusante por codigo ja comentado (linha ~550),
+#nao alimenta nenhuma secção ativa do relatorio; opcional (ex: DGY ainda
+#nao tem ficheiros de tier scheme) para nao bloquear todo o script por um
+#ficheiro sem consumidor real neste momento
+tier_start_scheme_file <- file.path(folder_input, tier_start_scheme_filename)
+if (file.exists(tier_start_scheme_file)) {
+  tier <- readxl::read_xlsx(tier_start_scheme_file)
+} else {
+  print("Tier scheme file not available - tier_dt will be empty (no active report section depends on it)")
+  tier <- data.frame()
+}
 
 #Tier3 scheme - Starting date
-tier3 <- readxl::read_xlsx(file.path(folder_input, tier3_start_scheme_filename),
-                   sheet = 'tier3')
+tier3_start_scheme_file <- file.path(folder_input, tier3_start_scheme_filename)
+if (file.exists(tier3_start_scheme_file)) {
+  tier3 <- readxl::read_xlsx(tier3_start_scheme_file, sheet = 'tier3')
+} else {
+  print("Tier3 scheme file not available - tier3_dt will be empty (no active report section depends on it)")
+  tier3 <- data.frame(timestamp = as.POSIXct(character()))
+}
 
 
 #Databases
@@ -276,7 +301,9 @@ databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) datab
 ## FALSE sozinho.
 if (!exists("force_reread_cache")) force_reread_cache <- FALSE
 
-folder_cache <- "cache"
+## Subpasta por farm_code -- ver nota acima (folder_output) sobre a mesma
+## colisao entre BSH/DGY, aqui para a cache dos 4 datasets grandes.
+folder_cache <- file.path("cache", farm_code)
 
 # As 4 bases de dados vem do portal IdentiFlight ja em hora LOCAL do projeto
 # (confirmado -- nao UTC como se assumia antes); read_*_data() reinterpreta

@@ -73,6 +73,12 @@ databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-
 ## (bug encontrado 2026-08, corrida real: "0 de 1 ficheiro(s) mantidos").
 farm_pattern <- "BSH|Bash"
 
+## Identificador curto e limpo do parque (sem regex/alternancia, ao
+## contrario de farm_pattern acima) -- usado so' para nao colidir com
+## outros parques na pasta cache/ e outputs/AAAAMMDD_<farm_code>/ partilhadas
+## (ver IDF_analysis.R, logo apos o source() deste ficheiro).
+farm_code <- "BSH"
+
 trackreport_pattern  <- "TrackReport_" #"TrackReport.+csv"          # ex: TrackReport_20260201_....csv
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
 scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_20260201_....csv
