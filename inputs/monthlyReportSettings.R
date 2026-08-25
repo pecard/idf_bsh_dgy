@@ -240,6 +240,9 @@ shutdown_time_buffer_sec <- 60
 
 curtailment_latency_decline_pct <- 0.10
 
+# mesmo valor de userSettings_BSH.R -- ver comentario la' para o racional
+curtailment_cutin_rpm <- 3
+
 safe_dist_rpm_threshold  <- 2
 safe_dist_speed_trim_q   <- 0.95
 safe_dist_reference_line_m <- 600

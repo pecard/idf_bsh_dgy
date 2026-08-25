@@ -29,6 +29,16 @@
 ## curtailment sem decline_pct_threshold detetado dentro dessa janela --
 ## nem sequer uma resposta parcial, nao so' uma resposta lenta.
 ##
+## cutin_rpm (Paulo, 2026-08, a partir de 3 exemplos "no-response" no
+## relatorio anual cujo RPM de baseline ja estava perto de 0 -- turbina
+## claramente ja parada/abaixo da velocidade de cut-in tipica de producao
+## de energia, ~3 rpm, NAO um curtailment falhado): curtailments cujo RPM
+## no "start" (mesmo baseline de start_end_gap_sec) esta abaixo de
+## cutin_rpm sao excluidos da contagem de reached/no-response (nao ha
+## "resposta" significativa para medir numa turbina que ja nao estava a
+## produzir), mas ficam marcados (`below_cutin = TRUE`) e contados a parte
+## -- filtrados, mas visiveis, nao apagados do universo.
+##
 ## Depende de: data.table, R/curtailment_response.R (usa match_nearest_rpm())
 ##
 ## Uso:
@@ -53,7 +63,7 @@
 ## que antes ficavam sem deteção.
 
 time_to_first_decline <- function(curtl_dt, scada_dt, decline_pct_threshold = 0.10,
-                                  start_end_gap_sec = 2, buffer_after_end_sec = 0) {
+                                  start_end_gap_sec = 2, buffer_after_end_sec = 0, cutin_rpm = 0) {
 
   dt <- as.data.table(curtl_dt)
   dt[, curtailment_id := .I]
@@ -61,7 +71,8 @@ time_to_first_decline <- function(curtl_dt, scada_dt, decline_pct_threshold = 0.
   empty <- data.table::data.table(
     curtailment_id = integer(), turbine = character(), track_id = character(),
     species = character(), start = as.POSIXct(character()), end = as.POSIXct(character()),
-    start_rpm = numeric(), decline_time = as.POSIXct(character()), latency_sec = numeric()
+    start_rpm = numeric(), below_cutin = logical(),
+    decline_time = as.POSIXct(character()), latency_sec = numeric()
   )
 
   ## baseline no start (mesma tolerancia apertada usada em toda a analise
@@ -74,33 +85,49 @@ time_to_first_decline <- function(curtl_dt, scada_dt, decline_pct_threshold = 0.
   if (nrow(dt_valid) == 0L) return(empty)
 
   start_rpm_dt <- start_match[valid_match == TRUE, .(curtailment_id = id, start_rpm = rpm)]
+  start_rpm_dt[, below_cutin := start_rpm < cutin_rpm]
+
+  ## curtailments abaixo do cut-in ficam de fora da procura de queda (nao
+  ## ha "resposta" significativa para medir numa turbina ja parada) -- so'
+  ## os elegiveis (>= cutin_rpm) entram no join caro abaixo
+  eligible_ids <- start_rpm_dt[below_cutin == FALSE, curtailment_id]
+  dt_eligible  <- dt_valid[curtailment_id %in% eligible_ids]
 
   windows <- merge(
-    dt_valid[, .(curtailment_id, turbine, window_start = start,
-                window_end = end + buffer_after_end_sec)],
+    dt_eligible[, .(curtailment_id, turbine, window_start = start,
+                    window_end = end + buffer_after_end_sec)],
     start_rpm_dt, by = "curtailment_id"
   )
 
   rpm_dt <- scada_dt[readingname == "RPM", .(turbine = turbinelabel, datetime, rpm = value)]
 
-  rpm_window <- rpm_dt[
-    windows,
-    on = .(turbine, datetime >= window_start, datetime <= window_end),
-    allow.cartesian = TRUE,
-    .(curtailment_id = i.curtailment_id, window_start = i.window_start,
-      start_rpm = i.start_rpm, datetime = x.datetime, rpm = x.rpm)
-  ]
+  hits <- if (nrow(windows) == 0L) {
+    data.table::data.table(curtailment_id = integer(), decline_time = as.POSIXct(character()), latency_sec = numeric())
+  } else {
+    rpm_window <- rpm_dt[
+      windows,
+      on = .(turbine, datetime >= window_start, datetime <= window_end),
+      allow.cartesian = TRUE,
+      .(curtailment_id = i.curtailment_id, window_start = i.window_start,
+        start_rpm = i.start_rpm, datetime = x.datetime, rpm = x.rpm)
+    ]
 
-  rpm_window[, decline_pct := data.table::fifelse(
-    !is.na(start_rpm) & start_rpm > 0 & !is.na(rpm), (start_rpm - rpm) / start_rpm, NA_real_
-  )]
+    rpm_window[, decline_pct := data.table::fifelse(
+      !is.na(start_rpm) & start_rpm > 0 & !is.na(rpm), (start_rpm - rpm) / start_rpm, NA_real_
+    )]
 
-  hits <- rpm_window[
-    !is.na(decline_pct) & decline_pct >= decline_pct_threshold,
-    .(decline_time = min(datetime), window_start = first(window_start)),
-    by = curtailment_id
-  ]
-  if (nrow(hits) > 0L) hits[, latency_sec := as.numeric(difftime(decline_time, window_start, units = "secs"))]
+    h <- rpm_window[
+      !is.na(decline_pct) & decline_pct >= decline_pct_threshold,
+      .(decline_time = min(datetime), window_start = first(window_start)),
+      by = curtailment_id
+    ]
+    ## difftime() vetoriza corretamente mesmo com 0 linhas (nenhuma queda
+    ## detetada em nenhum curtailment) -- sem guarda nrow()>0 necessaria,
+    ## ao contrario da 1a versao deste ficheiro (que deixava a coluna
+    ## latency_sec por criar nesse caso, e o merge() mais abaixo falhava)
+    h[, latency_sec := as.numeric(difftime(decline_time, window_start, units = "secs"))]
+    h
+  }
 
   out <- merge(
     dt_valid[, .(curtailment_id, turbine, track_id, species, start, end)],
@@ -114,22 +141,34 @@ time_to_first_decline <- function(curtl_dt, scada_dt, decline_pct_threshold = 0.
 
 ## 2. Resumo farm-wide -- 1 linha, com n reached/no-response e media/mediana ----
 ##
-## n_no_response/pct_no_response = complemento de n_reached/pct_reached --
-## e' a definicao de "no-response event" usada na secção "No-Response
-## Events" do relatorio: nenhuma queda >= decline_pct_threshold detetada
-## dentro da janela de procura (nem sequer uma resposta parcial).
+## n_curtailments = universo total com baseline SCADA fiavel no start
+## (mesmo universo de sempre); n_below_cutin/pct_below_cutin (% de
+## n_curtailments) sao os excluidos por RPM de baseline abaixo do cut-in
+## (ver time_to_first_decline()) -- filtrados, mas contados aqui, nao
+## apagados. n_eligible = n_curtailments - n_below_cutin e' o universo
+## realmente avaliado; n_reached/pct_reached e n_no_response/pct_no_response
+## sao sempre % de n_eligible, nao de n_curtailments -- e' a definicao de
+## "no-response event" usada na secção "No-Response Events" do relatorio:
+## nenhuma queda >= decline_pct_threshold detetada dentro da janela de
+## procura, numa turbina que estava acima do cut-in no "start" (nem sequer
+## uma resposta parcial, e nao um artefacto de turbina ja parada).
 
 summarise_latency <- function(latency_dt) {
 
-  n_total   <- nrow(latency_dt)
-  n_reached <- sum(!is.na(latency_dt$latency_sec))
+  n_total       <- nrow(latency_dt)
+  n_below_cutin <- sum(latency_dt$below_cutin)
+  n_eligible    <- n_total - n_below_cutin
+  n_reached     <- sum(!is.na(latency_dt$latency_sec))
 
   data.table::data.table(
     n_curtailments     = n_total,
+    n_below_cutin      = n_below_cutin,
+    pct_below_cutin    = round(100 * n_below_cutin / n_total, 1),
+    n_eligible         = n_eligible,
     n_reached          = n_reached,
-    pct_reached        = round(100 * n_reached / n_total, 1),
-    n_no_response      = n_total - n_reached,
-    pct_no_response    = round(100 * (n_total - n_reached) / n_total, 1),
+    pct_reached        = if (n_eligible == 0L) NA_real_ else round(100 * n_reached / n_eligible, 1),
+    n_no_response      = n_eligible - n_reached,
+    pct_no_response    = if (n_eligible == 0L) NA_real_ else round(100 * (n_eligible - n_reached) / n_eligible, 1),
     mean_latency_sec   = round(mean(latency_dt$latency_sec, na.rm = TRUE), 1),
     median_latency_sec = round(median(latency_dt$latency_sec, na.rm = TRUE), 1)
   )
@@ -161,13 +200,18 @@ summarise_latency_bands <- function(latency_dt, cutoffs_sec = c(20, 30, 40, 60))
 summarise_latency_by_turbine <- function(latency_dt) {
 
   by_turbine <- latency_dt[, {
-    n_reached <- sum(!is.na(latency_sec))
+    n_below_cutin <- sum(below_cutin)
+    n_eligible    <- .N - n_below_cutin
+    n_reached     <- sum(!is.na(latency_sec))
     .(
       n_curtailments     = .N,
+      n_below_cutin      = n_below_cutin,
+      pct_below_cutin    = round(100 * n_below_cutin / .N, 1),
+      n_eligible         = n_eligible,
       n_reached          = n_reached,
-      pct_reached        = round(100 * n_reached / .N, 1),
-      n_no_response      = .N - n_reached,
-      pct_no_response    = round(100 * (.N - n_reached) / .N, 1),
+      pct_reached        = if (n_eligible == 0L) NA_real_ else round(100 * n_reached / n_eligible, 1),
+      n_no_response      = n_eligible - n_reached,
+      pct_no_response    = if (n_eligible == 0L) NA_real_ else round(100 * (n_eligible - n_reached) / n_eligible, 1),
       mean_latency_sec   = round(mean(latency_sec, na.rm = TRUE), 1),
       median_latency_sec = round(median(latency_sec, na.rm = TRUE), 1)
     )
@@ -185,12 +229,12 @@ summarise_latency_by_turbine <- function(latency_dt) {
 
 compare_latency_thresholds <- function(curtl_dt, scada_dt,
                                        decline_pct_candidates = c(0.05, 0.10, 0.20),
-                                       start_end_gap_sec = 2, buffer_after_end_sec = 0) {
+                                       start_end_gap_sec = 2, buffer_after_end_sec = 0, cutin_rpm = 0) {
 
   data.table::rbindlist(lapply(decline_pct_candidates, function(p) {
     lat_dt <- time_to_first_decline(
       curtl_dt, scada_dt, decline_pct_threshold = p,
-      start_end_gap_sec = start_end_gap_sec, buffer_after_end_sec = buffer_after_end_sec
+      start_end_gap_sec = start_end_gap_sec, buffer_after_end_sec = buffer_after_end_sec, cutin_rpm = cutin_rpm
     )
     summ  <- summarise_latency(lat_dt)
     bands <- summarise_latency_bands(lat_dt)
@@ -203,16 +247,22 @@ compare_latency_thresholds <- function(curtl_dt, scada_dt,
 }
 
 
-## 6. Exemplos para plot -- "no_response": sem deteção, os mais recentes
-##    primeiro; "slowest": maior latencia registada, entre os que tiveram
-##    deteção. Mesmo padrao de select_curtailment_examples()
+## 6. Exemplos para plot -- "no_response": sem deteção E acima do cut-in
+##    (exclui curtailments ja abaixo da velocidade de cut-in -- nao sao
+##    falhas de resposta, so' turbinas que ja nao estavam a produzir), os
+##    mais recentes primeiro; "slowest": maior latencia registada, entre os
+##    que tiveram deteção. Mesmo padrao de select_curtailment_examples()
 ##    (R/curtailment_forensic_trace.R), adaptado a latency_dt (que nao tem
 ##    coluna response_flag). ----
 
 select_latency_examples <- function(latency_dt, type = c("no_response", "slowest"), n = 3) {
 
   type <- match.arg(type)
-  dt <- if (type == "no_response") latency_dt[is.na(latency_sec)] else latency_dt[!is.na(latency_sec)]
+  dt <- if (type == "no_response") {
+    latency_dt[is.na(latency_sec) & below_cutin == FALSE]
+  } else {
+    latency_dt[!is.na(latency_sec)]
+  }
   if (nrow(dt) == 0L) return(dt)
 
   if (type == "slowest") data.table::setorder(dt, -latency_sec) else data.table::setorder(dt, -start)

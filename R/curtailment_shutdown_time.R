@@ -40,17 +40,25 @@
 ## NA (nunca atingido) so' por causa disso, nao porque a turbina nao
 ## respondeu. Afeta tambem classify_response_flag() (R/curtailment_response_classify.R),
 ## que usa esta funcao para decidir "missed" vs "delayed".
+##
+## cutin_rpm (por omissao 0, sem efeito -- ver a mesma logica em
+## time_to_first_decline(), R/curtailment_response_latency.R): curtailments
+## cujo RPM no "start" ja esta abaixo da velocidade de cut-in tipica de
+## producao de energia ficam de fora -- uma turbina ja parada nao tem um
+## "tempo ate parar" significativo para medir (seria ~0 so' por ja estar
+## la', nao por ter respondido depressa).
 time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
-                                   start_end_gap_sec = 2, buffer_after_end_sec = 0) {
+                                   start_end_gap_sec = 2, buffer_after_end_sec = 0, cutin_rpm = 0) {
 
   dt <- as.data.table(curtl_dt)
   dt[, curtailment_id := .I]
 
-  ## baseline no start (tolerancia apertada) -- so seguimos curtailments com match fiavel
+  ## baseline no start (tolerancia apertada) -- so seguimos curtailments com
+  ## match fiavel E acima do cut-in
   start_events <- dt[, .(id = curtailment_id, turbine, event_time = start)]
   start_match  <- match_nearest_rpm(start_events, scada_dt, max_gap_sec = start_end_gap_sec)
 
-  valid_ids <- start_match[valid_match == TRUE, id]
+  valid_ids <- start_match[valid_match == TRUE & rpm >= cutin_rpm, id]
   dt_valid  <- dt[curtailment_id %in% valid_ids]
 
   if (nrow(dt_valid) == 0L) {
@@ -119,12 +127,12 @@ time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
 ## R/curtailment_response_buffer.R, compare_buffer_windows()).
 
 compare_shutdown_time_buffer <- function(curtl_dt, scada_dt, buffer_candidates_sec = c(0, 20, 40, 60, 90, 120),
-                                        thresholds = c(2, 1, 0), start_end_gap_sec = 2) {
+                                        thresholds = c(2, 1, 0), start_end_gap_sec = 2, cutin_rpm = 0) {
 
   max_buffer <- max(buffer_candidates_sec)
   tt_max_dt <- time_to_rpm_thresholds(
     curtl_dt, scada_dt, thresholds = thresholds,
-    start_end_gap_sec = start_end_gap_sec, buffer_after_end_sec = max_buffer
+    start_end_gap_sec = start_end_gap_sec, buffer_after_end_sec = max_buffer, cutin_rpm = cutin_rpm
   )
 
   out <- data.table::rbindlist(lapply(buffer_candidates_sec, function(g) {

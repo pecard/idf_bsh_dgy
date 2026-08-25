@@ -33,6 +33,8 @@ params:
   latency_by_turbine: !r NULL
   latency_bands: !r NULL
   latency_plot: !r NULL
+  latency_n_below_cutin: !r NULL
+  latency_pct_below_cutin: !r NULL
 
   shutdown_by_turbine: !r NULL
   shutdown_bands: !r NULL
@@ -76,6 +78,7 @@ params:
   shutdown_time_buffer_sec: !r NULL
 
   curtailment_latency_decline_pct: !r NULL
+  curtailment_cutin_rpm: !r NULL
 
   safe_dist_reference_line_m: !r NULL
   safe_dist_rpm_threshold: !r NULL
@@ -407,20 +410,22 @@ if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_sum
 
 # Curtailment Response & Latency
 
-Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, for the turbines and window with SCADA coverage this month (`r params$turbinas_scada_used` -- all turbines with SCADA data in this window, per turbinas_scada = "all" in monthlyReportSettings.R). The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. Both response latency and shutdown time below allow up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order for this to happen.
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, for the turbines and window with SCADA coverage this month (`r params$turbinas_scada_used` -- all turbines with SCADA data in this window, per turbinas_scada = "all" in monthlyReportSettings.R). The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. Both response latency and shutdown time below allow up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order for this to happen. Curtailments with an RPM below `r params$curtailment_cutin_rpm` (the cut-in speed, below which the turbine is not producing energy) at the start of the order are excluded from the Response Latency and No-Response Events tables below, since there is no meaningful response to measure on a turbine that was already not operating: `r params$latency_n_below_cutin` curtailments (`r params$latency_pct_below_cutin`% of the curtailments with a valid SCADA baseline this month) fall in this category.
 
 ## Response Latency
 
-Time from the curtailment signal to the first SCADA reading showing the decline defined above, by turbine. Having SCADA data this month (the list above) is necessary but not sufficient to appear below -- a turbine also needs at least one curtailment whose SCADA baseline falls within the matching tolerance stated above, which in a given month only a subset of turbines actually achieves; turbines with no valid SCADA match this month are omitted here. The complete table, with every turbine, is in the accompanying workbook (curtailment_response_latency\_*.xlsx).
+Time from the curtailment signal to the first SCADA reading showing the decline defined above, by turbine, among curtailments at or above the cut-in speed. Having SCADA data this month (the list above) is necessary but not sufficient to appear below -- a turbine also needs at least one curtailment whose SCADA baseline falls within the matching tolerance stated above, which in a given month only a subset of turbines actually achieves; turbines with no valid SCADA match this month are omitted here. The complete table, with every turbine, is in the accompanying workbook (curtailment_response_latency\_*.xlsx).
 
 <!-- Source: summarise_latency_by_turbine(latency_dt), R/curtailment_response_latency.R -->
 ```{r latency-turbine-table}
 if (!is.null(params$latency_by_turbine)) {
   report_table(
     rename_display(
-      drop_cols(params$latency_by_turbine, c("n_no_response", "pct_no_response")),
+      drop_cols(params$latency_by_turbine, c(
+        "n_curtailments", "n_below_cutin", "pct_below_cutin", "n_no_response", "pct_no_response"
+      )),
       c(
-        turbine = "Turbine", n_curtailments = "Curtailments", n_reached = "Reached",
+        turbine = "Turbine", n_eligible = "Curtailments", n_reached = "Reached",
         pct_reached = "% Reached", mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)"
       )
     ),
@@ -500,7 +505,7 @@ if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
 
 ## No-Response Events
 
-A no-response event is a curtailment for which no decline of `r params$curtailment_latency_decline_pct * 100`% or more was detected within the allowance window (up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order), by turbine.
+A no-response event is a curtailment, at or above the cut-in speed, for which no decline of `r params$curtailment_latency_decline_pct * 100`% or more was detected within the allowance window (up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order), by turbine.
 
 <!-- Source: summarise_latency_by_turbine(latency_dt), R/curtailment_response_latency.R -->
 ```{r no-response-turbine-table}
@@ -508,10 +513,11 @@ if (!is.null(params$latency_by_turbine)) {
   report_table(
     rename_display(
       drop_cols(params$latency_by_turbine, c(
-        "n_reached", "pct_reached", "mean_latency_sec", "median_latency_sec"
+        "n_curtailments", "n_below_cutin", "pct_below_cutin", "n_reached", "pct_reached",
+        "mean_latency_sec", "median_latency_sec"
       )),
       c(
-        turbine = "Turbine", n_curtailments = "Curtailments",
+        turbine = "Turbine", n_eligible = "Curtailments",
         n_no_response = "No Response", pct_no_response = "% No Response"
       )
     ),

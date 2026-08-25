@@ -224,18 +224,22 @@ print(delayed_examples_current[, .(
 ##         latencia esperada de ~20s; o Paulo acha que pode ser maior,
 ##         ~30s. Ver R/curtailment_response_latency.R para o racional do
 ##         limiar RELATIVO (decline_pct_threshold, fracao do RPM de
-##         baseline) em vez de um valor absoluto de RPM. ------------------
+##         baseline) em vez de um valor absoluto de RPM, e para o filtro de
+##         cutin_rpm (curtailments ja abaixo da velocidade de cut-in no
+##         start ficam de fora do reached/no-response, contados a parte em
+##         n_below_cutin/pct_below_cutin). ------------------------------
 
 latency_threshold_sweep_dt <- compare_latency_thresholds(
-  curtl_scada_dt, scada_dt_unfilt, buffer_after_end_sec = shutdown_time_buffer_sec
+  curtl_scada_dt, scada_dt_unfilt, buffer_after_end_sec = shutdown_time_buffer_sec,
+  cutin_rpm = curtailment_cutin_rpm
 )
 print(latency_threshold_sweep_dt)
 
 ## Detalhe (media/mediana, % <=20s, % <=30s) para o limiar de producao
-## (curtailment_latency_decline_pct/shutdown_time_buffer_sec -- userSettings_BSH.R)
+## (curtailment_latency_decline_pct/shutdown_time_buffer_sec/curtailment_cutin_rpm -- userSettings_BSH.R)
 latency_dt <- time_to_first_decline(
   curtl_scada_dt, scada_dt_unfilt, decline_pct_threshold = curtailment_latency_decline_pct,
-  buffer_after_end_sec = shutdown_time_buffer_sec
+  buffer_after_end_sec = shutdown_time_buffer_sec, cutin_rpm = curtailment_cutin_rpm
 )
 latency_summary <- summarise_latency(latency_dt)
 print(latency_summary)

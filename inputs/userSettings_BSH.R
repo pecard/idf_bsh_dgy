@@ -261,6 +261,15 @@ shutdown_time_buffer_sec <- 60
 # procura em toda a janela [start, end + shutdown_time_buffer_sec].
 curtailment_latency_decline_pct <- 0.10
 
+# rpm; velocidade de cut-in tipica (abaixo disto a turbina nao esta a
+# produzir energia) -- curtailments cujo RPM no start ja esta abaixo deste
+# valor sao excluidos da latencia/no-response (nao ha resposta
+# significativa para medir numa turbina ja parada), mas ficam contados a
+# parte (n_below_cutin/pct_below_cutin). Pedido do Paulo (2026-08) a
+# partir de 3 exemplos "no-response" cujo RPM de baseline ja estava perto
+# de 0. Afeta tambem time_to_rpm_thresholds() (3.6).
+curtailment_cutin_rpm <- 3
+
 
 ## -- 3.7. Safe distance (metodologia KNE) --
 

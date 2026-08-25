@@ -634,7 +634,8 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   ### 5.2 Tempo ate atingir limiares de RPM (2, 1, 0), por curtailment
   tt_dt <- time_to_rpm_thresholds(
     curtl_scada_dt, scada_dt, thresholds = shutdown_time_thresholds,
-    start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec
+    start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec,
+    cutin_rpm = curtailment_cutin_rpm
   )
   summary_tt_by_turbine <- summarise_time_to_threshold(tt_dt)
   summary_tt_bands      <- summarise_time_to_threshold_bands(
@@ -663,14 +664,17 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
 
   latency_dt <- time_to_first_decline(
     curtl_scada_dt, scada_dt, decline_pct_threshold = curtailment_latency_decline_pct,
-    start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec
+    start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec,
+    cutin_rpm = curtailment_cutin_rpm
   )
+  summary_latency            <- summarise_latency(latency_dt)
   summary_latency_by_turbine <- summarise_latency_by_turbine(latency_dt)
   summary_latency_bands      <- summarise_latency_bands(latency_dt)
 
   write_xlsx_local(
     list(
       Latency    = latency_dt,
+      Overall    = summary_latency,
       By_turbine = summary_latency_by_turbine,
       Bands      = summary_latency_bands
     ),
@@ -943,9 +947,11 @@ monthly_report_params <- list(
 
   short_track_summary_dt = if (exists("monthly_short_track_summary_dt")) monthly_short_track_summary_dt else NULL,
 
-  latency_by_turbine = if (exists("summary_latency_by_turbine")) summary_latency_by_turbine else NULL,
-  latency_bands      = if (exists("summary_latency_bands")) summary_latency_bands else NULL,
-  latency_plot       = if (exists("p_latency")) p_latency else NULL,
+  latency_by_turbine      = if (exists("summary_latency_by_turbine")) summary_latency_by_turbine else NULL,
+  latency_bands           = if (exists("summary_latency_bands")) summary_latency_bands else NULL,
+  latency_plot            = if (exists("p_latency")) p_latency else NULL,
+  latency_n_below_cutin   = if (exists("summary_latency")) summary_latency$n_below_cutin else NULL,
+  latency_pct_below_cutin = if (exists("summary_latency")) summary_latency$pct_below_cutin else NULL,
 
   shutdown_by_turbine = if (exists("summary_tt_by_turbine")) summary_tt_by_turbine else NULL,
   shutdown_bands      = if (exists("summary_tt_bands")) summary_tt_bands else NULL,
@@ -994,6 +1000,7 @@ monthly_report_params <- list(
   shutdown_time_buffer_sec = shutdown_time_buffer_sec,
 
   curtailment_latency_decline_pct = curtailment_latency_decline_pct,
+  curtailment_cutin_rpm           = curtailment_cutin_rpm,
 
   safe_dist_reference_line_m    = safe_dist_reference_line_m,
   safe_dist_rpm_threshold        = safe_dist_rpm_threshold,

@@ -277,6 +277,9 @@ shutdown_time_buffer_sec <- 60
 
 curtailment_latency_decline_pct <- 0.10
 
+# mesmo valor de userSettings_BSH.R -- ver o comentario la' para o racional
+curtailment_cutin_rpm <- 3
+
 
 ## -- 3.7. Safe distance (metodologia KNE) --
 
