@@ -18,7 +18,9 @@
 ## compare_shutdown_time_grace()) -- essa funcao alimenta tambem a secção
 ## "Shutdown Time" do relatorio (nao so' a classificacao missed/delayed),
 ## pelo mesmo motivo: so' procura leituras de RPM dentro da duracao da
-## propria ordem de curtailment.
+## propria ordem de curtailment. Testa tambem, em conjunto com a grace
+## window, se rpm_threshold (nao drop_pct_threshold -- ver secção 1.a) e'
+## demasiado apertado.
 ##
 ## Reutiliza a MESMA cache (fst) ja' gravada por uma corrida anterior de
 ## run_annual_analysis.R (ou run_annual_analysis_DGY.R) -- NAO rele os
@@ -98,6 +100,39 @@ grace_comparison_dt <- compare_grace_windows(
 )
 
 print(grace_comparison_dt)
+
+
+## ---- 1.a) Sweep conjunto de rpm_threshold x grace_after_end_sec -- Paulo
+##          (2026-08) perguntou se o "drop measure" (drop_pct_threshold, 10%)
+##          e' demasiado rigido/curto. NAO e' -- drop_pct_threshold so'
+##          alimenta no_immediate_response (sinal a parte, nao entra em
+##          response_flag). O que de facto decide "missed" e' rpm_threshold,
+##          comparado ao RPM dentro de start_end_gap_sec (2s) do timestamp
+##          exato de "end" (ver final_status em assess_curtailment_response(),
+##          R/curtailment_response.R linha ~314) -- nao ha nenhuma medida de
+##          "quanto caiu", so' "estava ou nao abaixo do limiar naquele
+##          instante". Este sweep testa se um rpm_threshold mais alto (ex:
+##          "abaixo de 2 ou 3 rpm ja conta como parada", nao so' <1) muda a
+##          leitura, em conjunto com grace_after_end_sec (secção 1 acima) --
+##          cada linha reusa compare_grace_windows() tal como esta' (ja'
+##          otimizada por dentro), so' repetida para cada rpm_threshold
+##          candidato (poucos valores, custo aceitavel). -------------------
+
+rpm_threshold_candidates <- c(1, 1.5, 2, 3)
+
+rpm_threshold_sweep_dt <- data.table::rbindlist(lapply(rpm_threshold_candidates, function(rt) {
+  dt <- compare_grace_windows(
+    curtl_scada_dt, scada_dt_unfilt, grace_candidates_sec = grace_candidates_sec,
+    start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
+    drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = rt,
+    shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
+  )
+  dt[, rpm_threshold := rt]
+  dt[]
+}))
+data.table::setcolorder(rpm_threshold_sweep_dt, c("rpm_threshold", "grace_after_end_sec", "response_flag", "n", "pct_of_total", "pct_of_known"))
+
+print(rpm_threshold_sweep_dt)
 
 
 ## ---- 1.b) Mesma ideia, mas para time_to_rpm_thresholds() diretamente --
