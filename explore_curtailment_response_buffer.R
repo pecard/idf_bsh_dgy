@@ -11,14 +11,14 @@
 ## devagar do que a duracao da ordem de curtailment permitiu verificar
 ## (classify_response_flag() so' olha para o RPM exatamente no timestamp
 ## de "end"). Este script deixa testar a hipotese de dar mais tempo (uma
-## "grace window" depois do "end") antes de decidir que um curtailment foi
-## mesmo "missed" -- ver R/curtailment_response_grace.R,
-## classify_response_flag_grace(). Testa tambem a mesma ideia diretamente em
+## "buffer window" depois do "end") antes de decidir que um curtailment foi
+## mesmo "missed" -- ver R/curtailment_response_buffer.R,
+## classify_response_flag_buffer(). Testa tambem a mesma ideia diretamente em
 ## time_to_rpm_thresholds() (R/curtailment_shutdown_time.R,
-## compare_shutdown_time_grace()) -- essa funcao alimenta tambem a secção
+## compare_shutdown_time_buffer()) -- essa funcao alimenta tambem a secção
 ## "Shutdown Time" do relatorio (nao so' a classificacao missed/delayed),
 ## pelo mesmo motivo: so' procura leituras de RPM dentro da duracao da
-## propria ordem de curtailment. Testa tambem, em conjunto com a grace
+## propria ordem de curtailment. Testa tambem, em conjunto com a buffer
 ## window, se rpm_threshold (nao drop_pct_threshold -- ver secção 1.a) e'
 ## demasiado apertado.
 ##
@@ -33,10 +33,10 @@
 ## Uso:
 ##   1) Ajustar project_settings_file abaixo para o parque a explorar.
 ##   2) Dar Source A ESTE FICHEIRO (Ctrl+Shift+S no RStudio, ou
-##      source("explore_curtailment_response_grace.R") na consola).
-##   3) Olhar para grace_comparison_dt (quantos "missed" mudam para
-##      "delayed", para cada grace_after_end_sec testado).
-##   4) Ajustar grace_for_plots consoante o que vires em 3), e correr so'
+##      source("explore_curtailment_response_buffer.R") na consola).
+##   3) Olhar para buffer_comparison_dt (quantos "missed" mudam para
+##      "delayed", para cada buffer_after_end_sec testado).
+##   4) Ajustar buffer_for_plots consoante o que vires em 3), e correr so'
 ##      esse bloco outra vez para comparar os plots novos com os do
 ##      relatorio original.
 ##
@@ -48,7 +48,7 @@ source("R/data_cache.R")
 source("R/curtailment_response.R")
 source("R/curtailment_shutdown_time.R")
 source("R/curtailment_response_classify.R")
-source("R/curtailment_response_grace.R")
+source("R/curtailment_response_buffer.R")
 source("R/curtailment_forensic_trace.R")
 
 ## cache/<farm_code>/ (layout atual) -- se ainda nao existir, tenta cache/
@@ -87,22 +87,22 @@ cat(sprintf("%d curtailments no universo (turbinas_scada, janela scada_ini-scada
 
 
 ## ---- 1) Tabela comparativa -- quantos "missed" mudam para "delayed",
-##         para cada grace_after_end_sec testado (0 = comportamento atual,
-##         sem grace window nenhuma) ----------------------------------
+##         para cada buffer_after_end_sec testado (0 = comportamento atual,
+##         sem buffer window nenhuma) ----------------------------------
 
-grace_candidates_sec <- c(0, 20, 40, 60, 90, 120)
+buffer_candidates_sec <- c(0, 20, 40, 60, 90, 120)
 
-grace_comparison_dt <- compare_grace_windows(
-  curtl_scada_dt, scada_dt_unfilt, grace_candidates_sec = grace_candidates_sec,
+buffer_comparison_dt <- compare_buffer_windows(
+  curtl_scada_dt, scada_dt_unfilt, buffer_candidates_sec = buffer_candidates_sec,
   start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
   drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
   shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
 )
 
-print(grace_comparison_dt)
+print(buffer_comparison_dt)
 
 
-## ---- 1.a) Sweep conjunto de rpm_threshold x grace_after_end_sec -- Paulo
+## ---- 1.a) Sweep conjunto de rpm_threshold x buffer_after_end_sec -- Paulo
 ##          (2026-08) perguntou se o "drop measure" (drop_pct_threshold, 10%)
 ##          e' demasiado rigido/curto. NAO e' -- drop_pct_threshold so'
 ##          alimenta no_immediate_response (sinal a parte, nao entra em
@@ -113,16 +113,16 @@ print(grace_comparison_dt)
 ##          "quanto caiu", so' "estava ou nao abaixo do limiar naquele
 ##          instante". Este sweep testa se um rpm_threshold mais alto (ex:
 ##          "abaixo de 2 ou 3 rpm ja conta como parada", nao so' <1) muda a
-##          leitura, em conjunto com grace_after_end_sec (secção 1 acima) --
-##          cada linha reusa compare_grace_windows() tal como esta' (ja'
+##          leitura, em conjunto com buffer_after_end_sec (secção 1 acima) --
+##          cada linha reusa compare_buffer_windows() tal como esta' (ja'
 ##          otimizada por dentro), so' repetida para cada rpm_threshold
 ##          candidato (poucos valores, custo aceitavel). -------------------
 
 rpm_threshold_candidates <- c(1, 1.5, 2, 3)
 
 rpm_threshold_sweep_dt <- data.table::rbindlist(lapply(rpm_threshold_candidates, function(rt) {
-  dt <- compare_grace_windows(
-    curtl_scada_dt, scada_dt_unfilt, grace_candidates_sec = grace_candidates_sec,
+  dt <- compare_buffer_windows(
+    curtl_scada_dt, scada_dt_unfilt, buffer_candidates_sec = buffer_candidates_sec,
     start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
     drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = rt,
     shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
@@ -130,7 +130,7 @@ rpm_threshold_sweep_dt <- data.table::rbindlist(lapply(rpm_threshold_candidates,
   dt[, rpm_threshold := rt]
   dt[]
 }))
-data.table::setcolorder(rpm_threshold_sweep_dt, c("rpm_threshold", "grace_after_end_sec", "response_flag", "n", "pct_of_total", "pct_of_known"))
+data.table::setcolorder(rpm_threshold_sweep_dt, c("rpm_threshold", "buffer_after_end_sec", "response_flag", "n", "pct_of_total", "pct_of_known"))
 
 print(rpm_threshold_sweep_dt)
 
@@ -140,61 +140,61 @@ print(rpm_threshold_sweep_dt)
 ##           relatorio (summarise_time_to_threshold() -- %Reached, tempo
 ##           medio/mediano por limiar) como o "delayed" acima -- so' olha
 ##           para leituras dentro de [start, end] da propria ordem de
-##           curtailment; grace_after_end_sec estende essa janela para
-##           [start, end + grace]. Ver se %Reached sobe e o tempo medio se
-##           torna mais realista com mais grace, para os 3 limiares (2, 1,
+##           curtailment; buffer_after_end_sec estende essa janela para
+##           [start, end + buffer]. Ver se %Reached sobe e o tempo medio se
+##           torna mais realista com mais buffer, para os 3 limiares (2, 1,
 ##           0 rpm) em conjunto (nao so' o "1o limiar" usado na
 ##           classificacao missed/delayed acima). --------------------------
 
-shutdown_time_grace_dt <- compare_shutdown_time_grace(
-  curtl_scada_dt, scada_dt_unfilt, grace_candidates_sec = grace_candidates_sec,
+shutdown_time_buffer_dt <- compare_shutdown_time_buffer(
+  curtl_scada_dt, scada_dt_unfilt, buffer_candidates_sec = buffer_candidates_sec,
   thresholds = shutdown_time_thresholds, start_end_gap_sec = curtailment_start_end_gap_sec
 )
 
-print(shutdown_time_grace_dt)
+print(shutdown_time_buffer_dt)
 
 
 ## ---- 2) Replot dos mesmos exemplos do relatorio, com a classificacao
-##         nova -- ajustar grace_for_plots consoante o que vires acima ---
+##         nova -- ajustar buffer_for_plots consoante o que vires acima ---
 
-grace_for_plots <- 60
+buffer_for_plots <- 60
 
-response_flag_grace_dt <- classify_response_flag_grace(
-  curtl_scada_dt, scada_dt_unfilt, grace_after_end_sec = grace_for_plots,
+response_flag_buffer_dt <- classify_response_flag_buffer(
+  curtl_scada_dt, scada_dt_unfilt, buffer_after_end_sec = buffer_for_plots,
   start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
   drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
   shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
 )
 
-missed_examples_new  <- select_curtailment_examples(response_flag_grace_dt, "missed",  n = curtailment_example_n)
-delayed_examples_new <- select_curtailment_examples(response_flag_grace_dt, "delayed", n = curtailment_example_n)
+missed_examples_new  <- select_curtailment_examples(response_flag_buffer_dt, "missed",  n = curtailment_example_n)
+delayed_examples_new <- select_curtailment_examples(response_flag_buffer_dt, "delayed", n = curtailment_example_n)
 
 p_missed_new <- plot_curtailment_events_rpm(
   missed_examples_new, scada_dt_unfilt,
   window_before_min = curtailment_example_window_before_min, window_after_min = curtailment_example_window_after_min,
-  title = sprintf("Missed Curtailments -- grace_after_end_sec=%s", grace_for_plots)
+  title = sprintf("Missed Curtailments -- buffer_after_end_sec=%s", buffer_for_plots)
 )
 p_delayed_new <- plot_curtailment_events_rpm(
   delayed_examples_new, scada_dt_unfilt,
   window_before_min = curtailment_example_window_before_min, window_after_min = curtailment_example_window_after_min,
-  title = sprintf("Delayed Curtailments -- grace_after_end_sec=%s", grace_for_plots)
+  title = sprintf("Delayed Curtailments -- buffer_after_end_sec=%s", buffer_for_plots)
 )
 
 p_missed_new
 p_delayed_new
 
-## Casos reclassificados "missed" -> "delayed" com este grace_for_plots --
-## grace_stop_sec e' desde o INICIO do curtailment (comparavel a
-## time_to_first_threshold_sec); grace_stop_after_end_sec e' desde o FIM da
-## ordem -- e' este ultimo que e' comparado contra grace_after_end_sec, por
-## isso deve aparecer sempre <= grace_for_plots aqui (bom sanity check: se
+## Casos reclassificados "missed" -> "delayed" com este buffer_for_plots --
+## buffer_stop_sec e' desde o INICIO do curtailment (comparavel a
+## time_to_first_threshold_sec); buffer_stop_after_end_sec e' desde o FIM da
+## ordem -- e' este ultimo que e' comparado contra buffer_after_end_sec, por
+## isso deve aparecer sempre <= buffer_for_plots aqui (bom sanity check: se
 ## nao aparecer, algo esta errado)
-reclassified_dt <- response_flag_grace_dt[!is.na(grace_stop_time)]
-cat(sprintf("\n%d curtailment(s) reclassificados missed -> delayed com grace_after_end_sec=%s:\n", nrow(reclassified_dt), grace_for_plots))
-print(reclassified_dt[, .(turbine, track_id, species, start, end, time_to_first_threshold_sec, grace_stop_sec, grace_stop_after_end_sec)])
+reclassified_dt <- response_flag_buffer_dt[!is.na(buffer_stop_time)]
+cat(sprintf("\n%d curtailment(s) reclassificados missed -> delayed com buffer_after_end_sec=%s:\n", nrow(reclassified_dt), buffer_for_plots))
+print(reclassified_dt[, .(turbine, track_id, species, start, end, time_to_first_threshold_sec, buffer_stop_sec, buffer_stop_after_end_sec)])
 
 
-## ---- 3) Inspecao detalhada dos casos "delayed" ATUAIS (grace=0) -- ex:
+## ---- 3) Inspecao detalhada dos casos "delayed" ATUAIS (buffer=0) -- ex:
 ##         um exemplo do relatorio aparecia com RPM=0 durante toda a janela
 ##         plotada, o que sugere um problema de match/gap de dados (o
 ##         turbina ja estava parada, nao foi um atraso real), nao a mesma
@@ -209,7 +209,7 @@ response_flag_dt_current <- classify_response_flag(
 )
 delayed_examples_current <- select_curtailment_examples(response_flag_dt_current, "delayed", n = curtailment_example_n)
 
-cat("\nDetalhe dos exemplos 'delayed' atuais (grace=0, mesmos do relatorio):\n")
+cat("\nDetalhe dos exemplos 'delayed' atuais (buffer=0, mesmos do relatorio):\n")
 print(delayed_examples_current[, .(
   turbine, track_id, species, start, end,
   start_rpm, start_match_valid, end_rpm, end_match_valid,
