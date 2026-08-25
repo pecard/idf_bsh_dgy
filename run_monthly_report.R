@@ -20,7 +20,7 @@
 ## NUNCA copiar as linhas abaixo para dentro de IDF_monthly_report.R.
 ##
 
-report_month <- "2026-01"
+report_month <- "2026-06"
 
 ## Deixar FALSE na maioria das corridas -- so' mudar para TRUE na 1a corrida
 ## a seguir a descarregar dados novos (ex: SCADA de turbinas recem-
@@ -29,6 +29,6 @@ report_month <- "2026-01"
 ## comentario em IDF_monthly_report.R, secção "0. Import data"). Voltar a
 ## FALSE depois dessa corrida -- deixar TRUE religa sempre os ficheiros
 ## brutos, mais lento sem necessidade.
-force_reread_cache_monthly <- FALSE
+force_reread_cache_monthly <- T
 
 source("IDF_monthly_report.R")

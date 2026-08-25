@@ -26,6 +26,6 @@
 ## comentario em IDF_analysis.R, secção "0. Import data"). Voltar a FALSE
 ## depois dessa corrida -- deixar TRUE religa sempre os ficheiros brutos,
 ## mais lento sem necessidade.
-force_reread_cache <- FALSE
+force_reread_cache <- F
 
 source("IDF_analysis.R")
