@@ -10,7 +10,7 @@
 ## ESTE FICHEIRO (Ctrl+Shift+S no RStudio, ou
 ## source("run_annual_analysis_DGY.R") na consola).
 ##
-## Mesma razao de ser do run_annual_analysis.R (ver esse ficheiro) para
+## Mesma razao de ser do run_annual_analysis_BSH.R (ver esse ficheiro) para
 ## nao colocar isto dentro de IDF_analysis.R -- este e' um LANCADOR
 ## SEPARADO, nunca chamado a partir de dentro do proprio IDF_analysis.R.
 ##

@@ -2,7 +2,7 @@
 ## Atalho alternativo para correr o relatorio mensal para 1 mes especifico
 ## sem editar IDF_monthly_report.R -- editar report_month abaixo e dar
 ## Source A ESTE FICHEIRO (Ctrl+Shift+S no RStudio, ou
-## source("run_monthly_report.R") na consola).
+## source("run_monthly_report_BSH.R") na consola).
 ##
 ## IDF_monthly_report.R ja tem um report_month por omissao, editavel
 ## diretamente nesse ficheiro (ver comentario la' proprio) -- este launcher

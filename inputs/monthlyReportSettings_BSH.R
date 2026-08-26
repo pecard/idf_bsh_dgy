@@ -24,7 +24,7 @@
 ## BSH continua a omissao se essa variavel nao for definida antes, mesmo
 ## padrao de project_settings_file/IDF_analysis.R).
 ##
-## Uso (em IDF_monthly_report.R, ou run_monthly_report.R/run_monthly_report_DGY.R):
+## Uso (em IDF_monthly_report.R, ou run_monthly_report_BSH.R/run_monthly_report_DGY.R):
 ##   report_month <- "2026-07"  # definir ANTES de dar source a este ficheiro
 ##   monthly_settings_file <- "monthlyReportSettings_BSH.R"  # ou _DGY.R -- omitir para BSH (omissao)
 ##   source("IDF_monthly_report.R")
