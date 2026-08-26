@@ -28,12 +28,14 @@
 ## -- ja' inclui o filtro de cutin_rpm (curtailments abaixo da velocidade de
 ## cut-in no start ficam de fora do no-response, ver R/curtailment_response_latency.R).
 ## As secções 1-3 (classify_response_flag()/buffer window sobre
-## missed/delayed) exploram o esquema ANTERIOR, que a secção "Curtailment
-## Response & Latency" do relatorio ja' nao usa -- ficam so' como registo de
-## como se chegou a' decisao de adotar latencia em vez de missed/delayed
-## (classify_response_flag() continua em uso NOUTRAS secções do relatorio,
-## nao relacionadas -- a timeline de resposta vs. fenologia e a janela de
-## incidentes de fatalidade -- mas essas nao sao afetadas por cutin_rpm).
+## missed/delayed) exploram o esquema ANTERIOR, que o relatorio ja' nao usa
+## em NENHUMA secção (a timeline de resposta vs. fenologia e a janela de
+## resposta por incidente de fatalidade foram tambem migradas para
+## time_to_first_decline()/cutin_rpm, 2026-08) -- ficam so' como registo de
+## como se chegou a' decisao de adotar latencia em vez de missed/delayed.
+## classify_response_flag() continua a existir e a ser testada (tests/
+## test_curtailment_response_classify.R), so' deixou de alimentar o
+## relatorio.
 ##
 ## Reutiliza a MESMA cache (fst) ja' gravada por uma corrida anterior de
 ## run_annual_analysis.R (ou run_annual_analysis_DGY.R) -- NAO rele os
@@ -262,3 +264,57 @@ print(summarise_latency_by_turbine(latency_dt))
 
 p_latency <- plot_latency_histogram(latency_dt)
 p_latency
+
+
+## ---- 5) Diagnostico de um caso especifico -- BSH54, 2025-11-11 13:47:38
+##         (Steppe-Eagle), RPM achatado ~6.5 durante toda a janela do plot
+##         "Missed Curtailments" (secções 2/3 acima, esquema ANTIGO).
+##         Paulo perguntou (2026-08) se este caso continua a ser apanhado
+##         pelo esquema NOVO (latency_dt/cutin_rpm) ou se "desaparecemos"
+##         dele. Ajustar case_turbine/case_start para investigar outro caso.
+##
+##         Leitura do resultado:
+##           - 0 linhas em latency_dt -- o match do baseline no start falhou
+##             (start_end_gap_sec) e o caso nem chega a entrar na analise;
+##             ver curtl_scada_dt diretamente (impresso abaixo nesse caso).
+##           - 1 linha com below_cutin=TRUE -- excluido por estar abaixo do
+##             cut-in no start; RPM~6.5 deve dar FALSE aqui (bem acima de
+##             curtailment_cutin_rpm=3) -- se der TRUE, ha' algo errado no
+##             match do start_rpm.
+##           - 1 linha com below_cutin=FALSE e latency_sec=NA -- continua a
+##             contar como no-response no relatorio atual (esperado para
+##             este caso).
+##           - 1 linha com below_cutin=FALSE e latency_sec preenchido -- o
+##             algoritmo encontrou uma queda algures na janela [start, end +
+##             buffer]; a impressao das leituras SCADA em bruto abaixo mostra
+##             se essa queda e' real (a turbina respondeu mais tarde do que o
+##             plot mostra, cortado a poucos minutos) ou um artefacto (ex:
+##             "end" anomalamente longe no futuro, alargando a janela de
+##             procura muito alem do que faz sentido para esta ordem). ------
+
+case_turbine <- "BSH54"
+case_start   <- as.POSIXct("2025-11-11 13:47:38", tz = proj_timezone)
+
+case_dt <- latency_dt[
+  turbine == case_turbine & abs(as.numeric(difftime(start, case_start, units = "secs"))) < 5
+]
+cat(sprintf("\nCaso especifico (%s, %s) em latency_dt:\n", case_turbine, case_start))
+print(case_dt)
+
+if (nrow(case_dt) == 1L) {
+  window_end_full <- case_dt$end + shutdown_time_buffer_sec
+  cat(sprintf(
+    "\nDuracao da propria ordem (end - start): %.1f s -- janela de procura completa (start ate' end+buffer): [%s, %s]\n",
+    as.numeric(difftime(case_dt$end, case_dt$start, units = "secs")),
+    format(case_dt$start), format(window_end_full)
+  ))
+
+  cat("\nLeituras SCADA (RPM) nessa turbina, em TODA a janela de procura (nao so' o recorte do plot):\n")
+  print(scada_dt_unfilt[
+    turbinelabel == case_turbine & readingname == "RPM" &
+      datetime >= case_dt$start & datetime <= window_end_full
+  ][order(datetime)])
+} else {
+  cat("Caso nao encontrado em latency_dt (0 ou >1 linhas) -- a ver curtl_scada_dt diretamente:\n")
+  print(curtl_scada_dt[turbine == case_turbine & abs(as.numeric(difftime(start, case_start, units = "secs"))) < 5])
+}
