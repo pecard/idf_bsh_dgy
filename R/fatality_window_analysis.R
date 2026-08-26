@@ -136,9 +136,13 @@ summarise_curtailment_response_window <- function(curtl_dt, scada_dt, turbine_id
   empty_detail <- data.table::data.table(
     curtailment_id = integer(), turbine = character(), track_id = character(),
     species = character(), start = as.POSIXct(character()), end = as.POSIXct(character()),
-    start_rpm = numeric(), below_cutin = logical(),
+    start_rpm = numeric(), no_data = logical(), below_cutin = logical(),
     decline_time = as.POSIXct(character()), latency_sec = numeric()
   )
+  if (nrow(curtl_window) == 0L) {
+    return(list(detail = empty_detail, summary = summarise_latency(empty_detail)))
+  }
+  
   empty_summary <- data.table::data.table(
     n_curtailments = integer(), n_below_cutin = integer(), pct_below_cutin = numeric(),
     n_eligible = integer(), n_reached = integer(), pct_reached = numeric(),
