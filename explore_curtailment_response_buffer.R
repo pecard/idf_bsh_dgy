@@ -302,6 +302,8 @@ p_latency
 ##             "end" anomalamente longe no futuro, alargando a janela de
 ##             procura muito alem do que faz sentido para esta ordem). ------
 
+start_end_gap_candidates <- c(2, 5, 10, 15)
+
 case_turbine <- "BSH54"
 case_start   <- as.POSIXct("2025-11-11 13:47:38", tz = proj_timezone)
 
@@ -324,6 +326,28 @@ if (nrow(case_dt) == 1L) {
     turbinelabel == case_turbine & readingname == "RPM" &
       datetime >= case_dt$start & datetime <= window_end_full
   ][order(datetime)])
+
+  ## leituras ANTES do start -- necessarias para ver a que distancia esta'
+  ## a leitura que o match backward-only (roll = start_end_gap_sec, ver
+  ## R/curtailment_response.R) precisaria de aceitar; o bloco acima so'
+  ## mostra a janela [start, end+buffer], que nunca contem essa leitura
+  cat("\nLeituras SCADA (RPM) nessa turbina, nos 60s ANTES do start:\n")
+  print(scada_dt_unfilt[
+    turbinelabel == case_turbine & readingname == "RPM" &
+      datetime >= case_dt$start - 60 & datetime < case_dt$start
+  ][order(datetime)])
+
+  ## a que start_end_gap_sec e' que este caso deixa de ser no_data, com o
+  ## match backward-only? -- confere se o resultado do case_dt acima (com
+  ## o gap por omissao, 2s) muda nos valores testados no sweep da secção 6
+  case_events <- data.table::data.table(id = 1L, turbine = case_turbine, event_time = case_dt$start)
+  for (g in start_end_gap_candidates) {
+    m <- match_nearest_rpm(case_events, scada_dt_unfilt, max_gap_sec = g, roll = g)
+    cat(sprintf(
+      "  start_end_gap_sec=%2ds -> valid_match=%s, start_rpm=%s, gap_sec=%s\n",
+      g, m$valid_match, round(m$rpm, 2), round(m$gap_sec, 1)
+    ))
+  }
 } else {
   cat("Caso nao encontrado em latency_dt (0 ou >1 linhas) -- a ver curtl_scada_dt diretamente:\n")
   print(curtl_scada_dt[turbine == case_turbine & abs(as.numeric(difftime(start, case_start, units = "secs"))) < 5])
@@ -356,8 +380,6 @@ if (nrow(case_dt) == 1L) {
 ##         confirma isso: mean/median latency devem manter-se estaveis
 ##         entre 2/5/10/15s, mudando so' n_no_data/pct_no_data. -----------
 
-start_end_gap_candidates <- c(2, 5, 10, 15)
-
 start_end_gap_sweep_dt <- data.table::rbindlist(lapply(start_end_gap_candidates, function(g) {
   lat_dt <- time_to_first_decline(
     curtl_scada_dt, scada_dt_unfilt, decline_pct_threshold = curtailment_latency_decline_pct,
@@ -373,3 +395,49 @@ print(start_end_gap_sweep_dt[, .(
   start_end_gap_sec, n_no_data, pct_no_data, n_eligible,
   n_reached, pct_no_response, mean_latency_sec, median_latency_sec
 )])
+
+
+## ---- 6b) Distribuicao real do gap ate' a leitura SCADA ANTERIOR --------
+##
+##         O sweep acima (secção 6) mostrou pct_no_data muito mais alto do
+##         que seria de esperar so' pelo ciclo SCADA (~10s): 87.8% a 2s,
+##         70.1% a 5s, e ainda 41.0%/40.1% a 10s/15s (2026-08, primeira
+##         corrida do Paulo). Se o SCADA tivesse sempre um "tick" regular
+##         de ~10s, 15s de tolerancia backward-only deveria cobrir quase
+##         100% dos casos -- os 40% que sobram a 15s sugerem lacunas MAIORES
+##         e sistematicas nalgumas turbinas/periodos (ex: RPM pode nao ser
+##         reportado enquanto a turbina ja esta' parada/em curtailment,
+##         nao so' amostrado a cada 10s), nao so' o efeito esperado do
+##         "roll" ser so' num sentido. Este bloco mede o gap REAL ate' a
+##         leitura anterior mais proxima (sem limite de producao, so' para
+##         caracterizar), para distinguir as duas hipoteses antes de
+##         escolher um valor de start_end_gap_sec.
+
+diag_events <- curtl_scada_dt[, .(id = .I, turbine, event_time = start)]
+diag_match  <- match_nearest_rpm(diag_events, scada_dt_unfilt, max_gap_sec = 3600, roll = 3600)
+
+cat(sprintf(
+  "\nGap ate' a leitura SCADA anterior ao start (%d curtailments; sem NENHUMA leitura anterior em 1h: %d, %.1f%%):\n",
+  nrow(diag_match), sum(is.na(diag_match$gap_sec)),
+  100 * sum(is.na(diag_match$gap_sec)) / nrow(diag_match)
+))
+print(summary(diag_match$gap_sec))
+print(quantile(diag_match$gap_sec, probs = c(0.5, 0.75, 0.9, 0.95, 0.99), na.rm = TRUE))
+
+for (g in c(2, 5, 10, 15, 30, 60, 120)) {
+  cat(sprintf(
+    "  <= %3ds: %5.1f%%\n", g,
+    100 * sum(diag_match$gap_sec <= g, na.rm = TRUE) / nrow(diag_match)
+  ))
+}
+
+## repartido por turbina -- se a lacuna for sistematica nalgumas turbinas
+## em particular (em vez de espalhada por todas), aparece aqui como
+## pct_le_15s muito mais baixo nessas linhas
+diag_by_turbine <- diag_match[, .(
+  n = .N,
+  pct_le_15s = round(100 * sum(gap_sec <= 15, na.rm = TRUE) / .N, 1),
+  pct_no_prior_1h = round(100 * sum(is.na(gap_sec)) / .N, 1)
+), by = turbine]
+data.table::setorder(diag_by_turbine, pct_le_15s)
+print(diag_by_turbine)
