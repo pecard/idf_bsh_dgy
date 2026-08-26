@@ -105,8 +105,8 @@ turbine_idf_matrix_filename <- "ACWA_IDF_Coverage_Matrix_DGY.xlsx"
 # lat 40.850-40.934, lon 63.285-63.468) -- so' usado para calculo de
 # posicao do sol (disponibilidade diurna, secção 3.1), nao precisa de ser
 # exato ao metro
-proj_lat      <- 40.89
-proj_lon      <- 63.38
+proj_lat      <- 40.87486
+proj_lon      <- 63.38871
 proj_timezone <- "Asia/Samarkand"
 
 # Zona UTM 41N (60-66°E) cobre tambem a longitude do DGY (~63.3-63.5°E) --
@@ -126,7 +126,9 @@ databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 ## tem databases_dir_alt, ver userSettings_BSH.R) -- omitido por omissao
 ## (IDF_analysis.R so' usa databases_dir_alt se a variavel existir). Definir
 ## aqui se houver uma pasta de rede equivalente para o DGY.
-# databases_dir_alt <- "//192.168.1.11/.../IDF_PortalData/DGY"
+
+
+databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-2025_BSH_DGY/IDF_PortalData/DGY"
 
 ## databases_dir acima e' PARTILHADA com o projeto BSH -- farm_pattern
 ## filtra por substring "DGY" (confirmado pelo Paulo, 2026-08: aparece nos 4
@@ -181,8 +183,8 @@ idf_installed_units <- heartbeat_idf_units
 ## pipeline so' usa dados que existirem dentro deste intervalo; nao ha
 ## problema em deixar largo, so' ajustar se search precisar de restringir a
 ## um periodo mais curto)
-ini <- as.POSIXct('2024-01-01 00:00:00', tz = proj_timezone)
-end <- as.POSIXct('2026-12-31 23:59:59', tz = proj_timezone)
+ini <- as.POSIXct('2025-08-01 00:00:00', tz = proj_timezone)
+end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
 
 
 ##
@@ -204,14 +206,14 @@ prioritysp <- c(
   'White-Tailed-Eagle',
   'Protected',
   'Booted-Eagle',
-  'Short-Toed-Snake-Eagle'
+  'Short-Toed-Snake-Eagle',
+  'Greater-Spotted-Eagle'
 )
 
 nonprioritysp <- c(
   'Accipiter',
   'Kestrel',
   'Common-Buzzard',
-  'Greater-Spotted-Eagle',
   "Harrier",
   'Honey-Buzzard',
   'Long-Legged-Buzzard',
@@ -288,12 +290,12 @@ shorttrack_eval_range <- 300
 
 ## TODO(Paulo): janela de SCADA por confirmar -- largos por omissao, mesma
 ## nota que ini/end acima
-scada_ini <- as.POSIXct('2024-01-01 00:00:00', tz = proj_timezone)
-scada_end <- as.POSIXct('2026-12-31 23:59:59', tz = proj_timezone)
+scada_ini <- as.POSIXct('2026-01-01 00:00:00', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
 
 # As 4 turbinas com unidade IDF confirmada (heartbeat_idf_units acima, sem
 # o sufixo "-NN" da unidade) -- so' estas tem curtailments/SCADA
-turbinas_scada <- c('DZH01', 'DZH03', 'DZH62', 'DZH64')
+turbinas_scada <- c('DZH01', 'DZH01','DZH03', 'DZH62', 'DZH63','DZH64')
 
 safe_shutdown_rpm <- 1
 
@@ -493,4 +495,4 @@ manual_turbine_clusters <- list(
 
 ## -- 10.2. Kestrel (ou outra especie) track occurrence por cluster --
 
-cluster_species_sel <- c("Kestrel")
+cluster_species_sel <- c("Golden-Eagle")
