@@ -255,7 +255,15 @@ turbinas_scada <- c('DZH01', 'DZH03', 'DZH62', 'DZH64')
 
 safe_shutdown_rpm <- 1
 
-curtailment_start_end_gap_sec <- 2
+# herdado do valor do Bash (10, ver o comentario completo em
+# userSettings_BSH.R) -- ainda NAO verificado com dados reais de SCADA do
+# DGY: a escolha de 10s para o Bash veio de um sweep (start_end_gap_sec vs.
+# pct_no_data) sobre o padrao de amostragem/lacunas SCADA especifico das
+# turbinas BSH54/BSH62/BSH14, que pode nao se aplicar tal e qual as 4
+# turbinas do DGY (turbinas_scada acima). Repetir esse sweep
+# (explore_curtailment_response_buffer.R, secções 6/6b) com dados reais do
+# DGY antes de confiar neste valor para conclusões operacionais.
+curtailment_start_end_gap_sec <- 10
 curtailment_max_next_gap_sec   <- 20
 curtailment_drop_pct_threshold <- 0.10
 

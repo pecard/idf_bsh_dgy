@@ -13,6 +13,9 @@ params:
   availability_by_idf: !r NULL
   availability_plot_cal: !r NULL
   availability_plot_freq: !r NULL
+  availability_cal_report_months: !r NULL
+  availability_cal_full_filename: !r NULL
+  idf_availability_top_n: !r NULL
 
   coverage_turbine_summary: !r NULL
   coverage_idf_summary: !r NULL
@@ -304,11 +307,16 @@ annex_note(params$xlsx_availability)
 
 ## Availability Calendar
 
-Daily offline percentage per IDF unit, laid out as a calendar.
+Daily offline percentage per IDF unit, laid out as a calendar -- the `r params$idf_availability_top_n` units with the most offline time over the full project history, for the last `r params$availability_cal_report_months` months only.
 
 <!-- Source: plot_availability_calendar(), R/availability_daylight.R -->
 ```{r availability-cal, fig.width=6.30, fig.height=9}
 if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal + ggplot2::theme(legend.position = "bottom"))
+```
+```{r availability-cal-annex, results='asis'}
+if (!is.null(params$availability_cal_full_filename)) {
+  cat(sprintf("\n*The full calendar (every IDF unit, full project history) is available as an accompanying image: `%s`.*\n", params$availability_cal_full_filename))
+}
 ```
 
 ## Availability Frequency

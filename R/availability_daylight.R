@@ -192,6 +192,15 @@ plot_availability_calendar <- function(daylight_availability_dt, by_idf_summary,
     idf_sel <- by_idf_summary[order(-offline_mins_total)][seq_len(min(top_n, .N)), idf]
   }
 
+  # subtitulo correto tambem quando idf_sel cobre TODAS as unidades (o
+  # calendario completo do anexo, nao so' um top-N) -- "Top N" seria
+  # enganador nesse caso
+  subtitle_txt <- if (length(idf_sel) >= data.table::uniqueN(by_idf_summary$idf)) {
+    sprintf("All %d IDF units", length(idf_sel))
+  } else {
+    sprintf("Top %d IDF units by offline time", length(idf_sel))
+  }
+
   dt <- add_calendar_coords(daylight_availability_dt)
   dt <- dt[idf %in% idf_sel]
 
@@ -222,7 +231,7 @@ plot_availability_calendar <- function(daylight_availability_dt, by_idf_summary,
     labs(
       x = NULL, y = "Week of month",
       title = "Daylight offline (%) calendar by IDF unit",
-      subtitle = sprintf("Top %d IDF units by offline time", length(idf_sel))
+      subtitle = subtitle_txt
     ) +
     theme_minimal(base_size = 9) +
     theme(

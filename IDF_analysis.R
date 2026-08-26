@@ -656,15 +656,36 @@ if (exists("heartb_dt")) {
   idf_sel <- idf_availability_summary$by_idf[
     order(-offline_mins_total)][seq_len(min(idf_availability_top_n, .N)), idf]
   
-  p_availability_cal <- plot_availability_calendar(
+  ## Calendario completo (anexo) -- TODAS as unidades IDF, historico
+  ## completo do projeto, PNG maior (35x30cm) -- pedido do Paulo (2026-08)
+  ## para quem quiser investigar qualquer unidade/periodo fora das top N/
+  ## ultimos 6 meses mostrados no corpo do relatorio abaixo.
+  availability_cal_full_filename <- paste0("idf_availability_calendar_full_", report_start, "to", report_end, ".png")
+  p_availability_cal_full <- plot_availability_calendar(
     idf_availability_dt, idf_availability_summary$by_idf,
+    idf_sel = unique(idf_availability_dt$idf), top_n = uniqueN(idf_availability_dt$idf)
+  )
+  ggsave(
+    file.path(folder_output, availability_cal_full_filename),
+    plot = p_availability_cal_full, width = 350, height = 300, units = "mm", dpi = 300, bg = "white"
+  )
+
+  ## Calendario do corpo do relatorio -- mesmas top N unidades de idf_sel
+  ## (ranking pelo historico completo, inalterado), mas so' os ultimos 6
+  ## meses do periodo -- o historico completo, com muitos meses lado a
+  ## lado, fica demasiado apertado/ilegivel na largura do corpo do docx
+  ## (ver o anexo acima para o periodo completo). Pedido do Paulo, 2026-08.
+  availability_cal_report_months <- 6
+  availability_cal_report_from   <- seq(report_end, length.out = 2, by = sprintf("-%d months", availability_cal_report_months))[2]
+  p_availability_cal <- plot_availability_calendar(
+    idf_availability_dt[date >= availability_cal_report_from], idf_availability_summary$by_idf,
     idf_sel = idf_sel, top_n = idf_availability_top_n
   )
   ggsave(
     file.path(folder_output, paste0("idf_availability_calendar_", report_start, "to", report_end, ".png")),
     plot = p_availability_cal, width = 200, height = 90, units = "mm", dpi = 300, bg = "white"
   )
-  
+
   p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
   ggsave(
     file.path(folder_output, paste0("idf_availability_frequency_", report_start, "to", report_end, ".png")),
@@ -2057,6 +2078,9 @@ report_params <- list(
   availability_by_idf    = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
   availability_plot_cal  = if (exists("p_availability_cal")) p_availability_cal else NULL,
   availability_plot_freq = if (exists("p_availability_freq")) p_availability_freq else NULL,
+  availability_cal_report_months = if (exists("availability_cal_report_months")) availability_cal_report_months else NULL,
+  availability_cal_full_filename = if (exists("availability_cal_full_filename")) availability_cal_full_filename else NULL,
+  idf_availability_top_n          = if (exists("idf_availability_top_n")) idf_availability_top_n else NULL,
 
   coverage_turbine_summary = if (exists("coverage_turbine_summary")) coverage_turbine_summary else NULL,
   coverage_idf_summary     = if (exists("coverage_idf_summary")) coverage_idf_summary else NULL,
