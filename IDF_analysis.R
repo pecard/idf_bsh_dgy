@@ -1370,11 +1370,6 @@ if (isTRUE(run_sections$fatality_investigation)) {
 fatality_global_response_summary_dt
 fatality_abundance_pre_post_dt
 
-attr(curtl_scada_dt$start, "tzone")  # expected "Asia/Samarkand"
-curtl_scada_dt[track_id == "F96FD9F7-E742-4588-B495-DEA851EB5495", start]  # esperado: 06:44:52
-
-
-
 ##
 ## 5. Coverage ----
 ##
