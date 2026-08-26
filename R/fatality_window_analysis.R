@@ -11,10 +11,8 @@
 ## Reutiliza os thresholds ja definidos noutras seccoes do userSettings_BSH.R
 ## -- nao introduz limiares novos:
 ##   - disponibilidade (3.1): heartbeat_offline_gap_min, heartbeat_interval_min
-##   - resposta a curtailments (3.5): curtailment_start_end_gap_sec,
-##     curtailment_max_next_gap_sec, curtailment_drop_pct_threshold,
-##     safe_shutdown_rpm
-##   - tempo de resposta (3.6): shutdown_time_thresholds, shutdown_time_high_cut
+##   - resposta a curtailments/latencia (3.5-3.6b): curtailment_start_end_gap_sec,
+##     curtailment_latency_decline_pct, shutdown_time_buffer_sec, curtailment_cutin_rpm
 ##
 ## Unidades IDF por turbina: resolvidas a partir da matriz manual
 ## (ACWA_IDF_Coverage_Matrix.xlsx, colunas Primary IDF + Secondary IDF(s)) --
@@ -23,9 +21,9 @@
 ##
 ## Depende de: data.table, lubridate, suncalc, ggplot2,
 ## R/availability_daylight.R, R/curtailment_response.R,
-## R/curtailment_shutdown_time.R, R/curtailment_response_classify.R
-## (fazer source destes 4 antes) -- R/track_min_individuals.R tambem, para a
-## comparacao pre/pos-incidente (secao 5 deste ficheiro)
+## R/curtailment_response_latency.R (fazer source destes 3 antes) --
+## R/track_min_individuals.R tambem, para a comparacao pre/pos-incidente
+## (secao 5 deste ficheiro)
 ##
 ## Uso:
 ##   source("R/fatality_window_analysis.R")
@@ -40,11 +38,9 @@
 ##   response_i <- summarise_curtailment_response_window(
 ##     curtl_dt, scada_dt, turbine_id = "BSH54", window_from, window_to,
 ##     start_end_gap_sec = curtailment_start_end_gap_sec,
-##     max_next_gap_sec = curtailment_max_next_gap_sec,
-##     drop_pct_threshold = curtailment_drop_pct_threshold,
-##     rpm_threshold = safe_shutdown_rpm,
-##     shutdown_thresholds = shutdown_time_thresholds,
-##     shutdown_high_cut_sec = shutdown_time_high_cut
+##     decline_pct_threshold = curtailment_latency_decline_pct,
+##     buffer_after_end_sec = shutdown_time_buffer_sec,
+##     cutin_rpm = curtailment_cutin_rpm
 ##   )
 ##
 ##   # todos os incidentes de uma vez -- ver fatality_incidents em userSettings_BSH.R
@@ -53,11 +49,9 @@
 ##     proj_lat, proj_lon, proj_timezone,
 ##     offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min,
 ##     start_end_gap_sec = curtailment_start_end_gap_sec,
-##     max_next_gap_sec = curtailment_max_next_gap_sec,
-##     drop_pct_threshold = curtailment_drop_pct_threshold,
-##     rpm_threshold = safe_shutdown_rpm,
-##     shutdown_thresholds = shutdown_time_thresholds,
-##     shutdown_high_cut_sec = shutdown_time_high_cut,
+##     decline_pct_threshold = curtailment_latency_decline_pct,
+##     buffer_after_end_sec = shutdown_time_buffer_sec,
+##     cutin_rpm = curtailment_cutin_rpm,
 ##     fallback_idf_units = heartbeat_idf_units,
 ##     track_dt = track_dt, post_days = fatality_post_incident_days,
 ##     min_indiv_bin_min = min_individuals_bin_min, min_indiv_merge_dist_m = min_individuals_merge_dist_m,
@@ -122,49 +116,53 @@ summarise_availability_window <- function(heartb_dt, idf_units, window_from, win
 }
 
 
-## 3. Resposta a curtailments, restrita a uma janela + turbina ----
+## 3. Resposta a curtailments (latencia/no-response), restrita a uma
+##    janela + turbina ----
 ##
-## response_flag, por curtailment:
-##   "missed"  -- a turbina nao confirmou ter parado (final_status
-##                partial_or_no_stop/no_data, ver R/curtailment_response.R)
-##   "delayed" -- parou, mas demorou mais que shutdown_high_cut_sec a atingir
-##                o 1º limiar de rpm (o maior valor de shutdown_thresholds)
-##   "ok"      -- parou dentro do tempo esperado
+## Mesma classificacao de latencia/no-response da secção "Curtailment
+## Response & Latency" do relatorio (R/curtailment_response_latency.R,
+## time_to_first_decline()) -- substitui 2026-08 (pedido do Paulo) o antigo
+## classify_response_flag() (missed/delayed/ok), que tinha aqui a mesma
+## distorcao ja corrigida nas restantes secções: RPM verificado so' no
+## instante exato do "end" da ordem, e sem excluir curtailments cuja
+## turbina ja estava abaixo da velocidade de cut-in no "start".
 
 summarise_curtailment_response_window <- function(curtl_dt, scada_dt, turbine_id, window_from, window_to,
-                                                   start_end_gap_sec = 2, max_next_gap_sec = 20,
-                                                   drop_pct_threshold = 0.10, rpm_threshold = 1,
-                                                   shutdown_thresholds = c(2, 1, 0), shutdown_high_cut_sec = 50) {
+                                                   start_end_gap_sec = 2, decline_pct_threshold = 0.10,
+                                                   buffer_after_end_sec = 0, cutin_rpm = 0) {
 
   curtl_window <- curtl_dt[turbine == turbine_id & start >= window_from & start <= window_to]
 
   empty_detail <- data.table::data.table(
     curtailment_id = integer(), turbine = character(), track_id = character(),
     species = character(), start = as.POSIXct(character()), end = as.POSIXct(character()),
-    final_status = character(), no_immediate_response = logical(),
-    time_to_first_threshold_sec = numeric(), response_flag = character()
+    start_rpm = numeric(), below_cutin = logical(),
+    decline_time = as.POSIXct(character()), latency_sec = numeric()
   )
-  empty_by_flag <- data.table::data.table(
-    response_flag = character(), n = integer(), pct_of_total = numeric(), pct_of_known = numeric()
+  empty_summary <- data.table::data.table(
+    n_curtailments = integer(), n_below_cutin = integer(), pct_below_cutin = numeric(),
+    n_eligible = integer(), n_reached = integer(), pct_reached = numeric(),
+    n_no_response = integer(), pct_no_response = numeric(),
+    mean_latency_sec = numeric(), median_latency_sec = numeric()
   )
   if (nrow(curtl_window) == 0L) {
-    return(list(detail = empty_detail, by_flag = empty_by_flag))
+    return(list(detail = empty_detail, summary = empty_summary))
   }
 
-  # classificacao missed/delayed/ok -- regra partilhada com a timeline
-  # farm-wide, ver R/curtailment_response_classify.R
-  out <- classify_response_flag(
-    curtl_window, scada_dt, start_end_gap_sec = start_end_gap_sec,
-    max_next_gap_sec = max_next_gap_sec, drop_pct_threshold = drop_pct_threshold,
-    rpm_threshold = rpm_threshold, shutdown_thresholds = shutdown_thresholds,
-    shutdown_high_cut_sec = shutdown_high_cut_sec
+  # ver R/curtailment_response_latency.R para o racional completo
+  # (decline_pct_threshold relativo ao baseline, buffer_after_end_sec,
+  # cutin_rpm)
+  out <- time_to_first_decline(
+    curtl_window, scada_dt, decline_pct_threshold = decline_pct_threshold,
+    start_end_gap_sec = start_end_gap_sec, buffer_after_end_sec = buffer_after_end_sec,
+    cutin_rpm = cutin_rpm
   )
 
-  # contagem + % do total + % dos casos conhecidos (exclui no_data) --
-  # ver summarise_response_by_flag() em R/curtailment_response_classify.R
-  by_flag <- summarise_response_by_flag(out)
+  # resumo (1 linha) -- mesmas colunas de summarise_latency(),
+  # R/curtailment_response_latency.R
+  summary_dt <- summarise_latency(out)
 
-  list(detail = out[], by_flag = by_flag)
+  list(detail = out[], summary = summary_dt)
 }
 
 
@@ -174,9 +172,8 @@ summarise_curtailment_response_window <- function(curtl_dt, scada_dt, turbine_id
 summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, scada_dt,
                                        manual_matrix_dt = NULL, lat, lon, tz,
                                        offline_gap_min = 60, online_grace_min = 30,
-                                       start_end_gap_sec = 2, max_next_gap_sec = 20,
-                                       drop_pct_threshold = 0.10, rpm_threshold = 1,
-                                       shutdown_thresholds = c(2, 1, 0), shutdown_high_cut_sec = 50,
+                                       start_end_gap_sec = 2, decline_pct_threshold = 0.10,
+                                       buffer_after_end_sec = 0, cutin_rpm = 0,
                                        fallback_idf_units = NULL,
                                        track_dt = NULL, post_days = 3,
                                        min_indiv_bin_min = 2, min_indiv_merge_dist_m = 200,
@@ -208,9 +205,8 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
 
     response <- summarise_curtailment_response_window(
       curtl_dt, scada_dt, inc$turbine, window_from, window_to,
-      start_end_gap_sec = start_end_gap_sec, max_next_gap_sec = max_next_gap_sec,
-      drop_pct_threshold = drop_pct_threshold, rpm_threshold = rpm_threshold,
-      shutdown_thresholds = shutdown_thresholds, shutdown_high_cut_sec = shutdown_high_cut_sec
+      start_end_gap_sec = start_end_gap_sec, decline_pct_threshold = decline_pct_threshold,
+      buffer_after_end_sec = buffer_after_end_sec, cutin_rpm = cutin_rpm
     )
 
     avail_global <- NULL
@@ -225,9 +221,8 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
     if (!is.null(global_response_from) && !is.null(global_response_to)) {
       response_global <- summarise_curtailment_response_window(
         curtl_dt, scada_dt, inc$turbine, global_response_from, global_response_to,
-        start_end_gap_sec = start_end_gap_sec, max_next_gap_sec = max_next_gap_sec,
-        drop_pct_threshold = drop_pct_threshold, rpm_threshold = rpm_threshold,
-        shutdown_thresholds = shutdown_thresholds, shutdown_high_cut_sec = shutdown_high_cut_sec
+        start_end_gap_sec = start_end_gap_sec, decline_pct_threshold = decline_pct_threshold,
+        buffer_after_end_sec = buffer_after_end_sec, cutin_rpm = cutin_rpm
       )
     }
 

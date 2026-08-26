@@ -694,15 +694,22 @@ annex_note(params$xlsx_fatality)
 
 ## Curtailment Response Around Each Incident
 
-Response outcome (ok/delayed/missed/no_data, see R/curtailment_response_classify.R) restricted to each incident's turbine and window of days before/after the incident.
+Response latency and no-response events (same definitions as the farm-wide "Curtailment Response & Latency" section, R/curtailment_response_latency.R) restricted to each incident's turbine and window of days before the incident.
 
-<!-- Source: fatality_window_response_summary_dt <- rbindlist over fatality_windows[[id]]$curtailment_response$by_flag, R/fatality_window_analysis.R -->
+<!-- Source: fatality_window_response_summary_dt <- rbindlist over fatality_windows[[id]]$curtailment_response$summary, R/fatality_window_analysis.R -->
 ```{r fatality-window-response-table}
 if (!is.null(params$fatality_window_response_summary)) {
-  report_table(rename_display(
-    params$fatality_window_response_summary,
-    c(incident_id = "Incident", response_flag = "Response", n = "N", pct_of_total = "% of Total", pct_of_known = "% of Known")
-  ))
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_window_response_summary, c("n_curtailments", "n_below_cutin", "pct_below_cutin")),
+      c(
+        incident_id = "Incident", n_eligible = "Curtailments", n_reached = "Reached",
+        pct_reached = "% Reached", n_no_response = "No Response", pct_no_response = "% No Response",
+        mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)"
+      )
+    ),
+    max_col_width_cm = 2
+  )
 }
 ```
 ```{r fatality-window-response-annex, results='asis'}

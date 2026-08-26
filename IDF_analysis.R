@@ -1187,17 +1187,17 @@ if (isTRUE(run_sections$fatality_investigation)) {
   # R/fatality_track_investigation.R)
   fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
 
-  # 2) disponibilidade das unidades IDF da turbina + resposta a curtailments,
-  #    na mesma janela -- reutiliza os thresholds de 3.1/3.5-3.6 (ver
-  #    R/fatality_window_analysis.R). Precisa de heartb_dt; a parte de
-  #    resposta a curtailments so produz resultado se scada_dt tambem existir
-  #    (fica com detail/by_flag vazios caso contrario, sem gerar erro).
+  # 2) disponibilidade das unidades IDF da turbina + resposta a curtailments
+  #    (latencia/no-response), na mesma janela -- reutiliza os thresholds de
+  #    3.1/3.5-3.6b (ver R/fatality_window_analysis.R). Precisa de heartb_dt;
+  #    a parte de resposta a curtailments so produz resultado se scada_dt
+  #    tambem existir (fica com detail/summary vazios caso contrario, sem
+  #    gerar erro).
   if (exists("heartb_dt")) {
 
     source("R/availability_daylight.R")
     source("R/curtailment_response.R")
-    source("R/curtailment_shutdown_time.R")
-    source("R/curtailment_response_classify.R")
+    source("R/curtailment_response_latency.R")
     source("R/track_min_individuals.R")
     source("R/fatality_window_analysis.R")
 
@@ -1208,9 +1208,8 @@ if (isTRUE(run_sections$fatality_investigation)) {
       manual_matrix_dt = if (exists("turbine_idf_manual_dt")) turbine_idf_manual_dt else NULL,
       lat = proj_lat, lon = proj_lon, tz = proj_timezone,
       offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min,
-      start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
-      drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
-      shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut,
+      start_end_gap_sec = curtailment_start_end_gap_sec, decline_pct_threshold = curtailment_latency_decline_pct,
+      buffer_after_end_sec = shutdown_time_buffer_sec, cutin_rpm = curtailment_cutin_rpm,
       fallback_idf_units = heartbeat_idf_units,
       track_dt = track_dt, post_days = fatality_post_incident_days,
       min_indiv_bin_min = min_individuals_bin_min, min_indiv_merge_dist_m = min_individuals_merge_dist_m,
@@ -1236,7 +1235,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
     }), fill = TRUE)
 
     fatality_window_response_summary_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
-      dt <- fatality_windows[[id]]$curtailment_response$by_flag
+      dt <- fatality_windows[[id]]$curtailment_response$summary
       if (nrow(dt) == 0L) return(NULL)
       dt[, incident_id := id]
       dt[]
@@ -1252,7 +1251,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
     }), fill = TRUE)
 
     fatality_global_response_summary_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
-      dt <- fatality_windows[[id]]$curtailment_response_global$by_flag
+      dt <- fatality_windows[[id]]$curtailment_response_global$summary
       if (is.null(dt) || nrow(dt) == 0L) return(NULL)
       dt[, incident_id := id]
       dt[]
