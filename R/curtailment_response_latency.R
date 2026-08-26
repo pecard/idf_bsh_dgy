@@ -93,12 +93,25 @@ time_to_first_decline <- function(curtl_dt, scada_dt, decline_pct_threshold = 0.
   )
   if (nrow(dt) == 0L) return(empty)
 
-  ## baseline no start (mesma tolerancia apertada usada em toda a analise
-  ## de resposta) -- start_rpm_dt so' tem os curtailments com match fiavel;
-  ## os restantes (no_data) ficam sem entrada aqui, recuperados como NA no
+  ## baseline no start -- roll = start_end_gap_sec (nao "nearest"): so'
+  ## aceita a leitura SCADA mais recente a <= start_end_gap_sec ANTES do
+  ## sinal de start, nunca depois. Decisao 2026-08 (ver nota do Paulo sobre
+  ## o risco de "mascarar o estado real" ao relaxar start_end_gap_sec): uma
+  ## leitura POSTERIOR ao start pode ja refletir alguma desaceleracao real
+  ## (a propria resposta que estamos a medir), o que contaminaria o
+  ## baseline e, por construcao do calculo (decline_pct relativo a
+  ## start_rpm), tende a SOBRESTIMAR a latencia (o limiar de queda passa a
+  ## ser medido a partir de um numero ja mais baixo, exigindo MAIS queda
+  ## adicional para disparar) -- podendo classificar erradamente respostas
+  ## rapidas como lentas ou mesmo como no-response. Uma leitura ANTERIOR ao
+  ## start nunca pode conter essa contaminacao (o curtailment ainda nao
+  ## tinha sido emitido), por isso e' seguro relaxar start_end_gap_sec
+  ## (menos no_data) sem este risco, desde que o match continue restrito ao
+  ## passado -- start_rpm_dt so' tem os curtailments com match fiavel; os
+  ## restantes (no_data) ficam sem entrada aqui, recuperados como NA no
   ## merge all.x mais abaixo
   start_events <- dt[, .(id = curtailment_id, turbine, event_time = start)]
-  start_match  <- match_nearest_rpm(start_events, scada_dt, max_gap_sec = start_end_gap_sec)
+  start_match  <- match_nearest_rpm(start_events, scada_dt, max_gap_sec = start_end_gap_sec, roll = start_end_gap_sec)
 
   start_rpm_dt <- start_match[valid_match == TRUE, .(curtailment_id = id, start_rpm = rpm)]
   start_rpm_dt[, below_cutin := start_rpm < cutin_rpm]

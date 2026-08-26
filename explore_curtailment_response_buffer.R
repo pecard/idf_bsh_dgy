@@ -328,3 +328,48 @@ if (nrow(case_dt) == 1L) {
   cat("Caso nao encontrado em latency_dt (0 ou >1 linhas) -- a ver curtl_scada_dt diretamente:\n")
   print(curtl_scada_dt[turbine == case_turbine & abs(as.numeric(difftime(start, case_start, units = "secs"))) < 5])
 }
+
+
+## ---- 6) Sweep de start_end_gap_sec -- agora seguro para relaxar --------
+##
+##         Pergunta do Paulo (2026-08): relaxar start_end_gap_sec (a
+##         tolerancia do match do baseline no "start") reduz no_data, mas
+##         arrisca "mascarar o estado real" se a leitura aceite como
+##         baseline vier de DEPOIS do sinal, ja com alguma desaceleracao
+##         real incluida -- o que enviesaria a queda percentual medida a
+##         partir dai (o limiar de queda passaria a ser calculado sobre um
+##         baseline ja mais baixo, exigindo MAIS queda adicional para
+##         disparar, o que tenderia a SOBRESTIMAR a latencia -- classificar
+##         respostas rapidas como lentas ou ate' como no-response --, nao a
+##         subestima-la).
+##
+##         FIX (2026-08, ver R/curtailment_response.R, match_nearest_rpm(),
+##         novo parametro `roll`): o baseline do "start" em
+##         time_to_first_decline() passou a usar roll = start_end_gap_sec
+##         (LOCF -- so' aceita leitura ANTES do start, nunca depois) em vez
+##         de roll = "nearest". Isto elimina por construcao a via de
+##         contaminacao acima -- uma leitura anterior ao sinal de start
+##         nunca pode conter a resposta a esse mesmo sinal, seja qual for a
+##         tolerancia usada. Com isto, relaxar start_end_gap_sec so' pode
+##         reduzir no_data (aceitando leituras SCADA mais antigas como
+##         baseline), sem enviesar a latencia medida -- o sweep abaixo
+##         confirma isso: mean/median latency devem manter-se estaveis
+##         entre 2/5/10/15s, mudando so' n_no_data/pct_no_data. -----------
+
+start_end_gap_candidates <- c(2, 5, 10, 15)
+
+start_end_gap_sweep_dt <- data.table::rbindlist(lapply(start_end_gap_candidates, function(g) {
+  lat_dt <- time_to_first_decline(
+    curtl_scada_dt, scada_dt_unfilt, decline_pct_threshold = curtailment_latency_decline_pct,
+    start_end_gap_sec = g, buffer_after_end_sec = shutdown_time_buffer_sec, cutin_rpm = curtailment_cutin_rpm
+  )
+  summ <- summarise_latency(lat_dt)
+  summ[, start_end_gap_sec := g]
+  data.table::setcolorder(summ, c("start_end_gap_sec", setdiff(names(summ), "start_end_gap_sec")))
+  summ[]
+}))
+
+print(start_end_gap_sweep_dt[, .(
+  start_end_gap_sec, n_no_data, pct_no_data, n_eligible,
+  n_reached, pct_no_response, mean_latency_sec, median_latency_sec
+)])
