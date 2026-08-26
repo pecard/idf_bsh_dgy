@@ -7,7 +7,7 @@
 ##
 ## Reusa os mesmos modulos R/*.R de IDF_analysis.R, mas restringe a analise
 ## a 1 mes de calendario (report_month, abaixo) e a um subconjunto de
-## seccoes -- ver inputs/monthlyReportSettings.R para a lista completa e a
+## seccoes -- ver inputs/monthlyReportSettings_BSH.R/_DGY.R para a lista completa e a
 ## justificacao de cada exclusao (fatality investigation, coverage 3D,
 ## curtailment removal risk, turbine clustering, etc. ficam fora deste
 ## relatorio).
@@ -100,16 +100,29 @@ tryCatch({
 })
 
 folder_input  <- "inputs"
-folder_output <- file.path("outputs", "monthly", report_month)
-
-dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
-dir.create(folder_input,  showWarnings = FALSE, recursive = TRUE)
+dir.create(folder_input, showWarnings = FALSE, recursive = TRUE)
 
 folder_script <- "scripts\\"
 Rfiles <- list.files(folder_script, pattern = '.R', full.names = TRUE)
 lapply(Rfiles, function(x) source(x))
 
-source(file.path(folder_input, "monthlyReportSettings.R"))
+## Alterar para o ficheiro de settings do parque a reportar (ex:
+## "monthlyReportSettings_BSH.R", "monthlyReportSettings_DGY.R"). Definir
+## monthly_settings_file ANTES de dar source a este script (ver
+## run_monthly_report.R/run_monthly_report_DGY.R) para escolher o parque
+## sem duplicar este ficheiro -- BSH continua a omissao se nao for definido
+## antes, mesmo padrao de project_settings_file em IDF_analysis.R.
+if (!exists("monthly_settings_file")) monthly_settings_file <- "monthlyReportSettings_BSH.R"
+source(file.path(folder_input, monthly_settings_file))
+
+## folder_output/cache SO' podem ser definidos DEPOIS do settings file
+## acima (precisam de farm_code, para nao colidir entre parques) -- mesma
+## razao de IDF_analysis.R (ver o comentario la', "folder_output/cache SO'
+## podem ser definidos DEPOIS..."). Sem isto, BSH e DGY partilhavam a mesma
+## pasta outputs/monthly/<report_month>/ e cache/*.fst.
+farm_code     <- if (exists("farm_code")) farm_code else "default"
+folder_output <- file.path("outputs", "monthly", farm_code, report_month)
+dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
 
 
 ##
@@ -173,7 +186,16 @@ source("R/data_cache.R")
 
 databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
 
-folder_cache <- "cache"
+## farm_code -- mesma pasta cache/<farm_code>/ que IDF_analysis.R usa para
+## este parque (ver farm_code acima e a nota em IDF_analysis.R,
+## "folder_output/cache SO' podem ser definidos DEPOIS..."). Corrigido
+## 2026-08, ao ligar o DGY: este ficheiro lia de "cache/" (raiz), mas
+## IDF_analysis.R escreve para "cache/<farm_code>/" desde a introducao de
+## farm_code -- o relatorio mensal nunca encontrava essa cache (bug real,
+## so' invisivel enquanto so' existia o Bash e a 1a leitura de sempre desta
+## sessao acabava por reler os brutos de qualquer forma), contrariando a
+## nota no topo deste ficheiro ("Le os MESMOS 4 datasets em cache").
+folder_cache <- file.path("cache", farm_code)
 
 ## force_reread_cache_monthly: FALSE (por omissao) reutiliza a cache
 ## existente sem reler os ficheiros brutos -- rapido, mas NAO deteta
@@ -254,7 +276,7 @@ if (file.exists(turbine_idf_matrix_file)) {
 
 
 ##
-## 0. Filter data for the report month (ini/end vem de monthlyReportSettings.R) ----
+## 0. Filter data for the report month (ini/end vem de monthlyReportSettings_BSH.R/_DGY.R) ----
 ##
 
 report_start <- as.Date(ini)
@@ -294,7 +316,7 @@ track_dt[, count := .N, by = track_id]
 heartb_dt <- as.data.table(heartb_dt_unfilt)[timestamp >= filter_ini & timestamp <= filter_end]
 
 # janela de SCADA disponivel para este mes -- interseccao entre a janela fixa
-# de disponibilidade de SCADA (scada_ini/scada_end, monthlyReportSettings.R)
+# de disponibilidade de SCADA (scada_ini/scada_end, monthlyReportSettings_BSH.R/_DGY.R)
 # e o mes do relatorio, para nao incluir historico fora do mes nem assumir
 # SCADA antes de scada_ini
 scada_ini_monthly <- max(scada_ini, ini)
@@ -597,7 +619,7 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   source("R/curtailment_shutdown_time.R")
   source("R/curtailment_safe_distance.R")
 
-  # turbinas_scada = "all" (monthlyReportSettings.R) e' resolvido aqui contra
+  # turbinas_scada = "all" (monthlyReportSettings_BSH.R/_DGY.R) e' resolvido aqui contra
   # TODO o scada_dt (nao so' o mes do relatorio -- ver correcao 2026-08 em
   # resolve_turbinas_scada(), R/monthly_report_utils.R: filtrar so' pelo mes
   # excluia turbinas com SCADA instalado mas sem leituras nesse mes
@@ -846,7 +868,7 @@ if (exists("track_dt") && exists("curtl_dt") && isTRUE(run_sections_monthly$id_t
 ## 6b. Species confusion matrix (opcional, DESLIGADA por omissao) ----
 ##
 ## Que outras especies aparecem no mesmo track que qualquer uma das especies
-## em id_confusion_species_of_interest (ver inputs/monthlyReportSettings.R --
+## em id_confusion_species_of_interest (ver inputs/monthlyReportSettings_BSH.R/_DGY.R --
 ## aceita 1 ou varias) -- analise pontual (ex: Egyptian-Vulture/Steppe-Eagle
 ## por omissao, as especies dos incidentes de fatalidade conhecidos), nao uma
 ## metrica mensal de rotina. Ligar via run_sections_monthly$id_confusion =
@@ -1042,7 +1064,7 @@ monthly_report_params <- list(
   min_indiv_summary = if (exists("monthly_min_indiv_summary_dt")) monthly_min_indiv_summary_dt else NULL,
   min_indiv_daily_plot = if (exists("p_monthly_min_indiv_daily")) p_monthly_min_indiv_daily else NULL,
 
-  ## Literais de configuracao (monthlyReportSettings.R) -- so' para texto
+  ## Literais de configuracao (monthlyReportSettings_BSH.R/_DGY.R) -- so' para texto
   ## descritivo no Rmd (ver report/monthly_report_template.rmd), NAO
   ## controlam nenhum calculo aqui. Sempre definidos independentemente dos
   ## switches de run_sections_monthly (sao literais de settings, nao

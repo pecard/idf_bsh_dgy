@@ -36,7 +36,7 @@ month_bounds <- function(report_month, tz) {
 }
 
 
-## Resolve `turbinas_scada` (monthlyReportSettings.R) para o vetor real de
+## Resolve `turbinas_scada` (monthlyReportSettings_BSH.R/_DGY.R) para o vetor real de
 ## turbinas a usar nas seccoes de resposta/shutdown-time/safe-distance --
 ## "all" e' recalculado a cada corrida a partir do scada_dt recebido (nao
 ## uma lista fixa), para acompanhar automaticamente se mais turbinas
