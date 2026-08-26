@@ -12,7 +12,7 @@
 ## Source A ESTE FICHEIRO (Ctrl+Shift+S no RStudio, ou
 ## source("run_monthly_report_DGY.R") na consola).
 ##
-## Mesma razao de ser do run_monthly_report.R (ver esse ficheiro) para nao
+## Mesma razao de ser do run_monthly_report_BSH.R (ver esse ficheiro) para nao
 ## colocar isto dentro de IDF_monthly_report.R -- este e' um LANCADOR
 ## SEPARADO, nunca chamado a partir de dentro do proprio IDF_monthly_report.R.
 ##

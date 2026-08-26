@@ -38,7 +38,7 @@
 ## relatorio.
 ##
 ## Reutiliza a MESMA cache (fst) ja' gravada por uma corrida anterior de
-## run_annual_analysis.R (ou run_annual_analysis_DGY.R) -- NAO rele os
+## run_annual_analysis_BSH.R (ou run_annual_analysis_DGY.R) -- NAO rele os
 ## ficheiros brutos, so' os 2 datasets grandes precisos aqui
 ## (curtl_dt_unfilt, scada_dt_unfilt). Se ainda nao correste o pipeline
 ## pelo menos uma vez para o parque que queres explorar, corre isso
@@ -73,7 +73,7 @@ source("R/curtailment_forensic_trace.R")
 ## mudanca). So' usa o layout novo se ambos existirem.
 folder_cache <- file.path("cache", farm_code)
 if (!file.exists(file.path(folder_cache, "curtl_dt_unfilt.fst")) && file.exists(file.path("cache", "curtl_dt_unfilt.fst"))) {
-  message("Aviso: a usar cache/ (layout antigo, sem separacao por farm_code) -- nao encontrada em ", folder_cache, ". Corre run_annual_analysis.R outra vez para regravar no layout novo.")
+  message("Aviso: a usar cache/ (layout antigo, sem separacao por farm_code) -- nao encontrada em ", folder_cache, ". Corre run_annual_analysis_BSH.R outra vez para regravar no layout novo.")
   folder_cache <- "cache"
 }
 
@@ -81,8 +81,8 @@ if (!file.exists(file.path(folder_cache, "curtl_dt_unfilt.fst")) && file.exists(
 ## gravado -- o read_fn só seria chamado se a cache não existisse, o que
 ## aqui é tratado como erro (este script não deve reler ficheiros brutos).
 .no_raw_reread <- function() stop(
-  "Cache nao encontrada em '", folder_cache, "' -- corre run_annual_analysis",
-  if (farm_code != "BSH") paste0("_", farm_code) else "", ".R pelo menos uma vez primeiro."
+  "Cache nao encontrada em '", folder_cache, "' -- corre run_annual_analysis_",
+  farm_code, ".R pelo menos uma vez primeiro."
 )
 
 curtl_dt_unfilt <- load_or_read_cache(

@@ -101,7 +101,7 @@ folder_script_IDF <- "scripts_IDF"
 ##USER SETTINGS##
 #Alterar para o ficheiro de settings do projeto a analisar (ex: "userSettings_BSH.R", "userSettings_DGY.R")
 #Definir project_settings_file ANTES de dar source a este script (ver
-#run_annual_analysis.R/run_annual_analysis_DGY.R) para escolher o parque
+#run_annual_analysis_BSH.R/run_annual_analysis_DGY.R) para escolher o parque
 #sem duplicar este ficheiro -- BSH continua a omissao se nao for definido
 #antes (mesmo padrao de force_reread_cache, abaixo).
 if (!exists("project_settings_file")) project_settings_file <- "userSettings_BSH.R"

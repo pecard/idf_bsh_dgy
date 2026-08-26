@@ -60,14 +60,14 @@ for (p in packages) {
 
 ## report_month: mes a processar (formato "YYYY-MM"). Editar o valor por
 ## omissao abaixo antes de correr (Source) -- OU definir report_month antes
-## de dar source a este ficheiro (consola, ou run_monthly_report.R na raiz
+## de dar source a este ficheiro (consola, ou run_monthly_report_BSH.R na raiz
 ## do projeto), o que tem sempre prioridade sobre o valor por omissao.
 ##
 ## NUNCA colocar aqui "source(\"IDF_monthly_report.R\")" -- isso faz este
 ## ficheiro chamar-se A SI PROPRIO a meio da sua propria execucao, o que
 ## recursa infinitamente ate um erro confuso tipo "node stack overflow"
 ## (ja aconteceu 2x, 2026-08). Quem quer que tenha invocado este ficheiro
-## (consola, botao "Source" do RStudio, run_monthly_report.R, etc.) ja
+## (consola, botao "Source" do RStudio, run_monthly_report_BSH.R, etc.) ja
 ## continua sozinho para as linhas seguintes depois desta -- nunca e'
 ## preciso nem seguro dar source() a este ficheiro a partir de dentro dele
 ## proprio.
@@ -109,7 +109,7 @@ lapply(Rfiles, function(x) source(x))
 ## Alterar para o ficheiro de settings do parque a reportar (ex:
 ## "monthlyReportSettings_BSH.R", "monthlyReportSettings_DGY.R"). Definir
 ## monthly_settings_file ANTES de dar source a este script (ver
-## run_monthly_report.R/run_monthly_report_DGY.R) para escolher o parque
+## run_monthly_report_BSH.R/run_monthly_report_DGY.R) para escolher o parque
 ## sem duplicar este ficheiro -- BSH continua a omissao se nao for definido
 ## antes, mesmo padrao de project_settings_file em IDF_analysis.R.
 if (!exists("monthly_settings_file")) monthly_settings_file <- "monthlyReportSettings_BSH.R"
@@ -202,7 +202,7 @@ folder_cache <- file.path("cache", farm_code)
 ## ficheiros novos (ex: SCADA de turbinas recem-descarregadas) sozinho,
 ## porque so' olha para o cache_file existir ou nao (ver
 ## load_or_read_cache(), R/data_cache.R), nunca para o conteudo da pasta de
-## dados. Definir TRUE (aqui, na consola, ou em run_monthly_report.R --
+## dados. Definir TRUE (aqui, na consola, ou em run_monthly_report_BSH.R --
 ## tem sempre prioridade sobre este valor por omissao) so' na 1a corrida
 ## depois de descarregar dados novos, para forcar a releitura e regravar a
 ## cache com o conteudo atualizado -- a cache e' partilhada com
