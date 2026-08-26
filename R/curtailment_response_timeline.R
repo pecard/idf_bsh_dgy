@@ -45,6 +45,14 @@
 ##   plots$response_plot
 ##   plots$abundance_plot
 ##
+## plot_latency_timeline(timeline_dt) sozinho (sem abundancia) alimenta a
+## secção "Latency Temporal Pattern" (3.1.3) do relatorio, farm-wide --
+## ver IDF_analysis.R secção 3.6b. plots$latency_plot acima (por especie,
+## usado so' para os PNGs "latency_timeline_<especie>.png", NAO embutidos
+## no relatorio -- anexo/apoio) e' o MESMO plot_latency_timeline(), a
+## MESMA timeline_dt farm-wide -- so' a abundancia sobreposta varia por
+## especie, a latencia em si nao.
+##
 
 
 ## 1. Serie temporal de no-response events, farm-wide ----
@@ -63,7 +71,8 @@ summarise_latency_timeline <- function(latency_dt, unit = "week") {
 
   empty <- data.table::data.table(
     period = as.Date(character()), n_curtailments = integer(), n_no_response = integer(),
-    pct_no_response = numeric(), mean_latency_sec = numeric(), median_latency_sec = numeric()
+    pct_no_response = numeric(), mean_latency_sec = numeric(), median_latency_sec = numeric(),
+    sd_latency_sec = numeric()
   )
   if (nrow(latency_dt) == 0L) return(empty)
 
@@ -83,7 +92,8 @@ summarise_latency_timeline <- function(latency_dt, unit = "week") {
       n_no_response      = .N - n_reached,
       pct_no_response    = round(100 * (.N - n_reached) / .N, 1),
       mean_latency_sec   = round(mean(latency_sec, na.rm = TRUE), 1),
-      median_latency_sec = round(median(latency_sec, na.rm = TRUE), 1)
+      median_latency_sec = round(median(latency_sec, na.rm = TRUE), 1),
+      sd_latency_sec     = round(sd(latency_sec, na.rm = TRUE), 1)
     )
   }, by = period]
 
@@ -113,18 +123,46 @@ summarise_abundance_timeline <- function(bins_dt, unit = "week") {
 }
 
 
-## 3. Plots -- resposta (% no-response events), latencia (media/mediana) e
+## 3. Plot -- latencia media +/- desvio padrao ao longo do tempo ----
+##
+## Pedido do Paulo (2026-08) depois de ver que, com no-response praticamente
+## a 0 farm-wide (secção "No-Response Events" do relatorio), o plot de %
+## no-response sozinho fica quase sempre achatado perto de 0 -- pouco
+## informativo sobre se a VELOCIDADE tipica de resposta varia com a epoca.
+## mean_latency_sec (de summarise_latency_timeline()) e' continua, por isso
+## mostra essa variacao mesmo quando quase todos os curtailments respondem
+## (so' nao respondem devagar ou depressa). Mean +/- SD (nao mediana) --
+## pedido explicito; a banda e' cortada em 0 no limite inferior (mean - sd
+## nao pode ser negativo, latencia e' sempre >= 0).
+##
+## date_breaks_days: rotulos do eixo X a cada N dias, formato dd-mm-aaaa
+## (rodados na vertical -- com muitos rotulos longos lado a lado, na
+## horizontal sobrepunham-se, mesma correcao ja aplicada ao eixo X das
+## leituras SCADA e ao calendario de disponibilidade).
+
+plot_latency_timeline <- function(timeline_dt, date_breaks_days = 15) {
+
+  dt <- data.table::copy(timeline_dt)
+  dt[, `:=`(
+    latency_lo = pmax(mean_latency_sec - sd_latency_sec, 0),
+    latency_hi = mean_latency_sec + sd_latency_sec
+  )]
+
+  ggplot(dt, aes(x = period)) +
+    geom_ribbon(aes(ymin = latency_lo, ymax = latency_hi), fill = "steelblue", alpha = 0.2) +
+    geom_line(aes(y = mean_latency_sec), colour = "steelblue") +
+    geom_point(aes(y = mean_latency_sec), colour = "steelblue", size = 1) +
+    scale_x_date(date_breaks = sprintf("%d days", date_breaks_days), date_labels = "%d-%m-%Y") +
+    labs(x = NULL, y = "Latency (s) -- mean +/- SD", title = "Response latency over time") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+}
+
+
+## 4. Plots -- resposta (% no-response events), latencia (media +/- SD) e
 ##    abundancia, alinhados no mesmo eixo temporal (plots separados, nao um
 ##    eixo duplo -- mais legivel e menos enganador; combinar/empilhar
 ##    visualmente ao inserir no relatorio) ----
-##
-## latency_plot -- pedido do Paulo (2026-08) depois de ver que, com
-## no-response praticamente a 0 farm-wide (secção "No-Response Events" do
-## relatorio), o plot de % no-response sozinho fica quase sempre achatado
-## perto de 0 -- pouco informativo sobre se a VELOCIDADE tipica de resposta
-## varia com a epoca. mean/median_latency_sec (de summarise_latency_timeline())
-## sao continuas, por isso mostram essa variacao mesmo quando quase todos os
-## curtailments respondem (so' nao respondem devagar ou depressa).
 
 plot_response_vs_phenology <- function(timeline_dt, abundance_dt, species_sel) {
 
@@ -136,14 +174,7 @@ plot_response_vs_phenology <- function(timeline_dt, abundance_dt, species_sel) {
         title = "No-response events over time") +
     theme_minimal()
 
-  p_latency <- ggplot(timeline_dt, aes(x = period)) +
-    geom_line(aes(y = mean_latency_sec, colour = "Mean")) +
-    geom_point(aes(y = mean_latency_sec, colour = "Mean"), size = 1) +
-    geom_line(aes(y = median_latency_sec, colour = "Median")) +
-    geom_point(aes(y = median_latency_sec, colour = "Median"), size = 1) +
-    scale_colour_manual(values = c(Mean = "steelblue", Median = "darkorange")) +
-    labs(x = NULL, y = "Latency (s)", colour = NULL, title = "Response latency over time") +
-    theme_minimal()
+  p_latency <- plot_latency_timeline(timeline_dt)
 
   p_abundance <- ggplot(aband, aes(x = period, y = peak_individuals, colour = spec)) +
     geom_line() +

@@ -1078,6 +1078,25 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     plot = p_latency, width = 180, height = 120, units = "mm", dpi = 300, bg = "white"
   )
 
+  # Padrao temporal da latencia (media +/- SD, por response_timeline_unit) --
+  # secção "Latency Temporal Pattern" (3.1.3) do relatorio. Farm-wide, nao
+  # depende de fenologia/min_indiv_bins_dt (ao contrario da secção 8, que
+  # reutiliza este MESMO latency_timeline_dt em vez de o recalcular).
+  source("R/curtailment_response_timeline.R")
+
+  latency_timeline_dt <- summarise_latency_timeline(latency_dt, unit = response_timeline_unit)
+  p_latency_timeline  <- plot_latency_timeline(latency_timeline_dt)
+
+  write_xlsx_local(
+    list(Latency_timeline = latency_timeline_dt),
+    file.path(folder_output, paste0("curtailment_response_latency_timeline_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+  )
+
+  ggsave(
+    file.path(folder_output, paste0("curtailment_response_latency_timeline_", date(scada_ini), "to", date(scada_end), ".png")),
+    plot = p_latency_timeline, width = 180, height = 100, units = "mm", dpi = 300, bg = "white"
+  )
+
   ### 3.7. Safe distance (metodologia KNE) ----
 
   #safe_dist_rpm_threshold, safe_dist_speed_trim_q, safe_dist_reference_line_m,
@@ -1516,13 +1535,17 @@ write_xlsx_local(
 ## 8. System performance vs. bird phenology (evolucao temporal) ----
 ##
 ## Evolucao temporal (por omissao semanal, response_timeline_unit --
-## definido no userSettings_BSH.R) da qualidade de resposta a curtailments
-## (missed/delayed) em curtl_scada_dt, sobreposta a abundancia (min
-## individuals) das especies dos incidentes de fatalidade -- para dar
-## contexto a se a performance do sistema varia com os periodos de maior
-## movimento migratorio. Ver R/curtailment_response_timeline.R. So corre se
-## a seccao 3.5-3.7 (curtl_scada_dt) e a 6.4 (min_indiv_bins_dt) tiverem
-## corrido (run_sections + dados disponiveis).
+## definido no userSettings_BSH.R) de no-response events e latencia
+## (latency_timeline_dt, ja calculado na secção 3.6b) em curtl_scada_dt,
+## sobreposta a abundancia (min individuals) das especies dos incidentes de
+## fatalidade -- para dar contexto a se a performance do sistema varia com
+## os periodos de maior movimento migratorio. Ver
+## R/curtailment_response_timeline.R. So corre se a seccao 3.5-3.7
+## (curtl_scada_dt) e a 6.4 (min_indiv_bins_dt) tiverem corrido
+## (run_sections + dados disponiveis) -- os PNGs latency_timeline_<especie>.png
+## gerados aqui reutilizam o MESMO plot_latency_timeline() da secção 3.6b
+## (3.1.3 do relatorio), farm-wide, so' com a abundancia sobreposta a variar
+## por especie -- material de apoio/anexo, nao embutidos no relatorio.
 ##
 
 if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
@@ -1574,18 +1597,19 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
     file.path(folder_output, "curtailment_response_examples.xlsx")
   )
 
-  response_timeline_dt  <- summarise_latency_timeline(latency_dt, unit = response_timeline_unit)
+  # latency_timeline_dt ja' calculado na secção 3.6b (mesmo latency_dt,
+  # mesmo response_timeline_unit) -- reutilizado aqui, nao recalculado
   abundance_timeline_dt <- summarise_abundance_timeline(min_indiv_bins_dt, unit = response_timeline_unit)
 
   write_xlsx_local(
-    list(Response_timeline = response_timeline_dt, Abundance_timeline = abundance_timeline_dt),
+    list(Response_timeline = latency_timeline_dt, Abundance_timeline = abundance_timeline_dt),
     file.path(folder_output, "response_vs_phenology_timeline.xlsx")
   )
 
   # um par de plots por especie de fatality_incidents -- contexto direto
   # para a seccao nova do relatorio
   for (sp in unique(fatality_incidents$species)) {
-    p_pair <- plot_response_vs_phenology(response_timeline_dt, abundance_timeline_dt, species_sel = sp)
+    p_pair <- plot_response_vs_phenology(latency_timeline_dt, abundance_timeline_dt, species_sel = sp)
     sp_slug <- gsub("[^A-Za-z0-9]+", "_", sp)
     ggsave(
       file.path(folder_output, paste0("response_timeline_", sp_slug, ".png")),
@@ -2041,6 +2065,7 @@ report_params <- list(
   latency_by_turbine     = if (exists("summary_latency_by_turbine")) summary_latency_by_turbine else NULL,
   latency_bands          = if (exists("summary_latency_bands")) summary_latency_bands else NULL,
   latency_plot           = if (exists("p_latency")) p_latency else NULL,
+  latency_timeline_plot  = if (exists("p_latency_timeline")) p_latency_timeline else NULL,
   latency_n_below_cutin  = if (exists("summary_latency")) summary_latency$n_below_cutin else NULL,
   latency_pct_below_cutin = if (exists("summary_latency")) summary_latency$pct_below_cutin else NULL,
 
@@ -2127,6 +2152,7 @@ report_params <- list(
 
   curtailment_latency_decline_pct = curtailment_latency_decline_pct,
   curtailment_cutin_rpm           = curtailment_cutin_rpm,
+  response_timeline_unit          = response_timeline_unit,
 
   curtailment_example_window_before_min = curtailment_example_window_before_min,
   curtailment_example_window_after_min  = curtailment_example_window_after_min,
