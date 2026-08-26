@@ -151,7 +151,7 @@ farm_code <- "DGY"
 ## depois da palavra-chave (list.files()/grepl() do R base usa regex POSIX
 ## Extended, sem lookahead, daqui a necessidade da alternancia explicita
 ## nos 2 sentidos em vez de algo como "(?=.*DGY)(?=.*_Track_)").
-trackreport_pattern  <- "(DGY.*_Track_|_Track_.*DGY)"                                             # ex: ..._Track_...DGY...csv ou ...DGY..._Track_...csv
+trackreport_pattern  <- "(DGY.*TrackReport_|TrackReport_.*DGY)"                                             # ex: ..._Track_...DGY...csv ou ...DGY..._Track_...csv
 curtailments_pattern <- "(DGY.*curtail_orders|curtail_orders.*DGY|DGY.*Curtailments|Curtailments.*DGY)" # ex: Curtailments_DGY_20260201_....xlsx
 scada_pattern        <- "(SCADA_.*DGY.*csv|DGY.*SCADA_.+csv)"                                     # ex: SCADA_DGY_20260201_....csv (DGY tambem antes de "SCADA_" ou depois de "csv" fica coberto)
 heartbeats_pattern   <- "(Heartbeats_.*DGY.*csv|DGY.*Heartbeats_.+csv)"                            # ex: Heartbeats_DGY_20260201_....csv (idem)
