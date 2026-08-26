@@ -240,10 +240,13 @@ print(delayed_examples_current[, .(
 ##         latencia esperada de ~20s; o Paulo acha que pode ser maior,
 ##         ~30s. Ver R/curtailment_response_latency.R para o racional do
 ##         limiar RELATIVO (decline_pct_threshold, fracao do RPM de
-##         baseline) em vez de um valor absoluto de RPM, e para o filtro de
+##         baseline) em vez de um valor absoluto de RPM, para o filtro de
 ##         cutin_rpm (curtailments ja abaixo da velocidade de cut-in no
 ##         start ficam de fora do reached/no-response, contados a parte em
-##         n_below_cutin/pct_below_cutin). ------------------------------
+##         n_below_cutin/pct_below_cutin), e para o de no_data (curtailments
+##         sem leitura SCADA fiavel no start -- contados em
+##         n_no_data/pct_no_data, ja NAO desaparecem silenciosamente de
+##         latency_dt como acontecia antes de 2026-08). ------------------
 
 latency_threshold_sweep_dt <- compare_latency_thresholds(
   curtl_scada_dt, scada_dt_unfilt, buffer_after_end_sec = shutdown_time_buffer_sec,
@@ -273,18 +276,25 @@ p_latency
 ##         pelo esquema NOVO (latency_dt/cutin_rpm) ou se "desaparecemos"
 ##         dele. Ajustar case_turbine/case_start para investigar outro caso.
 ##
-##         Leitura do resultado:
-##           - 0 linhas em latency_dt -- o match do baseline no start falhou
-##             (start_end_gap_sec) e o caso nem chega a entrar na analise;
-##             ver curtl_scada_dt diretamente (impresso abaixo nesse caso).
-##           - 1 linha com below_cutin=TRUE -- excluido por estar abaixo do
-##             cut-in no start; RPM~6.5 deve dar FALSE aqui (bem acima de
-##             curtailment_cutin_rpm=3) -- se der TRUE, ha' algo errado no
-##             match do start_rpm.
-##           - 1 linha com below_cutin=FALSE e latency_sec=NA -- continua a
-##             contar como no-response no relatorio atual (esperado para
-##             este caso).
-##           - 1 linha com below_cutin=FALSE e latency_sec preenchido -- o
+##         RESULTADO CONFIRMADO (2026-08): este caso tinha 0 linhas em
+##         latency_dt -- o match do baseline no start falhava
+##         (start_end_gap_sec=2s demasiado apertado face a' amostragem
+##         SCADA, nao falta real de dados) e o caso desaparecia por completo
+##         da analise, sem contar em lado nenhum. Corrigido: latency_dt
+##         agora inclui TODOS os curtailments, com no_data=TRUE para este
+##         tipo de caso (ver R/curtailment_response_latency.R,
+##         time_to_first_decline()) -- este caso deve aparecer agora com 1
+##         linha, no_data=TRUE, start_rpm/below_cutin/latency_sec = NA.
+##
+##         Leitura do resultado (para outros casos que se investiguem aqui):
+##           - no_data=TRUE -- sem leitura SCADA fiavel no start
+##             (start_end_gap_sec); contado em n_no_data/pct_no_data em vez
+##             de desaparecer.
+##           - no_data=FALSE, below_cutin=TRUE -- excluido por estar abaixo
+##             do cut-in no start.
+##           - no_data=FALSE, below_cutin=FALSE, latency_sec=NA -- conta
+##             como no-response no relatorio atual.
+##           - no_data=FALSE, below_cutin=FALSE, latency_sec preenchido -- o
 ##             algoritmo encontrou uma queda algures na janela [start, end +
 ##             buffer]; a impressao das leituras SCADA em bruto abaixo mostra
 ##             se essa queda e' real (a turbina respondeu mais tarde do que o

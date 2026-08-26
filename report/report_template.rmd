@@ -21,6 +21,8 @@ params:
   latency_bands: !r NULL
   latency_plot: !r NULL
   latency_timeline_plot: !r NULL
+  latency_n_no_data: !r NULL
+  latency_pct_no_data: !r NULL
   latency_n_below_cutin: !r NULL
   latency_pct_below_cutin: !r NULL
 
@@ -399,7 +401,7 @@ annex_note(params$xlsx_coverage_idf)
 
 # Curtailment Response & Latency
 
-Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, over the full project history to date. The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. Both response latency and shutdown time below allow up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order for this to happen. Curtailments with an RPM below `r params$curtailment_cutin_rpm` (the cut-in speed, below which the turbine is not producing energy) at the start of the order are excluded from the Response Latency and No-Response Events tables below, since there is no meaningful response to measure on a turbine that was already not operating: `r params$latency_n_below_cutin` curtailments (`r params$latency_pct_below_cutin`% of the curtailments with a valid SCADA baseline) fall in this category over the period covered.
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, over the full project history to date. The SCADA baseline immediately before/after each signal is trusted only within `r params$curtailment_start_end_gap_sec` s: `r params$latency_n_no_data` curtailments (`r params$latency_pct_no_data`% of the total) have no SCADA reading within that tolerance of the signal and are excluded from every table below, since no baseline RPM could be established for them. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. Both response latency and shutdown time below allow up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order for this to happen. Curtailments with an RPM below `r params$curtailment_cutin_rpm` (the cut-in speed, below which the turbine is not producing energy) at the start of the order are further excluded from the Response Latency and No-Response Events tables below, since there is no meaningful response to measure on a turbine that was already not operating: of the curtailments with a valid SCADA baseline, `r params$latency_n_below_cutin` (`r params$latency_pct_below_cutin`%) fall in this category over the period covered.
 
 ## Response Latency
 
@@ -411,7 +413,8 @@ if (!is.null(params$latency_by_turbine)) {
   report_table(
     rename_display(
       drop_cols(params$latency_by_turbine, c(
-        "n_curtailments", "n_below_cutin", "pct_below_cutin", "n_no_response", "pct_no_response"
+        "n_curtailments", "n_no_data", "pct_no_data", "n_known",
+        "n_below_cutin", "pct_below_cutin", "n_no_response", "pct_no_response"
       )),
       c(
         turbine = "Turbine", n_eligible = "Curtailments", n_reached = "Reached",
@@ -461,7 +464,7 @@ if (!is.null(params$latency_timeline_plot)) print(params$latency_timeline_plot)
 
 ## Shutdown Time
 
-Time from curtailment signal to reaching each RPM threshold, by turbine -- 3 thresholds evaluated: `r paste(params$shutdown_time_thresholds, collapse = ", ")` rpm. Bands below/above the agreed cut-offs are reported as-is, without further interpretation.
+Time from curtailment signal to reaching each RPM threshold, by turbine -- 3 thresholds evaluated: `r paste(params$shutdown_time_thresholds, collapse = ", ")` rpm. Bands below/above the agreed cut-offs are reported as-is, without further interpretation. Uses the same population as Response Latency above: curtailments with no SCADA baseline within `r params$curtailment_start_end_gap_sec` s of the signal, or already below the cut-in speed at the start of the order, are excluded (see the counts stated there).
 
 ### Time to Threshold by Turbine
 
@@ -522,7 +525,8 @@ if (!is.null(params$latency_by_turbine)) {
   report_table(
     rename_display(
       drop_cols(params$latency_by_turbine, c(
-        "n_curtailments", "n_below_cutin", "pct_below_cutin", "n_reached", "pct_reached",
+        "n_curtailments", "n_no_data", "pct_no_data", "n_known",
+        "n_below_cutin", "pct_below_cutin", "n_reached", "pct_reached",
         "mean_latency_sec", "median_latency_sec"
       )),
       c(
@@ -694,16 +698,17 @@ annex_note(params$xlsx_fatality)
 
 ## Curtailment Response Around Each Incident
 
-Response latency and no-response events (same definitions as the farm-wide "Curtailment Response & Latency" section, R/curtailment_response_latency.R) restricted to each incident's turbine and window of days before the incident.
+Response latency and no-response events (same definitions as the farm-wide "Curtailment Response & Latency" section, R/curtailment_response_latency.R) restricted to each incident's turbine and window of days before the incident. Curtailments without a SCADA baseline within `r params$curtailment_start_end_gap_sec` s of the signal are reported separately (No Data) rather than excluded outright -- with few curtailments per incident, an unassessed one is proportionally more significant here than in the farm-wide tables above.
 
 <!-- Source: fatality_window_response_summary_dt <- rbindlist over fatality_windows[[id]]$curtailment_response$summary, R/fatality_window_analysis.R -->
 ```{r fatality-window-response-table}
 if (!is.null(params$fatality_window_response_summary)) {
   report_table(
     rename_display(
-      drop_cols(params$fatality_window_response_summary, c("n_curtailments", "n_below_cutin", "pct_below_cutin")),
+      drop_cols(params$fatality_window_response_summary, c("n_curtailments", "n_known", "n_below_cutin", "pct_below_cutin")),
       c(
-        incident_id = "Incident", n_eligible = "Curtailments", n_reached = "Reached",
+        incident_id = "Incident", n_no_data = "No Data", pct_no_data = "% No Data",
+        n_eligible = "Curtailments", n_reached = "Reached",
         pct_reached = "% Reached", n_no_response = "No Response", pct_no_response = "% No Response",
         mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)"
       )

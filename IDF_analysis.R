@@ -2065,6 +2065,8 @@ report_params <- list(
   latency_bands          = if (exists("summary_latency_bands")) summary_latency_bands else NULL,
   latency_plot           = if (exists("p_latency")) p_latency else NULL,
   latency_timeline_plot  = if (exists("p_latency_timeline")) p_latency_timeline else NULL,
+  latency_n_no_data      = if (exists("summary_latency")) summary_latency$n_no_data else NULL,
+  latency_pct_no_data    = if (exists("summary_latency")) summary_latency$pct_no_data else NULL,
   latency_n_below_cutin  = if (exists("summary_latency")) summary_latency$n_below_cutin else NULL,
   latency_pct_below_cutin = if (exists("summary_latency")) summary_latency$pct_below_cutin else NULL,
 

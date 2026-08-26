@@ -58,39 +58,40 @@
 ## 1. Serie temporal de no-response events, farm-wide ----
 ##
 ## Mesma definicao de no-response event da secção "No-Response Events" do
-## relatorio (R/curtailment_response_latency.R): curtailments acima da
-## velocidade de cut-in no "start" (below_cutin == FALSE) sem uma queda de
-## RPM >= decline_pct_threshold detetada dentro da janela de procura.
-## Curtailments abaixo do cut-in ficam de fora do denominador (nao ha
-## resposta significativa para medir), tal como nas restantes tabelas de
-## latencia -- ver R/curtailment_response_latency.R,
-## summarise_latency_by_turbine() (mesma logica, aqui por periodo em vez
-## de por turbina).
+## relatorio (R/curtailment_response_latency.R): curtailments com baseline
+## conhecido (no_data == FALSE) e acima da velocidade de cut-in no "start"
+## (below_cutin == FALSE) sem uma queda de RPM >= decline_pct_threshold
+## detetada dentro da janela de procura. no_data e below_cutin ficam de
+## fora do denominador de pct_no_response (nao ha "resposta" para avaliar
+## em nenhum dos dois casos), tal como nas restantes tabelas de latencia --
+## ver R/curtailment_response_latency.R, summarise_latency_by_turbine()
+## (mesma logica, aqui por periodo em vez de por turbina).
 
 summarise_latency_timeline <- function(latency_dt, unit = "week") {
 
   empty <- data.table::data.table(
-    period = as.Date(character()), n_curtailments = integer(), n_no_response = integer(),
-    pct_no_response = numeric(), mean_latency_sec = numeric(), median_latency_sec = numeric(),
-    sd_latency_sec = numeric()
+    period = as.Date(character()), n_curtailments = integer(), n_no_data = integer(),
+    pct_no_data = numeric(), n_no_response = integer(), pct_no_response = numeric(),
+    mean_latency_sec = numeric(), median_latency_sec = numeric(), sd_latency_sec = numeric()
   )
   if (nrow(latency_dt) == 0L) return(empty)
 
-  # below_cutin excluido do denominador -- mesma logica de summarise_latency_by_turbine()
-  dt <- data.table::copy(latency_dt)[below_cutin == FALSE]
-  if (nrow(dt) == 0L) return(empty)
-
+  dt <- data.table::copy(latency_dt)
   # as.Date() sem tz= usa UTC por omissao e desloca o limite do periodo ate
   # 5h (Asia/Samarkand = UTC+5) -- mesma familia de bug ja corrigida em
   # R/fatality_window_analysis.R
   dt[, period := lubridate::floor_date(as.Date(start, tz = attr(start, "tzone")), unit = unit)]
 
   out <- dt[, {
-    n_reached <- sum(!is.na(latency_sec))
+    n_no_data     <- sum(no_data)
+    n_eligible    <- sum(no_data == FALSE & below_cutin == FALSE)
+    n_reached     <- sum(!is.na(latency_sec))
     .(
       n_curtailments     = .N,
-      n_no_response      = .N - n_reached,
-      pct_no_response    = round(100 * (.N - n_reached) / .N, 1),
+      n_no_data          = n_no_data,
+      pct_no_data        = round(100 * n_no_data / .N, 1),
+      n_no_response      = n_eligible - n_reached,
+      pct_no_response    = if (n_eligible == 0L) NA_real_ else round(100 * (n_eligible - n_reached) / n_eligible, 1),
       mean_latency_sec   = round(mean(latency_sec, na.rm = TRUE), 1),
       median_latency_sec = round(median(latency_sec, na.rm = TRUE), 1),
       sd_latency_sec     = round(sd(latency_sec, na.rm = TRUE), 1)
