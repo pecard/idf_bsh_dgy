@@ -29,8 +29,8 @@
 ##   curtl_cl_dt        <- join_curtailments_to_clusters(curtl_dt_unfilt, cluster_dt)
 ##   cluster_summary     <- summarise_cluster_curtailments(curtl_cl_dt)
 ##   cluster_weekly_dt   <- summarise_cluster_curtailments_weekly(curtl_cl_dt)
-##   marginal_dt         <- summarise_turbine_marginal_contribution(curtl_cl_dt, fatality_incidents$turbine)
-##   perm_dt             <- permutation_test_marginal_contribution_all(curtl_cl_dt, fatality_incidents$turbine)
+##   marginal_dt         <- summarise_turbine_marginal_contribution(curtl_cl_dt, fatality_incidents$turbine, cluster_dt)
+##   perm_dt             <- permutation_test_marginal_contribution_all(curtl_cl_dt, fatality_incidents$turbine, cluster_dt)
 ##
 ##   p1 <- plot_cluster_curtailments_total(cluster_summary, highlight_clusters = marginal_dt$cluster_id)
 ##   p2 <- plot_cluster_curtailments_weekly(cluster_weekly_dt, highlight_clusters = marginal_dt$cluster_id)
@@ -101,14 +101,28 @@ summarise_cluster_curtailments_weekly <- function(curtl_cl_dt, unit = "week") {
 ##    fatalidade) dentro do seu cluster -- quota % periodo completo + quota
 ##    semanal (mediana, para ver se e' consistente ou varia muito semana a
 ##    semana) + ranking do proprio cluster entre todos os clusters
-summarise_turbine_marginal_contribution <- function(curtl_cl_dt, turbines_of_interest, unit = "week") {
+## cluster_dt: pertenca REAL/estrutural ao setor/cluster (cluster_dt_manual
+## ou cluster_dt_stat, conforme a via) -- usada para resolver o cluster_id
+## de cada turbina de interesse, em vez de o inferir a partir dos SEUS
+## PROPRIOS curtailments (curtl_cl_dt). Uma turbina de interesse sem
+## curtailments proprios (ex: sem cobertura IDF/SCADA -- caso comum no DGY)
+## continua a pertencer ao seu setor, e deve entrar com 0 curtailments, nao
+## ficar de fora / com cluster_id = NA -- bug que deixava a secção "zona
+## critica" vazia sempre que NENHUMA turbina de fatality_incidents tinha
+## curtailments proprios (2026-08, ver o mesmo racional em
+## permutation_test_marginal_contribution() abaixo).
+summarise_turbine_marginal_contribution <- function(curtl_cl_dt, turbines_of_interest, cluster_dt, unit = "week") {
+
+  turbines_of_interest <- unique(turbines_of_interest)
 
   cluster_summary <- summarise_cluster_curtailments(curtl_cl_dt)
   weekly_dt        <- summarise_cluster_curtailments_weekly(curtl_cl_dt, unit = unit)
 
   res <- lapply(turbines_of_interest, function(tb) {
-    row <- cluster_summary$by_turbine[turbine == tb]
-    if (nrow(row) == 0L) {
+    cl_lookup <- cluster_dt[turbine == tb]
+    if (nrow(cl_lookup) == 0L) {
+      # turbina realmente fora de todos os setores/clusters (nao coberta)
+      # -- unico caso em que NAO ha' cluster_id para atribuir
       return(data.table::data.table(
         turbine = tb, cluster_id = NA_character_, n_turbines_in_cluster = NA_integer_,
         n_total = NA_integer_, pct_of_cluster = NA_real_,
@@ -116,8 +130,21 @@ summarise_turbine_marginal_contribution <- function(curtl_cl_dt, turbines_of_int
         median_weekly_pct_of_cluster = NA_real_
       ))
     }
-    cl_id  <- row$cluster_id
-    cl_row <- cluster_summary$by_cluster[cluster_id == cl_id]
+    cl_id                 <- cl_lookup$cluster_id[1]
+    cl_row                <- cluster_summary$by_cluster[cluster_id == cl_id]
+    row                   <- cluster_summary$by_turbine[turbine == tb]
+    n_turbines_in_cluster <- data.table::uniqueN(cluster_dt[cluster_id == cl_id, turbine])
+
+    if (nrow(cl_row) == 0L) {
+      # setor existe mas sem NENHUM curtailment registado -- sem base para
+      # calcular quota/ranking, nao e' um erro
+      return(data.table::data.table(
+        turbine = tb, cluster_id = cl_id, n_turbines_in_cluster = n_turbines_in_cluster,
+        n_total = 0L, pct_of_cluster = NA_real_,
+        cluster_rank = NA_integer_, n_clusters = nrow(cluster_summary$by_cluster),
+        median_weekly_pct_of_cluster = NA_real_
+      ))
+    }
 
     weekly_cl       <- weekly_dt[cluster_id == cl_id]
     weekly_cl_total <- weekly_cl[, .(cluster_n = sum(n)), by = period]
@@ -128,8 +155,9 @@ summarise_turbine_marginal_contribution <- function(curtl_cl_dt, turbines_of_int
 
     data.table::data.table(
       turbine = tb, cluster_id = cl_id,
-      n_turbines_in_cluster = data.table::uniqueN(cluster_summary$by_turbine[cluster_id == cl_id, turbine]),
-      n_total = row$n, pct_of_cluster = row$pct_of_cluster,
+      n_turbines_in_cluster = n_turbines_in_cluster,
+      n_total = if (nrow(row) == 0L) 0L else row$n,
+      pct_of_cluster = if (nrow(row) == 0L) 0 else row$pct_of_cluster,
       cluster_rank = cl_row$cluster_rank, n_clusters = nrow(cluster_summary$by_cluster),
       median_weekly_pct_of_cluster = round(stats::median(weekly_join$pct, na.rm = TRUE), 1)
     )
@@ -150,23 +178,43 @@ summarise_turbine_marginal_contribution <- function(curtl_cl_dt, turbines_of_int
 ##    curtailments do que seria de esperar so' pela sua posicao no cluster
 ##    (nao e' so' "o cluster e' ativo", a propria turbina destaca-se dentro
 ##    dele)
-permutation_test_marginal_contribution <- function(curtl_cl_dt, turbine_id, n_perm = 999, seed = 1) {
+## cluster_dt: pertenca REAL/estrutural ao setor/cluster (mesma razao de
+## summarise_turbine_marginal_contribution() acima) -- o denominador do
+## teste (n_cluster_turbines, e a lista de turbinas usada na simulacao
+## multinomial) tem de ser TODAS as turbinas do setor, incluindo as que
+## nunca tiveram curtailment proprio: H0 e' "qualquer turbina do SETOR
+## podia ter recebido este curtailment", nao so' "qualquer turbina do setor
+## que ja teve pelo menos 1". Antes desta correcao (2026-08), uma turbina
+## de interesse sem curtailments proprios ficava de fora do calculo de
+## cl_id (inferido a partir dos SEUS PROPRIOS curtailments em curtl_cl_dt),
+## dando cluster_id = NA e um resultado inutilizavel -- caso do DGY, onde
+## nenhuma das turbinas de fatality_incidents tem curtailments proprios.
+permutation_test_marginal_contribution <- function(curtl_cl_dt, turbine_id, cluster_dt, n_perm = 999, seed = 1) {
 
-  cl_id <- unique(curtl_cl_dt[turbine == turbine_id & !is.na(cluster_id), cluster_id])
-  if (length(cl_id) == 0L) {
+  cl_lookup <- cluster_dt[turbine == turbine_id]
+  if (nrow(cl_lookup) == 0L) {
     return(data.table::data.table(
       turbine = turbine_id, cluster_id = NA_character_, n_cluster_turbines = NA_integer_,
       n_cluster_total = NA_integer_, observed_n = NA_integer_, observed_pct = NA_real_,
       expected_pct_uniform = NA_real_, p_value_gt_uniform = NA_real_
     ))
   }
-  cl_id <- cl_id[1]
+  cl_id <- cl_lookup$cluster_id[1]
 
-  cluster_dt         <- curtl_cl_dt[cluster_id == cl_id]
-  cluster_turbines    <- sort(unique(cluster_dt$turbine))
+  cluster_turbines   <- sort(unique(cluster_dt[cluster_id == cl_id, turbine]))
   n_cluster_turbines <- length(cluster_turbines)
-  n_cluster_total    <- nrow(cluster_dt)
-  observed_n          <- cluster_dt[turbine == turbine_id, .N]
+  cluster_curtl_dt   <- curtl_cl_dt[cluster_id == cl_id]
+  n_cluster_total    <- nrow(cluster_curtl_dt)
+  observed_n         <- cluster_curtl_dt[turbine == turbine_id, .N]
+
+  if (n_cluster_total == 0L) {
+    # setor sem NENHUM curtailment registado -- sem base para o teste
+    return(data.table::data.table(
+      turbine = turbine_id, cluster_id = cl_id, n_cluster_turbines = n_cluster_turbines,
+      n_cluster_total = 0L, observed_n = 0L, observed_pct = NA_real_,
+      expected_pct_uniform = round(100 / n_cluster_turbines, 1), p_value_gt_uniform = NA_real_
+    ))
+  }
 
   set.seed(seed)
   perm          <- stats::rmultinom(n_perm, size = n_cluster_total, prob = rep(1, n_cluster_turbines))
@@ -186,9 +234,9 @@ permutation_test_marginal_contribution <- function(curtl_cl_dt, turbine_id, n_pe
 }
 
 
-permutation_test_marginal_contribution_all <- function(curtl_cl_dt, turbine_ids, n_perm = 999, seed = 1) {
-  data.table::rbindlist(lapply(turbine_ids, function(tb) {
-    permutation_test_marginal_contribution(curtl_cl_dt, tb, n_perm = n_perm, seed = seed)
+permutation_test_marginal_contribution_all <- function(curtl_cl_dt, turbine_ids, cluster_dt, n_perm = 999, seed = 1) {
+  data.table::rbindlist(lapply(unique(turbine_ids), function(tb) {
+    permutation_test_marginal_contribution(curtl_cl_dt, tb, cluster_dt, n_perm = n_perm, seed = seed)
   }))
 }
 

@@ -1801,9 +1801,9 @@ if (!exists("track_dt_unfilt")) {
     }
     cluster_summary_stat    <- summarise_cluster_curtailments(curtl_cl_stat_dt)
     cluster_weekly_stat_dt  <- summarise_cluster_curtailments_weekly(curtl_cl_stat_dt)
-    marginal_stat_dt        <- summarise_turbine_marginal_contribution(curtl_cl_stat_dt, fatality_incidents$turbine)
+    marginal_stat_dt        <- summarise_turbine_marginal_contribution(curtl_cl_stat_dt, fatality_incidents$turbine, cluster_dt_stat)
     perm_stat_dt            <- permutation_test_marginal_contribution_all(
-      curtl_cl_stat_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
+      curtl_cl_stat_dt, fatality_incidents$turbine, cluster_dt_stat, n_perm = cluster_perm_n
     )
     
     write_xlsx_local(
@@ -1850,9 +1850,9 @@ if (!exists("track_dt_unfilt")) {
     }
     cluster_summary_manual   <- summarise_cluster_curtailments(curtl_cl_manual_dt)
     cluster_weekly_manual_dt <- summarise_cluster_curtailments_weekly(curtl_cl_manual_dt)
-    marginal_manual_dt       <- summarise_turbine_marginal_contribution(curtl_cl_manual_dt, fatality_incidents$turbine)
+    marginal_manual_dt       <- summarise_turbine_marginal_contribution(curtl_cl_manual_dt, fatality_incidents$turbine, cluster_dt_manual)
     perm_manual_dt           <- permutation_test_marginal_contribution_all(
-      curtl_cl_manual_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
+      curtl_cl_manual_dt, fatality_incidents$turbine, cluster_dt_manual, n_perm = cluster_perm_n
     )
     
     write_xlsx_local(
@@ -1961,7 +1961,7 @@ if (!exists("track_dt_unfilt")) {
   
   if (run_stat) {
     species_cluster_rank_stat_dt <- summarise_turbine_species_cluster_rank(
-      species_tracks_dt, cluster_dt_stat, fatality_incidents$turbine
+      species_tracks_dt, cluster_dt_stat, unique(fatality_incidents$turbine)
     )
     critical_zone_stat_dt <- summarise_turbine_critical_zone(marginal_stat_dt, species_cluster_rank_stat_dt)
     write_xlsx_local(
@@ -1970,17 +1970,28 @@ if (!exists("track_dt_unfilt")) {
     )
     
     # vista combinada para o relatorio -- mesma logica de fatality_risk_summary_dt
-    # (via manual, abaixo), aqui para a via estatistica
+    # (via manual, abaixo), aqui para a via estatistica. 1 linha por
+    # INCIDENTE (nao por turbina) -- juntar a partir de fatality_incidents
+    # (base) e' o que traz incident_id para a tabela, e faz o "fan-out"
+    # correto quando 2 incidentes partilham a mesma turbina (ex: DGY_TBD1/
+    # DGY_TBD2 -- ambos em DZH58 -- ficam com as MESMAS estatisticas de
+    # setor, uma linha cada, 2026-08)
     stat_risk_summary_dt <- merge(
+      fatality_incidents[, .(incident_id, turbine, species, incident_date)],
       critical_zone_stat_dt,
+      by = "turbine"
+    )
+    stat_risk_summary_dt <- merge(
+      stat_risk_summary_dt,
       perm_stat_dt[, .(turbine, observed_pct, expected_pct_uniform, p_value_gt_uniform)],
       by = "turbine"
     )
+    data.table::setorder(stat_risk_summary_dt, incident_id)
   }
   
   if (run_manual) {
     species_cluster_rank_manual_dt <- summarise_turbine_species_cluster_rank(
-      species_tracks_dt, cluster_dt_manual, fatality_incidents$turbine
+      species_tracks_dt, cluster_dt_manual, unique(fatality_incidents$turbine)
     )
     critical_zone_manual_dt <- summarise_turbine_critical_zone(marginal_manual_dt, species_cluster_rank_manual_dt)
     write_xlsx_local(
@@ -1993,12 +2004,20 @@ if (!exists("track_dt_unfilt")) {
     # ranking de atividade da especie) com o p-value do teste de permutacao
     # (perm_manual_dt), so' para as turbinas de incidente. Nao substitui os
     # 2 exports xlsx acima (mantidos tal como estavam, dados tecnicos
-    # completos) -- e' so' uma vista combinada para apresentacao.
+    # completos) -- e' so' uma vista combinada para apresentacao. 1 linha
+    # por INCIDENTE (mesma logica de stat_risk_summary_dt acima, incluindo
+    # o fan-out quando 2 incidentes partilham a mesma turbina).
     fatality_risk_summary_dt <- merge(
+      fatality_incidents[, .(incident_id, turbine, species, incident_date)],
       critical_zone_manual_dt,
+      by = "turbine"
+    )
+    fatality_risk_summary_dt <- merge(
+      fatality_risk_summary_dt,
       perm_manual_dt[, .(turbine, observed_pct, expected_pct_uniform, p_value_gt_uniform)],
       by = "turbine"
     )
+    data.table::setorder(fatality_risk_summary_dt, incident_id)
   }
   
   
