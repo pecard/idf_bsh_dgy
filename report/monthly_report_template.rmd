@@ -33,6 +33,7 @@ params:
   latency_by_turbine: !r NULL
   latency_bands: !r NULL
   latency_plot: !r NULL
+  latency_timeline_plot: !r NULL
   latency_n_below_cutin: !r NULL
   latency_pct_below_cutin: !r NULL
 
@@ -85,6 +86,7 @@ params:
 
   curtailment_latency_decline_pct: !r NULL
   curtailment_cutin_rpm: !r NULL
+  response_timeline_unit: !r NULL
 
   curtailment_example_window_before_min: !r NULL
   curtailment_example_window_after_min: !r NULL
@@ -462,6 +464,15 @@ if (!is.null(params$latency_bands)) {
 <!-- Source: plot_latency_histogram(latency_dt), R/curtailment_response_latency.R -->
 ```{r latency-plot, fig.width=7, fig.height=4}
 if (!is.null(params$latency_plot)) print(params$latency_plot)
+```
+
+### Latency Temporal Pattern
+
+Mean and standard deviation of response latency, among curtailments at or above the cut-in speed, aggregated by `r params$response_timeline_unit`.
+
+<!-- Source: plot_latency_timeline(summarise_latency_timeline(latency_dt, unit = response_timeline_unit)), R/curtailment_response_timeline.R -->
+```{r latency-timeline-plot, fig.width=7, fig.height=4.5}
+if (!is.null(params$latency_timeline_plot)) print(params$latency_timeline_plot)
 ```
 
 ## Shutdown Time

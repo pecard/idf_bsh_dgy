@@ -251,6 +251,11 @@ curtailment_example_n                 <- 3
 curtailment_example_window_before_min <- 1
 curtailment_example_window_after_min  <- 3
 
+# "week" ou "month" -- granularidade da serie temporal de latencia (secção
+# "Latency Temporal Pattern"). "week" da' ~4-5 pontos dentro do mes do
+# relatorio; ver R/curtailment_response_timeline.R.
+response_timeline_unit <- "week"
+
 safe_dist_rpm_threshold  <- 2
 safe_dist_speed_trim_q   <- 0.95
 safe_dist_reference_line_m <- 600
