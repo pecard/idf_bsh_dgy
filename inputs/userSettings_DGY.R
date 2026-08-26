@@ -346,12 +346,25 @@ safe_dist_already_slowing_rpm <- 6
 track_proximity_threshold_m <- 100
 fatality_post_incident_days <- 3
 
+## CORRIGIDO 2026-08 (Claude) -- a versao que o Paulo colocou aqui (commit
+## "adjustments for 1st run") tinha erros de sintaxe R que impediam este
+## ficheiro de sequer ser lido (character()/integer() usados como se
+## fossem c() -- essas funcoes criam um vetor VAZIO desse comprimento, nao
+## aceitam os valores como argumentos; e "2026-02-25" sem aspas e' invalido
+## como expressao R). Tambem troquei "DGY58"/"DGY15"/"DGY44" por
+## "DZH58"/"DZH15"/"DZH44" -- DGY e' o farm_code do parque (linha ~141),
+## NENHUMA turbina real usa esse prefixo (todas sao "DZH.." em
+## turbinas_scada, no shapefile, em toda a base de dados); DZH58/DZH15/DZH44
+## sao turbinas reais (confirmadas contra DZH_Turbines_Sergey_20250401_UTM.shp).
+## incident_id: os 2 primeiros ("DGY_0000X"/"DGY000Y" no original) tinham
+## X/Y literais, nao parecem IDs reais -- deixados como placeholder
+## "DGY_TBD1"/"DGY_TBD2" ate' o Paulo confirmar os valores certos.
 fatality_incidents <- data.table::data.table(
-  incident_id   = character(DGY_0000X, DGY000Y, DGY0004, DGY0006),
-  turbine       = character('DGY58', 'DGY58','DGY15', 'DGY44'),
-  species       = character('Golden-Eagle', 'Golden-Eagle', 'Greater-Spotted-Eagle', 'Egyptian-Vulture'),
-  incident_date = as.Date(character(2026-02-25, 2026-03-18, 2026-05-19, 2026-06-24)),
-  days_before   = integer(8,8,8,8)
+  incident_id   = c("DGY_TBD1", "DGY_TBD2", "DGY0004", "DGY0006"),
+  turbine       = c("DZH58", "DZH58", "DZH15", "DZH44"),
+  species       = c("Golden-Eagle", "Golden-Eagle", "Greater-Spotted-Eagle", "Egyptian-Vulture"),
+  incident_date = as.Date(c("2026-02-25", "2026-03-18", "2026-05-19", "2026-06-24")),
+  days_before   = c(8, 8, 8, 8)
 )
 
 
@@ -441,21 +454,32 @@ cluster_perm_n <- 999
 ## sequer referenciada por agora) -- definir aqui, no mesmo formato de
 ## manual_turbine_clusters em userSettings_BSH.R, quando houver uma proposta
 ## de setores para as 79 turbinas do DGY.
+## CORRIGIDO 2026-08 (Claude) -- a versao do Paulo (commit "adjustments
+## for 1st run") nao era R valido: virgulas a mais/a menos (trailing comma
+## antes de ")", e virgulas iniciais de linha tipo ", "DZH19"" que deixam
+## um argumento vazio entre 2 virgulas) e um bloco de "DZH11" repetido 8x
+## dentro do Setor_B (visivelmente um erro de copy/paste). Tambem corrigi
+## "DZ57" -> "DZH57" (Setor_E) -- sem o H nao e' o nome de nenhuma turbina
+## real. Removidas as duplicatas e reconstruida a lista so' com turbinas
+## reais; verificado por programa que as 79 turbinas de
+## DZH_Turbines_Sergey_20250401_UTM.shp aparecem aqui exatamente 1 vez cada
+## (nenhuma em falta, nenhuma duplicada entre setores) -- confirmar que o
+## AGRUPAMENTO em si (que turbina pertence a que setor) reflete o layout
+## pretendido, so' a sintaxe/duplicacao foi corrigida, nao a distribuicao.
 manual_turbine_clusters <- list(
-  Setor_A = c("DZH01", "DZH02", "DZH03","DZH04","DZH05","DZH07","DZH08","DZH09","DZH10",),
+  Setor_A = c("DZH01", "DZH02", "DZH03", "DZH04", "DZH05", "DZH07", "DZH08", "DZH09", "DZH10"),
   Setor_B = c("DZH11", "DZH12", "DZH13", "DZH14", "DZH15", "DZH16", "DZH17", "DZH18",
-              , "DZH11", "DZH11", "DZH11", "DZH11", "DZH11", "DZH11", "DZH11", "DZH11",
-              , "DZH19", "DZH20", "DZH21", "DZH22", "DZH23", "DZH24", "DZH26", "DZH27"),
+              "DZH19", "DZH20", "DZH21", "DZH22", "DZH23", "DZH24", "DZH26", "DZH27"),
   Setor_C = c("DZH06", "DZH28", "DZH30", "DZH31", "DZH32", "DZH33", "DZH34", "DZH35",
-              , "DZH35", "DZH36", "DZH37", "DZH38", "DZH61"),
+              "DZH36", "DZH37", "DZH38", "DZH61"),
   Setor_D = c("DZH39", "DZH41", "DZH42", "DZH43", "DZH44"),
   Setor_E = c("DZH49", "DZH50", "DZH51", "DZH52", "DZH53", "DZH54", "DZH55",
-              "DZH56", "DZH58", "DZH59", "DZH60", "DZ57"),
+              "DZH56", "DZH58", "DZH59", "DZH60", "DZH57"),
   Setor_F = c("DZH62", "DZH63", "DZH64", "DZH65", "DZH66", "DZH67", "DZH68",
               "DZH70"),
   Setor_G = c("DZH71", "DZH72", "DZH73", "DZH74", "DZH75", "DZH76", "DZH77",
-              "DZH78", "DZH79", "DZH80", "DZH81", "DZH82", "DZH83", "DZH84", 
-              "DZH86", "DZH87", "DZH88"),
+              "DZH78", "DZH79", "DZH80", "DZH81", "DZH82", "DZH83", "DZH84",
+              "DZH86", "DZH87", "DZH88")
 )
 
 ## -- 10.2. Kestrel (ou outra especie) track occurrence por cluster --
