@@ -227,7 +227,9 @@ turbinas_scada <- "all"
 
 safe_shutdown_rpm <- 1
 
-curtailment_start_end_gap_sec <- 2
+# subido de 2 para 10 (Paulo, 2026-08) -- ver a justificacao completa em
+# inputs/userSettings_BSH.R (mesma analise, mesmo farm)
+curtailment_start_end_gap_sec <- 10
 curtailment_max_next_gap_sec   <- 20
 curtailment_drop_pct_threshold <- 0.10
 

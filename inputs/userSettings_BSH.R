@@ -225,10 +225,23 @@ turbinas_scada <- c('BSH54', 'BSH62', 'BSH14')
 
 safe_shutdown_rpm <- 1 # threshold de rpm a considerar para uma safe passage; curtailment considerado feito com sucesso quando rpm da turbina < safe_shutdown_rpm
 
-# tolerancia apertada (segundos) para considerar fiavel o RPM de baseline no
-# start/end de um curtailment -- usada em assess_curtailment_response() (3.5)
-# e reutilizada em time_to_rpm_thresholds() (3.6)
-curtailment_start_end_gap_sec <- 2
+# tolerancia (segundos) para considerar fiavel o RPM de baseline no
+# start/end de um curtailment -- usada em assess_curtailment_response() (3.5),
+# time_to_rpm_thresholds() (3.6) e time_to_first_decline() (3.6b, a
+# latencia/response que alimenta o relatorio). Subido de 2 para 10 (Paulo,
+# 2026-08, ver sweep em explore_curtailment_response_buffer.R secções 6/6b):
+# a 2s, 87.8% dos curtailments ficavam sem baseline (no_data); a maioria
+# desses e' so' o ciclo normal do SCADA (~10s), nao falta real de dados --
+# a 10s isso ja cai para 41.0%, com ganhos marginais dai em diante (40.1% a
+# 15s, ~38%/36%/33% a 30/60/120s -- ver secção 6b). O resto e' lacunas
+# reais e maiores no SCADA, sobretudo na BSH14 (95.9% sem NENHUMA leitura
+# na hora antes do start), nao corrigivel so' com este parametro. Seguro
+# subir (nao enviesa a latencia medida): desde 2026-08 o match do baseline
+# no "start" e' sempre backward-only (roll = start_end_gap_sec em
+# match_nearest_rpm(), R/curtailment_response.R) -- so' aceita uma leitura
+# ANTES do sinal, que por construcao nunca pode conter a resposta a esse
+# mesmo sinal, seja qual for a tolerancia.
+curtailment_start_end_gap_sec <- 10
 
 curtailment_max_next_gap_sec   <- 20   # tolerancia (s) para aceitar a leitura SCADA seguinte como "resposta imediata"
 curtailment_drop_pct_threshold <- 0.10 # queda minima (%) nessa leitura seguinte para considerar resposta imediata
