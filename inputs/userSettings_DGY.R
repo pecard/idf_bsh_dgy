@@ -57,25 +57,48 @@ project_ref <- "Dzhankeldy WPP"
 # nao existem, mesma situacao do BSH69 em userSettings_BSH.R, nao e' erro)
 wtg_filename <- "DZH_Turbines_Sergey_20250401_UTM.shp"  # in .shp
 
+## Nome da coluna de ID no shapefile de turbinas -- o Bash tem "InternalNa"
+## (omissao em IDF_analysis.R/IDF_monthly_report.R), mas
+## DZH_Turbines_Sergey_20250401_UTM.shp so' tem "Name" (confirmado 2026-08
+## via dbfread: sem InternalNa nenhuma) -- ver a nota completa em
+## IDF_analysis.R, secção "0. Import data".
+wtg_source_id_col <- "Name"
+
+## Idem para a coluna de ID no shapefile de unidades IDF -- o Bash tem
+## "imaging_he" (Bash_IDF_coord.shp); IDF_DZH.shp so' tem "Name" (com os
+## mesmos valores de heartbeat_idf_units abaixo, ex: "DZH01-01").
+idf_source_id_col <- "Name"
+
 # 6 registos no shapefile, mas so' 4 sao cobertura "Existing" (o resto e'
 # cobertura suplementar/planeada, nao unidades instaladas -- ver
 # heartbeat_idf_units abaixo)
 idf_filename <- "IDF_DZH.shp"  # in .shp
 
-## TODO(Paulo): sem ficheiros de tier scheme para o DGY ainda -- os nomes
-## abaixo sao placeholders (o ficheiro nao precisa de existir: IDF_analysis.R
-## agora le tier/tier3 de forma opcional, ver secção "0. Import data" --
-## tier_dt/tier3_dt nao alimentam nenhuma secção ativa do relatorio de
-## qualquer forma). Ajustar so' se algum dia precisares de tier scheme real
-## para o DGY.
+## Tier scheme ignorado por agora (decisao do Paulo, 2026-08) -- os nomes
+## abaixo sao placeholders, os ficheiros nao existem em inputs/ e nao
+## precisam de existir (IDF_analysis.R le tier/tier3 de forma opcional, ver
+## secção "0. Import data" -- tier_dt/tier3_dt nao alimentam nenhuma secção
+## ativa do relatorio de qualquer forma). Ajustar so' se algum dia precisar
+## de tier scheme real para o DGY.
 tier_start_scheme_filename  <- "Dzhankeldy_tier_scheme.xlsx"
 tier3_start_scheme_filename <- "Dzhankeldy_tier_3_commissioning.xlsx"
 
-## TODO(Paulo): sem matriz manual turbina<->IDF (equivalente a
-## ACWA_IDF_Coverage_Matrix.xlsx do Bash) para o DGY ainda -- opcional
-## (IDF_analysis.R ja verifica file.exists() antes de ler, so' fica sem a
-## comparacao geometria-vs-manual em turbine_idf_coverage.xlsx). Com so' 4
-## unidades e' facil de montar a mao se vier a fazer falta.
+## Matriz turbina<->IDF derivada GEOMETRICAMENTE (2026-08, Paulo pediu para
+## "criar a nossa" em vez de montar a mao) -- buffer de 1km a volta de cada
+## turbina e de cada unidade IDF, % de sobreposicao pelo mesmo metodo de
+## R/turbine_idf_coverage.R (compute_turbine_idf_coverage()), gravada no
+## formato "manual" (colunas Site/Turbine ID/Primary IDF/Secondary IDF(s))
+## para poder ser lida como qualquer outra matriz manual. So' 15 das 79
+## turbinas caem dentro de 1km de alguma das 4 unidades IDF -- as restantes
+## ficam com Primary/Secondary em branco (sem cobertura a esta distancia),
+## nao e' um erro. Inclui uma 2a folha (Geometric_Detail) com a % de
+## sobreposicao por par turbina+unidade, para auditoria. NOTA: como
+## DZH_Turbines_Sergey_20250401_UTM.shp esta' em UTM (metros) e IDF_DZH.shp
+## esta' em WGS84 (graus), a unidade IDF foi reprojetada para
+## crs_projection_plannar (32641) antes do calculo -- sem isto o buffer de
+## "1000" seria 1000 GRAUS para as unidades IDF, nao 1000m (bug silencioso
+## que teria de ser corrigido em R/turbine_idf_coverage.R tambem se essa
+## funcao vier a ser chamada diretamente sobre os 2 shapefiles do DGY).
 turbine_idf_matrix_filename <- "ACWA_IDF_Coverage_Matrix_DGY.xlsx"
 
 # Centroide aproximado das unidades IDF/turbinas (IDF_DZH.shp, bbox
@@ -129,6 +152,16 @@ heartbeats_pattern   <- "Heartbeats_.+csv"    # ex: Heartbeats_20260201_....csv
 ## daqui; confirmar com o Paulo se "DZH-23" corresponde a alguma unidade
 ## real antes de a incluir).
 heartbeat_idf_units <- c("DZH01-01", "DZH03-02", "DZH64-03", "DZH62-04")
+
+## Mesmas 4 unidades, reutilizadas para filtrar o shapefile IDF_DZH.shp
+## antes da analise geometrica turbina<->IDF (secção "0. Import data",
+## IDF_analysis.R) -- variavel SEPARADA de heartbeat_idf_units de proposito
+## (nome generico, nao "heartbeat_..."): para o Bash, heartbeat_idf_units
+## tem um proposito mais estreito (filtro de heartbeats/fallback de
+## fatalidade) e nao necessariamente cobre TODAS as unidades reais do
+## parque, por isso o codigo em IDF_analysis.R nao reutiliza essa variavel
+## para o filtro geometrico -- so' idf_installed_units, aqui um alias.
+idf_installed_units <- heartbeat_idf_units
 
 
 ##
@@ -332,10 +365,11 @@ coverage_cylinder_inner_radius <- 600
 
 ## -- 5.2. WTG coverage 3D com topografia (DEM) --
 
-## TODO(Paulo): colocar o GeoTIFF do DGY (ex: Copernicus GLO-30) em
-## inputs/ com este nome (ou ajustar o nome aqui) e mudar
-## run_sections$coverage_3d acima para TRUE
-dem_filename <- "DZH_DEM_copernicus30m.tif"
+## TODO(Paulo): ainda falta colocar o GeoTIFF do DGY (ex: Copernicus
+## GLO-30) em inputs/ com este nome -- ficheiro nao encontrado em inputs/
+## (2026-08). Quando existir, mudar run_sections$coverage_3d acima para
+## TRUE.
+dem_filename <- "DGY_dem_copernicus30m.tif"
 
 wtg_3d_coverage <- c('all')
 

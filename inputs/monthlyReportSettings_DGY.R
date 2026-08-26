@@ -54,6 +54,11 @@ project_ref <- "Dzhankeldy WPP"
 wtg_filename                <- "DZH_Turbines_Sergey_20250401_UTM.shp"
 turbine_idf_matrix_filename <- "ACWA_IDF_Coverage_Matrix_DGY.xlsx"
 
+## Nome da coluna de ID no shapefile de turbinas -- ver a nota completa em
+## userSettings_DGY.R e IDF_monthly_report.R, secção "0. Import data"
+## (DZH_Turbines_Sergey_20250401_UTM.shp so' tem "Name", sem "InternalNa").
+wtg_source_id_col <- "Name"
+
 proj_lat      <- 40.89
 proj_lon      <- 63.38
 proj_timezone <- "Asia/Samarkand"

@@ -202,18 +202,67 @@ wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
 ## (IDF_monthly_report.R, 2026-08) depois de o Paulo confirmar comparando
 ## sort(unique(wtg$InternalNa)) com sort(unique(turbine_idf_manual_dt[["Turbine ID"]])).
 ## Normalizado aqui, logo a seguir a leitura -- antes de QUALQUER consumidor
-## (o 1o e' compute_turbine_idf_coverage(), poucas linhas abaixo).
+## (o 1o e' compute_turbine_idf_coverage(), poucas linhas abaixo). Nome da
+## coluna de origem no shapefile: "InternalNa" por omissao (Bash_Turbines_UTM.shp
+## ja' tem essa coluna) -- o DGY (DZH_Turbines_Sergey_20250401_UTM.shp) so'
+## tem "Name" (confirmado 2026-08 via dbfread: sem InternalNa nenhuma), por
+## isso userSettings_DGY.R define wtg_source_id_col <- "Name". Todos os
+## consumidores a jusante (fatality_track_investigation.R,
+## coverage_3d_topography.R, curtailment_removal_risk.R,
+## track_species_clusters.R, turbine_spatial_clusters.R,
+## turbine_recent_activity.R, compute_turbine_idf_coverage() abaixo) ja'
+## recebem wtg_id_col = "InternalNa" por omissao nas suas proprias
+## assinaturas -- normalizar so' aqui, para a coluna InternalNa real, e'
+## suficiente, nao e' preciso mudar nenhuma dessas chamadas.
+wtg_source_id_col <- if (exists("wtg_source_id_col")) wtg_source_id_col else "InternalNa"
 wtg$InternalNa <- {
-  m <- regmatches(wtg$InternalNa, regexec("^([A-Za-z]+)([0-9]+)$", wtg$InternalNa))
-  vapply(seq_along(wtg$InternalNa), function(i) {
+  raw_id <- wtg[[wtg_source_id_col]]
+  m <- regmatches(raw_id, regexec("^([A-Za-z]+)([0-9]+)$", raw_id))
+  vapply(seq_along(raw_id), function(i) {
     g <- m[[i]]
-    if (length(g) < 3) return(wtg$InternalNa[i])
+    if (length(g) < 3) return(raw_id[i])
     paste0(g[2], sprintf("%02d", as.integer(g[3])))
   }, character(1))
 }
 
 #IDF
 idf <- sf::read_sf(file.path(folder_input, idf_filename))
+
+## Mesma normalizacao de nome de coluna que wtg$InternalNa acima --
+## "imaging_he" por omissao (Bash_IDF_coord.shp ja' tem essa coluna); o DGY
+## (IDF_DZH.shp) so' tem "Name" (com os mesmos valores de heartbeat_idf_units,
+## ex: "DZH01-01"), por isso userSettings_DGY.R define
+## idf_source_id_col <- "Name". Copiar para "imaging_he" (em vez de mudar o
+## idf_id_col em cada chamada) mantem compute_turbine_idf_coverage() e
+## qualquer outro consumidor futuro identicos entre parques.
+idf_source_id_col <- if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"
+idf$imaging_he <- idf[[idf_source_id_col]]
+
+## So' as unidades IDF realmente instaladas (idf_installed_units, quando
+## definido -- ver userSettings_DGY.R) -- o shapefile do DGY tem 2 registos
+## extra de cobertura suplementar/planeada (ambos "DZH-23", sem geometria
+## distinta de turbina), que entrariam na analise geometrica como unidades
+## fantasma se nao excluidos aqui. Sem efeito no Bash (nao define
+## idf_installed_units, idf fica como leu). NAO reutilizar
+## heartbeat_idf_units aqui -- essa variavel ja existe para o Bash com um
+## proposito DIFERENTE e mais estreito (filtro de heartbeats/fallback de
+## janela de fatalidade, linhas ~592/1277 abaixo, e nem sempre cobre TODAS
+## as unidades reais do parque) -- reutiliza-la para filtrar o shapefile
+## geometrico apagaria silenciosamente unidades IDF legitimas do Bash da
+## analise de cobertura.
+if (exists("idf_installed_units")) {
+  idf <- idf[idf$imaging_he %in% idf_installed_units, ]
+}
+
+## Reprojetar ANTES do buffer geometrico abaixo -- Bash_IDF_coord.shp ja'
+## esta' nativamente em UTM Zone 41N (mesmo crs_projection_plannar), por
+## isso isto e' um no-op para o Bash; IDF_DZH.shp (DGY) esta' em WGS84 puro
+## (graus) -- sem esta reprojecao, buffer_m = idf_op_detection_range
+## (metros) seria aplicado como se fossem 1000 GRAUS de raio, nao 1000m
+## (confirmado 2026-08 via os .prj de cada shapefile). Ha' outro
+## st_transform(idf, ...) mais abaixo (secção seguinte) para o resto do
+## script -- redundante mas inofensivo (reprojetar 2x para o mesmo CRS).
+idf <- sf::st_transform(idf, crs_projection_plannar)
 
 #Turbine <-> IDF unit coverage (matriz manual + validacao geometrica) --
 #turbine_idf_matrix_filename --> definido no userSettings_BSH.R
