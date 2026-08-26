@@ -90,7 +90,9 @@ summarise_latency_timeline <- function(latency_dt, unit = "week") {
       n_curtailments     = .N,
       n_no_data          = n_no_data,
       pct_no_data        = round(100 * n_no_data / .N, 1),
-      n_no_response      = n_eligible - n_reached,
+      ## NA (nao 0) quando n_eligible==0 -- ver a mesma nota em
+      ## summarise_latency(), R/curtailment_response_latency.R
+      n_no_response      = if (n_eligible == 0L) NA_integer_ else n_eligible - n_reached,
       pct_no_response    = if (n_eligible == 0L) NA_real_ else round(100 * (n_eligible - n_reached) / n_eligible, 1),
       mean_latency_sec   = round(mean(latency_sec, na.rm = TRUE), 1),
       median_latency_sec = round(median(latency_sec, na.rm = TRUE), 1),

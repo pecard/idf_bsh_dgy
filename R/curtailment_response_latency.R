@@ -213,7 +213,13 @@ summarise_latency <- function(latency_dt) {
     n_eligible         = n_eligible,
     n_reached          = n_reached,
     pct_reached        = if (n_eligible == 0L) NA_real_ else round(100 * n_reached / n_eligible, 1),
-    n_no_response      = n_eligible - n_reached,
+    ## NA (nao 0) quando n_eligible==0 -- "0" seria lido como "0 curtailments
+    ## sem resposta, de X avaliados", mas aqui X tambem e' 0 (nada para
+    ## avaliar, nao uma resposta confirmada). Relevante sobretudo com
+    ## amostras pequenas (ex: por incidente, secção "Curtailment Response
+    ## Around Each Incident") -- ver a coluna Curtailments (n_eligible) ao
+    ## lado para distinguir os dois casos.
+    n_no_response      = if (n_eligible == 0L) NA_integer_ else n_eligible - n_reached,
     pct_no_response    = if (n_eligible == 0L) NA_real_ else round(100 * (n_eligible - n_reached) / n_eligible, 1),
     mean_latency_sec   = round(mean(latency_dt$latency_sec, na.rm = TRUE), 1),
     median_latency_sec = round(median(latency_dt$latency_sec, na.rm = TRUE), 1)
@@ -261,7 +267,8 @@ summarise_latency_by_turbine <- function(latency_dt) {
       n_eligible         = n_eligible,
       n_reached          = n_reached,
       pct_reached        = if (n_eligible == 0L) NA_real_ else round(100 * n_reached / n_eligible, 1),
-      n_no_response      = n_eligible - n_reached,
+      ## ver nota em summarise_latency() -- NA (nao 0) quando n_eligible==0
+      n_no_response      = if (n_eligible == 0L) NA_integer_ else n_eligible - n_reached,
       pct_no_response    = if (n_eligible == 0L) NA_real_ else round(100 * (n_eligible - n_reached) / n_eligible, 1),
       mean_latency_sec   = round(mean(latency_sec, na.rm = TRUE), 1),
       median_latency_sec = round(median(latency_sec, na.rm = TRUE), 1)

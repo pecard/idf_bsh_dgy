@@ -678,7 +678,7 @@ annex_note(params$xlsx_fatality)
 
 ## Top Candidate Tracks
 
-The tracks most likely associated with each incident -- those whose last recorded position ends closest to the turbine, among the candidate signal types. This is an adjusted summary (Incident, Turbine, Species, Triggered Curtailment and Signal only); the full table (all candidate tracks, including track ID, point counts, distances and timestamps) is in the accompanying workbook.
+The tracks most likely associated with each incident -- those whose last recorded position ends closest to the turbine, among the candidate signal types. This is an adjusted summary (Incident, Turbine, Species, Triggered Curtailment and Signal only); the full table (all candidate tracks, including track ID, point counts, distances and timestamps) is in the accompanying workbook. Triggered Curtailment records only whether any curtailment order in the log is linked to that specific track (a presence/absence check) -- it is independent of the response-latency methodology in "Curtailment Response Around Each Incident" below. A fatality can occur with no curtailment ever triggered for the responsible track, particularly when the bird is detected already close to the turbine.
 
 <!-- Source: fatality_summary$top_candidates <- summarise_fatality_tracks(fatality_tracks_dt)$top_candidates, R/fatality_track_investigation.R -->
 ```{r fatality-top-candidates-table}
@@ -698,7 +698,7 @@ annex_note(params$xlsx_fatality)
 
 ## Curtailment Response Around Each Incident
 
-Response latency and no-response events (same definitions as the farm-wide "Curtailment Response & Latency" section, R/curtailment_response_latency.R) restricted to each incident's turbine and window of days before the incident. Curtailments without a SCADA baseline within `r params$curtailment_start_end_gap_sec` s before the signal are reported separately (No Data) rather than excluded outright -- with few curtailments per incident, an unassessed one is proportionally more significant here than in the farm-wide tables above.
+Response latency and no-response events (same definitions as the farm-wide "Curtailment Response & Latency" section, R/curtailment_response_latency.R) restricted to each incident's turbine and window of days before the incident. This covers every curtailment recorded at that turbine during the window, from any track, not only the candidate track(s) identified in "Top Candidate Tracks" above -- a track with no associated curtailment there (Triggered Curtailment = False) is not represented in the Curtailments count here, and a low or zero No Response figure reflects only the curtailments that did occur during the window, not necessarily a response to that specific candidate. Curtailments without a SCADA baseline within `r params$curtailment_start_end_gap_sec` s before the signal are reported separately (No Data) rather than excluded outright -- with few curtailments per incident, an unassessed one is proportionally more significant here than in the farm-wide tables above.
 
 <!-- Source: fatality_window_response_summary_dt <- rbindlist over fatality_windows[[id]]$curtailment_response$summary, R/fatality_window_analysis.R -->
 ```{r fatality-window-response-table}
