@@ -26,6 +26,6 @@ project_settings_file <- "userSettings_DGY.R"
 ## depois dessa corrida -- deixar TRUE religa sempre os ficheiros brutos,
 ## mais lento sem necessidade. Cache do DGY fica em cache/DGY/ (nao colide
 ## com a cache/BSH/ do outro parque -- ver farm_code, userSettings_DGY.R).
-force_reread_cache <- F
+force_reread_cache <- T
 
 source("IDF_analysis.R")

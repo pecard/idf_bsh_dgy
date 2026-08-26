@@ -38,11 +38,11 @@
 
 run_sections <- list(
   curtailment_response   = TRUE,  # 3.5-3.7 -- so' cobre as poucas turbinas com unidade IDF (turbinas_scada abaixo)
-  fatality_investigation = FALSE, # 4 -- LIGAR so' depois de preencher fatality_incidents abaixo (vazio por omissao); mesmo preenchido, so' a parte de tracks tem dados (turbinas de incidente sem IDF -- ver nota no topo do ficheiro)
-  coverage_3d             = FALSE,  # 5.2 -- LIGAR so' depois de colocar dem_filename (abaixo) em inputs/
+  fatality_investigation = T, # 4 -- LIGAR so' depois de preencher fatality_incidents abaixo (vazio por omissao); mesmo preenchido, so' a parte de tracks tem dados (turbinas de incidente sem IDF -- ver nota no topo do ficheiro)
+  coverage_3d             = T,  # 5.2 -- LIGAR so' depois de colocar dem_filename (abaixo) em inputs/
   min_individuals          = TRUE,  # 6.4 -- prioridade do Paulo para o DGY (atividade sazonal por especie prioritaria)
   turbine_clustering       = TRUE,  # 10 (via ESTATISTICA, por distancia) -- via principal do DGY por agora (sem setores manuais definidos)
-  risk_clusters            = FALSE  # 10 (via MANUAL/setores) -- LIGAR so' depois de manual_turbine_clusters estar definido abaixo (ainda por fazer)
+  risk_clusters            = T  # 10 (via MANUAL/setores) -- LIGAR so' depois de manual_turbine_clusters estar definido abaixo (ainda por fazer)
 )
 
 
@@ -314,11 +314,11 @@ track_proximity_threshold_m <- 100
 fatality_post_incident_days <- 3
 
 fatality_incidents <- data.table::data.table(
-  incident_id   = character(),
-  turbine       = character(),
-  species       = character(),
-  incident_date = as.Date(character()),
-  days_before   = integer()
+  incident_id   = character(DGY_0000X, DGY000Y, DGY0004, DGY0006),
+  turbine       = character('DGY58', 'DGY58','DGY15', 'DGY44'),
+  species       = character('Golden-Eagle', 'Golden-Eagle', 'Greater-Spotted-Eagle', 'Egyptian-Vulture'),
+  incident_date = as.Date(character(2026-02-25, 2026-03-18, 2026-05-19, 2026-06-24)),
+  days_before   = integer(8,8,8,8)
 )
 
 
@@ -407,10 +407,22 @@ cluster_perm_n <- 999
 ## sequer referenciada por agora) -- definir aqui, no mesmo formato de
 ## manual_turbine_clusters em userSettings_BSH.R, quando houver uma proposta
 ## de setores para as 79 turbinas do DGY.
-# manual_turbine_clusters <- list(
-#   Setor_A = c("DZH01", "DZH02", ...),
-#   ...
-# )
+manual_turbine_clusters <- list(
+  Setor_A = c("DZH01", "DZH02", "DZH03","DZH04","DZH05","DZH07","DZH08","DZH09","DZH10",),
+  Setor_B = c("DZH11", "DZH12", "DZH13", "DZH14", "DZH15", "DZH16", "DZH17", "DZH18",
+              , "DZH11", "DZH11", "DZH11", "DZH11", "DZH11", "DZH11", "DZH11", "DZH11",
+              , "DZH19", "DZH20", "DZH21", "DZH22", "DZH23", "DZH24", "DZH26", "DZH27"),
+  Setor_C = c("DZH06", "DZH28", "DZH30", "DZH31", "DZH32", "DZH33", "DZH34", "DZH35",
+              , "DZH35", "DZH36", "DZH37", "DZH38", "DZH61"),
+  Setor_D = c("DZH39", "DZH41", "DZH42", "DZH43", "DZH44"),
+  Setor_E = c("DZH49", "DZH50", "DZH51", "DZH52", "DZH53", "DZH54", "DZH55",
+              "DZH56", "DZH58", "DZH59", "DZH60", "DZ57"),
+  Setor_F = c("DZH62", "DZH63", "DZH64", "DZH65", "DZH66", "DZH67", "DZH68",
+              "DZH70"),
+  Setor_G = c("DZH71", "DZH72", "DZH73", "DZH74", "DZH75", "DZH76", "DZH77",
+              "DZH78", "DZH79", "DZH80", "DZH81", "DZH82", "DZH83", "DZH84", 
+              "DZH86", "DZH87", "DZH88"),
+)
 
 ## -- 10.2. Kestrel (ou outra especie) track occurrence por cluster --
 
