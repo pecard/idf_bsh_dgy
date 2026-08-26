@@ -1,5 +1,5 @@
 ##
-## Monthly report settings
+## Monthly report settings -- Bash WPP (BSH)
 ##
 ## Standalone settings file for IDF_monthly_report.R -- does NOT source
 ## userSettings_BSH.R. The 2 settings files serve different exercises on
@@ -17,9 +17,17 @@
 ## As seccoes "## N. ... ----" abaixo espelham a numeracao das seccoes de
 ## IDF_monthly_report.R, tal como userSettings_BSH.R faz para IDF_analysis.R.
 ##
-## Uso (em IDF_monthly_report.R):
+## Renomeado de "monthlyReportSettings.R" para "monthlyReportSettings_BSH.R"
+## (2026-08), ao ligar o relatorio mensal do DGY -- mesmo padrao de
+## userSettings_BSH.R/userSettings_DGY.R para o relatorio anual. Escolhido
+## por monthly_settings_file (ver IDF_monthly_report.R, secção "SETTINGS" --
+## BSH continua a omissao se essa variavel nao for definida antes, mesmo
+## padrao de project_settings_file/IDF_analysis.R).
+##
+## Uso (em IDF_monthly_report.R, ou run_monthly_report.R/run_monthly_report_DGY.R):
 ##   report_month <- "2026-07"  # definir ANTES de dar source a este ficheiro
-##   source(file.path(folder_input, "monthlyReportSettings.R"))
+##   monthly_settings_file <- "monthlyReportSettings_BSH.R"  # ou _DGY.R -- omitir para BSH (omissao)
+##   source("IDF_monthly_report.R")
 ##
 
 
@@ -93,6 +101,11 @@ databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-
 ## encontrado 2026-08, corrida real: "0 de 1 ficheiro(s) mantidos").
 farm_pattern <- "BSH|Bash"
 
+## Identificador curto do parque -- usado so' para nao colidir com o DGY
+## nas pastas cache/ e outputs/monthly/ partilhadas (ver farm_code em
+## userSettings_BSH.R, e o mesmo uso em IDF_monthly_report.R).
+farm_code <- "BSH"
+
 trackreport_pattern  <- "TrackReport_"
 curtailments_pattern <- "curtail_orders|Curtailments"
 scada_pattern        <- "SCADA_.+csv"
@@ -100,7 +113,7 @@ heartbeats_pattern   <- "Bash_Heartbeats.+csv"
 
 # Sem heartbeat_idf_units (subconjunto manual de userSettings_BSH.R) -- o
 # relatorio mensal usa TODAS as unidades IDF com heartbeat, sem filtro
-# (cobertura farm-wide, 79 turbinas)
+# (cobertura farm-wide, todas as unidades com heartbeat neste parque)
 
 
 ##

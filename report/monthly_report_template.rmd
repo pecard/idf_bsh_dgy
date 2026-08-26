@@ -65,7 +65,7 @@ params:
   min_indiv_summary: !r NULL
   min_indiv_daily_plot: !r NULL
 
-  # Literais de configuracao (monthlyReportSettings.R) usados so' para
+  # Literais de configuracao (monthlyReportSettings_BSH.R/_DGY.R) usados so' para
   # texto descritivo -- cada secção que aplica um threshold/cut-off mostra
   # o VALOR concreto usado nesse mes, nao so' o nome do parametro.
   heartbeat_interval_min: !r NULL
@@ -423,7 +423,7 @@ if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_sum
 
 # Curtailment Response & Latency
 
-Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, for the turbines and window with SCADA coverage this month (`r params$turbinas_scada_used` -- all turbines with SCADA data in this window, per turbinas_scada = "all" in monthlyReportSettings.R). The SCADA baseline used for each curtailment is the last RPM reading recorded at or before the signal, within `r params$curtailment_start_end_gap_sec` s of it; a reading recorded after the signal is never used for this purpose, so that the baseline cannot itself include any part of the response it is meant to measure. `r params$latency_n_no_data` curtailments (`r params$latency_pct_no_data`% of the total) have no such reading within that tolerance and are excluded from every table below, since no baseline RPM could be established for them; this reflects gaps in SCADA-RPM data availability, which vary by turbine and period (see the Response Latency by Turbine table below, and the accompanying workbook, curtailment_response_latency_*.xlsx, for the no-data share by turbine). A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. Both response latency and shutdown time below allow up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order for this to happen. Curtailments with an RPM below `r params$curtailment_cutin_rpm` (the cut-in speed, below which the turbine is not producing energy) at the start of the order are further excluded from the Response Latency and No-Response Events tables below, since there is no meaningful response to measure on a turbine that was already not operating: of the curtailments with a valid SCADA baseline this month, `r params$latency_n_below_cutin` (`r params$latency_pct_below_cutin`%) fall in this category.
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, for the turbines and window with SCADA coverage this month (`r params$turbinas_scada_used` -- all turbines with SCADA data in this window, per turbinas_scada = "all" in the monthly settings). The SCADA baseline used for each curtailment is the last RPM reading recorded at or before the signal, within `r params$curtailment_start_end_gap_sec` s of it; a reading recorded after the signal is never used for this purpose, so that the baseline cannot itself include any part of the response it is meant to measure. `r params$latency_n_no_data` curtailments (`r params$latency_pct_no_data`% of the total) have no such reading within that tolerance and are excluded from every table below, since no baseline RPM could be established for them; this reflects gaps in SCADA-RPM data availability, which vary by turbine and period (see the Response Latency by Turbine table below, and the accompanying workbook, curtailment_response_latency_*.xlsx, for the no-data share by turbine). A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. Both response latency and shutdown time below allow up to `r params$shutdown_time_buffer_sec` s past the end of the curtailment order for this to happen. Curtailments with an RPM below `r params$curtailment_cutin_rpm` (the cut-in speed, below which the turbine is not producing energy) at the start of the order are further excluded from the Response Latency and No-Response Events tables below, since there is no meaningful response to measure on a turbine that was already not operating: of the curtailments with a valid SCADA baseline this month, `r params$latency_n_below_cutin` (`r params$latency_pct_below_cutin`%) fall in this category.
 
 ## Response Latency
 
@@ -663,7 +663,7 @@ if (!is.null(params$id_risk_by_direction)) {
 
 <!--
 9.2 e' opcional (run_sections_monthly$id_confusion, DESLIGADA por omissao
-em monthlyReportSettings.R) -- analise pontual para a(s) especie(s) em
+em monthlyReportSettings_BSH.R/_DGY.R) -- analise pontual para a(s) especie(s) em
 id_confusion_species_of_interest (Egyptian-Vulture e Steppe-Eagle por
 omissao), nao uma metrica de rotina mensal. Quando desligada,
 params$id_confusion_general fica NULL e todo o subsection (titulo, texto e

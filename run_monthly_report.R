@@ -19,6 +19,10 @@
 ##
 ## NUNCA copiar as linhas abaixo para dentro de IDF_monthly_report.R.
 ##
+## Este e' o launcher do Bash (BSH) -- nao define monthly_settings_file,
+## por isso usa a omissao de IDF_monthly_report.R ("monthlyReportSettings_BSH.R").
+## Ver run_monthly_report_DGY.R para o equivalente do Dzhankeldy.
+##
 
 report_month <- "2026-06"
 
