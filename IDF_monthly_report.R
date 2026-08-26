@@ -679,10 +679,12 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   )
 
   p_shutdown_time <- plot_time_to_threshold(tt_dt)
-  ggsave(
-    file.path(folder_output, sprintf("curtailment_shutdown_time_hist_%s.png", report_month)),
-    plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
-  )
+  if (!is.null(p_shutdown_time)) {
+    ggsave(
+      file.path(folder_output, sprintf("curtailment_shutdown_time_hist_%s.png", report_month)),
+      plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
+    )
+  }
 
   ### 5.2b Latencia de resposta e eventos sem resposta -- ver
   ### R/curtailment_response_latency.R e a nota equivalente em

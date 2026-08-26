@@ -1109,10 +1109,12 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
   )
   
   p_shutdown_time <- plot_time_to_threshold(tt_dt)
-  ggsave(
-    file.path(folder_output, paste0("curtailment_shutdown_time_hist_", date(scada_ini), "to", date(scada_end), ".png")),
-    plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
-  )
+  if (!is.null(p_shutdown_time)) {
+    ggsave(
+      file.path(folder_output, paste0("curtailment_shutdown_time_hist_", date(scada_ini), "to", date(scada_end), ".png")),
+      plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
+    )
+  }
   
   ### 3.6b. Latencia de resposta e eventos sem resposta ----
   ## Ver R/curtailment_response_latency.R -- pergunta diferente do shutdown
