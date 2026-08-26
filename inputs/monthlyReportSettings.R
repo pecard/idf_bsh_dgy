@@ -227,7 +227,9 @@ turbinas_scada <- "all"
 
 safe_shutdown_rpm <- 1
 
-curtailment_start_end_gap_sec <- 2
+# subido de 2 para 10 (Paulo, 2026-08) -- ver a justificacao completa em
+# inputs/userSettings_BSH.R (mesma analise, mesmo farm)
+curtailment_start_end_gap_sec <- 10
 curtailment_max_next_gap_sec   <- 20
 curtailment_drop_pct_threshold <- 0.10
 
@@ -250,6 +252,11 @@ curtailment_cutin_rpm <- 3
 curtailment_example_n                 <- 3
 curtailment_example_window_before_min <- 1
 curtailment_example_window_after_min  <- 3
+
+# "week" ou "month" -- granularidade da serie temporal de latencia (secção
+# "Latency Temporal Pattern"). "week" da' ~4-5 pontos dentro do mes do
+# relatorio; ver R/curtailment_response_timeline.R.
+response_timeline_unit <- "week"
 
 safe_dist_rpm_threshold  <- 2
 safe_dist_speed_trim_q   <- 0.95

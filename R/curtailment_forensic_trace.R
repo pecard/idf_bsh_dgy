@@ -301,20 +301,38 @@ plot_curtailment_events_rpm <- function(events_dt, scada_dt, window_before_min =
     events_dt[, .(label, event_time = end, event_type = "Curtailment stop")]
   ))
 
+  # eixo y sempre a comecar em 0 (nao no minimo dos dados, que "encolhe" a
+  # queda visualmente) e a estender ate' ao maximo lido + 1 rpm de folga --
+  # pedido do Paulo, 2026-08, para os paineis serem comparaveis entre si e
+  # nao exagerarem visualmente uma queda pequena
+  y_max <- max(rpm_dt_all$value, na.rm = TRUE) + 1
+
   ggplot2::ggplot() +
-    ggplot2::geom_line(data = rpm_dt_all, ggplot2::aes(x = datetime, y = value), colour = "#e8792f") +
+    # "RPM" mapeado para colour E linetype (em vez de colour fixo fora do
+    # aes()) so' para entrar na legenda -- os 2 aes tem exatamente as mesmas
+    # 3 chaves (RPM/Curtailment start/Curtailment stop), por isso o ggplot
+    # funde as 2 escalas numa unica legenda, em vez de mostrar 2 legendas
+    # separadas -- pedido do Paulo, 2026-08
+    ggplot2::geom_line(data = rpm_dt_all, ggplot2::aes(x = datetime, y = value, colour = "RPM", linetype = "RPM")) +
     # pontos sobre a linha -- 1 por leitura real de SCADA, para se perceber
     # a que instante exato corresponde cada valor (pedido do Paulo, 2026-08
     # -- a linha sozinha nao deixava ver onde estavam as leituras reais,
     # so' a interpolacao entre elas)
-    ggplot2::geom_point(data = rpm_dt_all, ggplot2::aes(x = datetime, y = value), colour = "#e8792f", size = 1.2) +
+    ggplot2::geom_point(data = rpm_dt_all, ggplot2::aes(x = datetime, y = value, colour = "RPM"), size = 1.2) +
     ggplot2::geom_vline(
       data = events_long,
       ggplot2::aes(xintercept = event_time, colour = event_type, linetype = event_type),
       linewidth = 0.7
     ) +
-    ggplot2::scale_colour_manual(values = c("Curtailment start" = "steelblue", "Curtailment stop" = "darkred"), name = NULL) +
-    ggplot2::scale_linetype_manual(values = c("Curtailment start" = "solid", "Curtailment stop" = "dashed"), name = NULL) +
+    ggplot2::scale_colour_manual(
+      values = c("RPM" = "#e8792f", "Curtailment start" = "steelblue", "Curtailment stop" = "darkred"),
+      name = NULL
+    ) +
+    ggplot2::scale_linetype_manual(
+      values = c("RPM" = "solid", "Curtailment start" = "solid", "Curtailment stop" = "dashed"),
+      name = NULL
+    ) +
+    ggplot2::scale_y_continuous(limits = c(0, y_max), expand = c(0, 0)) +
     # breaks fixos de 30s (nao os automaticos do ggplot, que variavam
     # consoante a largura da janela de cada evento) e rotulos hh:mm:ss,
     # verticais para nao sobrepor com breaks tao proximos -- pedido do

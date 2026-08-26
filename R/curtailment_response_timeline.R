@@ -1,38 +1,43 @@
 ##
-## Evolucao temporal da resposta a curtailments (missed/delayed) +
+## Evolucao temporal da resposta a curtailments (no-response events) +
 ## sobreposicao com a abundancia/fenologia de aves
 ##
 ## Constroi uma serie temporal (por omissao semanal) da qualidade de
-## resposta a curtailments -- % missed, % delayed, % ok -- ao longo de todo
-## o periodo com dados de SCADA, e disponibiliza funcoes para sobrepor essa
-## serie a abundancia de uma especie (min individuals por bin, agregada na
-## mesma escala temporal), para explorar visualmente se a performance do
-## sistema varia com os periodos de maior movimento migratorio.
+## resposta a curtailments -- % no-response events, entre os curtailments
+## acima da velocidade de cut-in -- ao longo de todo o periodo com dados de
+## SCADA, e disponibiliza funcoes para sobrepor essa serie a abundancia de
+## uma especie (min individuals por bin, agregada na mesma escala
+## temporal), para explorar visualmente se a performance do sistema varia
+## com os periodos de maior movimento migratorio.
 ##
-## Usa a MESMA classificacao missed/delayed/ok que
-## R/fatality_window_analysis.R (via classify_response_flag(), ver
-## R/curtailment_response_classify.R) -- as duas vistas (janela de um
-## incidente vs. evolucao farm-wide) olham para a mesma regra.
+## Ate' 2026-08 esta serie vinha de classify_response_flag() (% missed +
+## % delayed, R/curtailment_response_classify.R) -- substituido pela
+## classificacao de latencia (R/curtailment_response_latency.R,
+## time_to_first_decline()) pela mesma razao que a secção "Curtailment
+## Response & Latency" do relatorio: aquela classificacao confundia
+## respostas lentas mas reais com falhas genuinas (RPM verificado so' no
+## instante exato do "end"), e nao excluia turbinas ja abaixo do cut-in no
+## "start" -- ambos inflacionavam a taxa de "missed" mostrada aqui.
+## R/fatality_window_analysis.R continua a usar classify_response_flag()
+## para a janela de cada incidente (analise diferente, nao afetada por
+## esta mudanca).
 ##
 ## Modulo generico -- nao depende de fatality_incidents; aplica-se a
-## qualquer subconjunto de curtailments/turbinas que se lhe passe (ex:
-## curtl_scada_dt, o universo ja usado em 3.5-3.7).
+## qualquer latency_dt (ex: o calculado em 3.6b sobre curtl_scada_dt).
 ##
-## Depende de: data.table, lubridate, ggplot2,
-## R/curtailment_response.R, R/curtailment_shutdown_time.R,
-## R/curtailment_response_classify.R (fazer source destes 3 antes)
+## Depende de: data.table, lubridate, ggplot2
 ##
 ## Uso:
+##   source("R/curtailment_response_latency.R")
 ##   source("R/curtailment_response_timeline.R")
 ##
-##   response_dt <- classify_response_flag(
-##     curtl_scada_dt, scada_dt,
-##     start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
-##     drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
-##     shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
+##   latency_dt <- time_to_first_decline(
+##     curtl_scada_dt, scada_dt, decline_pct_threshold = curtailment_latency_decline_pct,
+##     start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec,
+##     cutin_rpm = curtailment_cutin_rpm
 ##   )
 ##
-##   timeline_dt <- summarise_response_timeline(response_dt, unit = response_timeline_unit)
+##   timeline_dt <- summarise_latency_timeline(latency_dt, unit = response_timeline_unit)
 ##
 ##   abundance_dt <- summarise_abundance_timeline(min_indiv_bins_dt, unit = response_timeline_unit)
 ##
@@ -40,42 +45,63 @@
 ##   plots$response_plot
 ##   plots$abundance_plot
 ##
-
-
-## 1. Serie temporal de missed/delayed/ok, farm-wide (ou por turbina) ----
+## plot_latency_timeline(timeline_dt) sozinho (sem abundancia) alimenta a
+## secção "Latency Temporal Pattern" (3.1.3) do relatorio, farm-wide --
+## ver IDF_analysis.R secção 3.6b. plots$latency_plot acima (por especie,
+## usado so' para os PNGs "latency_timeline_<especie>.png", NAO embutidos
+## no relatorio -- anexo/apoio) e' o MESMO plot_latency_timeline(), a
+## MESMA timeline_dt farm-wide -- so' a abundancia sobreposta varia por
+## especie, a latencia em si nao.
 ##
-## pct_of_total = % do periodo incluindo no_data; pct_of_known = % so' dos
-## casos classificaveis (exclui no_data, fica NA nessa linha) -- mesma logica
-## de summarise_response_by_flag() em R/curtailment_response_classify.R,
-## aqui repetida por periodo (e turbina, se by_turbine=TRUE).
 
-summarise_response_timeline <- function(response_dt, unit = "week", by_turbine = FALSE) {
+
+## 1. Serie temporal de no-response events, farm-wide ----
+##
+## Mesma definicao de no-response event da secção "No-Response Events" do
+## relatorio (R/curtailment_response_latency.R): curtailments com baseline
+## conhecido (no_data == FALSE) e acima da velocidade de cut-in no "start"
+## (below_cutin == FALSE) sem uma queda de RPM >= decline_pct_threshold
+## detetada dentro da janela de procura. no_data e below_cutin ficam de
+## fora do denominador de pct_no_response (nao ha "resposta" para avaliar
+## em nenhum dos dois casos), tal como nas restantes tabelas de latencia --
+## ver R/curtailment_response_latency.R, summarise_latency_by_turbine()
+## (mesma logica, aqui por periodo em vez de por turbina).
+
+summarise_latency_timeline <- function(latency_dt, unit = "week") {
 
   empty <- data.table::data.table(
-    period = as.Date(character()), response_flag = character(), n = integer(),
-    pct_of_total = numeric(), pct_of_known = numeric()
+    period = as.Date(character()), n_curtailments = integer(), n_no_data = integer(),
+    pct_no_data = numeric(), n_no_response = integer(), pct_no_response = numeric(),
+    mean_latency_sec = numeric(), median_latency_sec = numeric(), sd_latency_sec = numeric()
   )
-  if (nrow(response_dt) == 0L) return(empty)
+  if (nrow(latency_dt) == 0L) return(empty)
 
-  dt <- data.table::copy(response_dt)
+  dt <- data.table::copy(latency_dt)
   # as.Date() sem tz= usa UTC por omissao e desloca o limite do periodo ate
   # 5h (Asia/Samarkand = UTC+5) -- mesma familia de bug ja corrigida em
   # R/fatality_window_analysis.R
   dt[, period := lubridate::floor_date(as.Date(start, tz = attr(start, "tzone")), unit = unit)]
 
-  by_cols <- if (by_turbine) c("turbine", "period", "response_flag") else c("period", "response_flag")
-  counts <- dt[, .(n = .N), by = by_cols]
+  out <- dt[, {
+    n_no_data     <- sum(no_data)
+    n_eligible    <- sum(no_data == FALSE & below_cutin == FALSE)
+    n_reached     <- sum(!is.na(latency_sec))
+    .(
+      n_curtailments     = .N,
+      n_no_data          = n_no_data,
+      pct_no_data        = round(100 * n_no_data / .N, 1),
+      ## NA (nao 0) quando n_eligible==0 -- ver a mesma nota em
+      ## summarise_latency(), R/curtailment_response_latency.R
+      n_no_response      = if (n_eligible == 0L) NA_integer_ else n_eligible - n_reached,
+      pct_no_response    = if (n_eligible == 0L) NA_real_ else round(100 * (n_eligible - n_reached) / n_eligible, 1),
+      mean_latency_sec   = round(mean(latency_sec, na.rm = TRUE), 1),
+      median_latency_sec = round(median(latency_sec, na.rm = TRUE), 1),
+      sd_latency_sec     = round(sd(latency_sec, na.rm = TRUE), 1)
+    )
+  }, by = period]
 
-  totals_by_cols <- setdiff(by_cols, "response_flag")
-  counts[, pct_of_total := round(100 * n / sum(n), 1), by = totals_by_cols]
-  counts[, n_known := sum(n[response_flag != "no_data"]), by = totals_by_cols]
-  counts[, pct_of_known := data.table::fifelse(
-    response_flag == "no_data", NA_real_, round(100 * n / n_known, 1)
-  )]
-  counts[, n_known := NULL]
-
-  data.table::setorder(counts, period)
-  counts[]
+  data.table::setorder(out, period)
+  out[]
 }
 
 
@@ -100,25 +126,58 @@ summarise_abundance_timeline <- function(bins_dt, unit = "week") {
 }
 
 
-## 3. Plots -- resposta (missed/delayed % empilhado) e abundancia,
-##    alinhados no mesmo eixo temporal (2 plots separados, nao um eixo duplo
-##    -- mais legivel e menos enganador; combinar/empilhar visualmente ao
-##    inserir no relatorio) ----
+## 3. Plot -- latencia media +/- desvio padrao ao longo do tempo ----
+##
+## Pedido do Paulo (2026-08) depois de ver que, com no-response praticamente
+## a 0 farm-wide (secção "No-Response Events" do relatorio), o plot de %
+## no-response sozinho fica quase sempre achatado perto de 0 -- pouco
+## informativo sobre se a VELOCIDADE tipica de resposta varia com a epoca.
+## mean_latency_sec (de summarise_latency_timeline()) e' continua, por isso
+## mostra essa variacao mesmo quando quase todos os curtailments respondem
+## (so' nao respondem devagar ou depressa). Mean +/- SD (nao mediana) --
+## pedido explicito; a banda e' cortada em 0 no limite inferior (mean - sd
+## nao pode ser negativo, latencia e' sempre >= 0).
+##
+## date_breaks_days: rotulos do eixo X a cada N dias, formato dd-mm-aaaa
+## (rodados na vertical -- com muitos rotulos longos lado a lado, na
+## horizontal sobrepunham-se, mesma correcao ja aplicada ao eixo X das
+## leituras SCADA e ao calendario de disponibilidade).
+
+plot_latency_timeline <- function(timeline_dt, date_breaks_days = 15) {
+
+  dt <- data.table::copy(timeline_dt)
+  dt[, `:=`(
+    latency_lo = pmax(mean_latency_sec - sd_latency_sec, 0),
+    latency_hi = mean_latency_sec + sd_latency_sec
+  )]
+
+  ggplot(dt, aes(x = period)) +
+    geom_ribbon(aes(ymin = latency_lo, ymax = latency_hi), fill = "steelblue", alpha = 0.2) +
+    geom_line(aes(y = mean_latency_sec), colour = "steelblue") +
+    geom_point(aes(y = mean_latency_sec), colour = "steelblue", size = 1) +
+    scale_x_date(date_breaks = sprintf("%d days", date_breaks_days), date_labels = "%d-%m-%Y") +
+    labs(x = NULL, y = "Latency (s) -- mean +/- SD", title = "Response latency over time") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+}
+
+
+## 4. Plots -- resposta (% no-response events), latencia (media +/- SD) e
+##    abundancia, alinhados no mesmo eixo temporal (plots separados, nao um
+##    eixo duplo -- mais legivel e menos enganador; combinar/empilhar
+##    visualmente ao inserir no relatorio) ----
 
 plot_response_vs_phenology <- function(timeline_dt, abundance_dt, species_sel) {
 
-  # pct_of_known -- % dos curtailments CLASSIFICAVEIS nesse periodo (exclui
-  # no_data), a leitura mais direta de "qualidade de resposta"; pct_of_total
-  # fica disponivel em timeline_dt para quem preferir ver diluido pelo no_data
-  resp <- timeline_dt[response_flag %in% c("missed", "delayed")]
   aband <- abundance_dt[spec %in% species_sel]
 
-  p_response <- ggplot(resp, aes(x = period, y = pct_of_known, fill = response_flag)) +
-    geom_col() +
-    scale_fill_manual(values = c(missed = "firebrick", delayed = "orange")) +
-    labs(x = NULL, y = "% of classifiable curtailments", fill = NULL,
-        title = "Missed / delayed curtailments over time") +
+  p_response <- ggplot(timeline_dt, aes(x = period, y = pct_no_response)) +
+    geom_col(fill = "firebrick") +
+    labs(x = NULL, y = "% of curtailments (above cut-in speed)",
+        title = "No-response events over time") +
     theme_minimal()
+
+  p_latency <- plot_latency_timeline(timeline_dt)
 
   p_abundance <- ggplot(aband, aes(x = period, y = peak_individuals, colour = spec)) +
     geom_line() +
@@ -126,5 +185,5 @@ plot_response_vs_phenology <- function(timeline_dt, abundance_dt, species_sel) {
     labs(x = "Period", y = "Peak individuals", colour = NULL, title = "Bird abundance over time") +
     theme_minimal()
 
-  list(response_plot = p_response, abundance_plot = p_abundance)
+  list(response_plot = p_response, latency_plot = p_latency, abundance_plot = p_abundance)
 }

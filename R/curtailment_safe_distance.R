@@ -158,7 +158,10 @@ plot_safe_distance_hist <- function(safe_dist_dt, species_sel = NULL, ref_line_m
     geom_vline(xintercept = ref_line_m, linetype = "dashed") +
     theme_bw()
 
-  if (facet) p <- p + facet_wrap(~species, ncol = 3)
+  # scales="free_y" -- pedido do Paulo, 2026-08: especies com poucos
+  # curtailments ficavam com uma barra ilegivel, achatada pela escala
+  # partilhada com a especie mais frequente
+  if (facet) p <- p + facet_wrap(~species, ncol = 3, scales = "free_y")
   p
 }
 

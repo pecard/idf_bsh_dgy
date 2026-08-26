@@ -192,6 +192,15 @@ plot_availability_calendar <- function(daylight_availability_dt, by_idf_summary,
     idf_sel <- by_idf_summary[order(-offline_mins_total)][seq_len(min(top_n, .N)), idf]
   }
 
+  # subtitulo correto tambem quando idf_sel cobre TODAS as unidades (o
+  # calendario completo do anexo, nao so' um top-N) -- "Top N" seria
+  # enganador nesse caso
+  subtitle_txt <- if (length(idf_sel) >= data.table::uniqueN(by_idf_summary$idf)) {
+    sprintf("All %d IDF units", length(idf_sel))
+  } else {
+    sprintf("Top %d IDF units by offline time", length(idf_sel))
+  }
+
   dt <- add_calendar_coords(daylight_availability_dt)
   dt <- dt[idf %in% idf_sel]
 
@@ -222,14 +231,19 @@ plot_availability_calendar <- function(daylight_availability_dt, by_idf_summary,
     labs(
       x = NULL, y = "Week of month",
       title = "Daylight offline (%) calendar by IDF unit",
-      subtitle = sprintf("Top %d IDF units by offline time", length(idf_sel))
+      subtitle = subtitle_txt
     ) +
     theme_minimal(base_size = 9) +
     theme(
       panel.grid = element_blank(),
       strip.background = element_rect(fill = "grey95", color = NA),
       strip.text = element_text(face = "bold"),
-      axis.text.x = element_text(hjust = 0.5),
+      # rotacao vertical (nao encolher o texto) -- com muitos meses lado a
+      # lado (facet_grid ~ ym), cada painel fica demasiado estreito para 7
+      # rotulos horizontais ("M T W T. F S S."); na vertical cada rotulo so'
+      # precisa da largura de 1 caracter, nao do texto todo (mesma correcao
+      # ja aplicada ao eixo X das leituras SCADA, R/curtailment_forensic_trace.R)
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 6),
       axis.ticks = element_blank()
     )
 }

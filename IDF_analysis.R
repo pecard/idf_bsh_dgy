@@ -656,15 +656,36 @@ if (exists("heartb_dt")) {
   idf_sel <- idf_availability_summary$by_idf[
     order(-offline_mins_total)][seq_len(min(idf_availability_top_n, .N)), idf]
   
-  p_availability_cal <- plot_availability_calendar(
+  ## Calendario completo (anexo) -- TODAS as unidades IDF, historico
+  ## completo do projeto, PNG maior (35x30cm) -- pedido do Paulo (2026-08)
+  ## para quem quiser investigar qualquer unidade/periodo fora das top N/
+  ## ultimos 6 meses mostrados no corpo do relatorio abaixo.
+  availability_cal_full_filename <- paste0("idf_availability_calendar_full_", report_start, "to", report_end, ".png")
+  p_availability_cal_full <- plot_availability_calendar(
     idf_availability_dt, idf_availability_summary$by_idf,
+    idf_sel = unique(idf_availability_dt$idf), top_n = uniqueN(idf_availability_dt$idf)
+  )
+  ggsave(
+    file.path(folder_output, availability_cal_full_filename),
+    plot = p_availability_cal_full, width = 350, height = 300, units = "mm", dpi = 300, bg = "white"
+  )
+
+  ## Calendario do corpo do relatorio -- mesmas top N unidades de idf_sel
+  ## (ranking pelo historico completo, inalterado), mas so' os ultimos 6
+  ## meses do periodo -- o historico completo, com muitos meses lado a
+  ## lado, fica demasiado apertado/ilegivel na largura do corpo do docx
+  ## (ver o anexo acima para o periodo completo). Pedido do Paulo, 2026-08.
+  availability_cal_report_months <- 6
+  availability_cal_report_from   <- seq(report_end, length.out = 2, by = sprintf("-%d months", availability_cal_report_months))[2]
+  p_availability_cal <- plot_availability_calendar(
+    idf_availability_dt[date >= availability_cal_report_from], idf_availability_summary$by_idf,
     idf_sel = idf_sel, top_n = idf_availability_top_n
   )
   ggsave(
     file.path(folder_output, paste0("idf_availability_calendar_", report_start, "to", report_end, ".png")),
     plot = p_availability_cal, width = 200, height = 90, units = "mm", dpi = 300, bg = "white"
   )
-  
+
   p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
   ggsave(
     file.path(folder_output, paste0("idf_availability_frequency_", report_start, "to", report_end, ".png")),
@@ -1078,6 +1099,25 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     plot = p_latency, width = 180, height = 120, units = "mm", dpi = 300, bg = "white"
   )
 
+  # Padrao temporal da latencia (media +/- SD, por response_timeline_unit) --
+  # secção "Latency Temporal Pattern" (3.1.3) do relatorio. Farm-wide, nao
+  # depende de fenologia/min_indiv_bins_dt (ao contrario da secção 8, que
+  # reutiliza este MESMO latency_timeline_dt em vez de o recalcular).
+  source("R/curtailment_response_timeline.R")
+
+  latency_timeline_dt <- summarise_latency_timeline(latency_dt, unit = response_timeline_unit)
+  p_latency_timeline  <- plot_latency_timeline(latency_timeline_dt)
+
+  write_xlsx_local(
+    list(Latency_timeline = latency_timeline_dt),
+    file.path(folder_output, paste0("curtailment_response_latency_timeline_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+  )
+
+  ggsave(
+    file.path(folder_output, paste0("curtailment_response_latency_timeline_", date(scada_ini), "to", date(scada_end), ".png")),
+    plot = p_latency_timeline, width = 180, height = 100, units = "mm", dpi = 300, bg = "white"
+  )
+
   ### 3.7. Safe distance (metodologia KNE) ----
 
   #safe_dist_rpm_threshold, safe_dist_speed_trim_q, safe_dist_reference_line_m,
@@ -1168,17 +1208,17 @@ if (isTRUE(run_sections$fatality_investigation)) {
   # R/fatality_track_investigation.R)
   fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
 
-  # 2) disponibilidade das unidades IDF da turbina + resposta a curtailments,
-  #    na mesma janela -- reutiliza os thresholds de 3.1/3.5-3.6 (ver
-  #    R/fatality_window_analysis.R). Precisa de heartb_dt; a parte de
-  #    resposta a curtailments so produz resultado se scada_dt tambem existir
-  #    (fica com detail/by_flag vazios caso contrario, sem gerar erro).
+  # 2) disponibilidade das unidades IDF da turbina + resposta a curtailments
+  #    (latencia/no-response), na mesma janela -- reutiliza os thresholds de
+  #    3.1/3.5-3.6b (ver R/fatality_window_analysis.R). Precisa de heartb_dt;
+  #    a parte de resposta a curtailments so produz resultado se scada_dt
+  #    tambem existir (fica com detail/summary vazios caso contrario, sem
+  #    gerar erro).
   if (exists("heartb_dt")) {
 
     source("R/availability_daylight.R")
     source("R/curtailment_response.R")
-    source("R/curtailment_shutdown_time.R")
-    source("R/curtailment_response_classify.R")
+    source("R/curtailment_response_latency.R")
     source("R/track_min_individuals.R")
     source("R/fatality_window_analysis.R")
 
@@ -1189,9 +1229,8 @@ if (isTRUE(run_sections$fatality_investigation)) {
       manual_matrix_dt = if (exists("turbine_idf_manual_dt")) turbine_idf_manual_dt else NULL,
       lat = proj_lat, lon = proj_lon, tz = proj_timezone,
       offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min,
-      start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
-      drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
-      shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut,
+      start_end_gap_sec = curtailment_start_end_gap_sec, decline_pct_threshold = curtailment_latency_decline_pct,
+      buffer_after_end_sec = shutdown_time_buffer_sec, cutin_rpm = curtailment_cutin_rpm,
       fallback_idf_units = heartbeat_idf_units,
       track_dt = track_dt, post_days = fatality_post_incident_days,
       min_indiv_bin_min = min_individuals_bin_min, min_indiv_merge_dist_m = min_individuals_merge_dist_m,
@@ -1217,7 +1256,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
     }), fill = TRUE)
 
     fatality_window_response_summary_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
-      dt <- fatality_windows[[id]]$curtailment_response$by_flag
+      dt <- fatality_windows[[id]]$curtailment_response$summary
       if (nrow(dt) == 0L) return(NULL)
       dt[, incident_id := id]
       dt[]
@@ -1233,7 +1272,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
     }), fill = TRUE)
 
     fatality_global_response_summary_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
-      dt <- fatality_windows[[id]]$curtailment_response_global$by_flag
+      dt <- fatality_windows[[id]]$curtailment_response_global$summary
       if (is.null(dt) || nrow(dt) == 0L) return(NULL)
       dt[, incident_id := id]
       dt[]
@@ -1516,26 +1555,22 @@ write_xlsx_local(
 ## 8. System performance vs. bird phenology (evolucao temporal) ----
 ##
 ## Evolucao temporal (por omissao semanal, response_timeline_unit --
-## definido no userSettings_BSH.R) da qualidade de resposta a curtailments
-## (missed/delayed) em curtl_scada_dt, sobreposta a abundancia (min
-## individuals) das especies dos incidentes de fatalidade -- para dar
-## contexto a se a performance do sistema varia com os periodos de maior
-## movimento migratorio. Ver R/curtailment_response_timeline.R. So corre se
-## a seccao 3.5-3.7 (curtl_scada_dt) e a 6.4 (min_indiv_bins_dt) tiverem
-## corrido (run_sections + dados disponiveis).
+## definido no userSettings_BSH.R) de no-response events e latencia
+## (latency_timeline_dt, ja calculado na secção 3.6b) em curtl_scada_dt,
+## sobreposta a abundancia (min individuals) das especies dos incidentes de
+## fatalidade -- para dar contexto a se a performance do sistema varia com
+## os periodos de maior movimento migratorio. Ver
+## R/curtailment_response_timeline.R. So corre se a seccao 3.5-3.7
+## (curtl_scada_dt) e a 6.4 (min_indiv_bins_dt) tiverem corrido
+## (run_sections + dados disponiveis) -- os PNGs latency_timeline_<especie>.png
+## gerados aqui reutilizam o MESMO plot_latency_timeline() da secção 3.6b
+## (3.1.3 do relatorio), farm-wide, so' com a abundancia sobreposta a variar
+## por especie -- material de apoio/anexo, nao embutidos no relatorio.
 ##
 
 if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
 
-  source("R/curtailment_response_classify.R")
   source("R/curtailment_response_timeline.R")
-
-  response_flag_dt <- classify_response_flag(
-    curtl_scada_dt, scada_dt,
-    start_end_gap_sec = curtailment_start_end_gap_sec, max_next_gap_sec = curtailment_max_next_gap_sec,
-    drop_pct_threshold = curtailment_drop_pct_threshold, rpm_threshold = safe_shutdown_rpm,
-    shutdown_thresholds = shutdown_time_thresholds, shutdown_high_cut_sec = shutdown_time_high_cut
-  )
 
   # Exemplos ilustrativos de perfil de RPM -- ate curtailment_example_n
   # curtailments "no_response"/"slowest" (mesma classificacao de
@@ -1582,22 +1617,27 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
     file.path(folder_output, "curtailment_response_examples.xlsx")
   )
 
-  response_timeline_dt  <- summarise_response_timeline(response_flag_dt, unit = response_timeline_unit)
+  # latency_timeline_dt ja' calculado na secção 3.6b (mesmo latency_dt,
+  # mesmo response_timeline_unit) -- reutilizado aqui, nao recalculado
   abundance_timeline_dt <- summarise_abundance_timeline(min_indiv_bins_dt, unit = response_timeline_unit)
 
   write_xlsx_local(
-    list(Response_timeline = response_timeline_dt, Abundance_timeline = abundance_timeline_dt),
+    list(Response_timeline = latency_timeline_dt, Abundance_timeline = abundance_timeline_dt),
     file.path(folder_output, "response_vs_phenology_timeline.xlsx")
   )
 
   # um par de plots por especie de fatality_incidents -- contexto direto
   # para a seccao nova do relatorio
   for (sp in unique(fatality_incidents$species)) {
-    p_pair <- plot_response_vs_phenology(response_timeline_dt, abundance_timeline_dt, species_sel = sp)
+    p_pair <- plot_response_vs_phenology(latency_timeline_dt, abundance_timeline_dt, species_sel = sp)
     sp_slug <- gsub("[^A-Za-z0-9]+", "_", sp)
     ggsave(
       file.path(folder_output, paste0("response_timeline_", sp_slug, ".png")),
       plot = p_pair$response_plot, width = 8, height = 4, dpi = 300, bg = "white"
+    )
+    ggsave(
+      file.path(folder_output, paste0("latency_timeline_", sp_slug, ".png")),
+      plot = p_pair$latency_plot, width = 8, height = 4, dpi = 300, bg = "white"
     )
     ggsave(
       file.path(folder_output, paste0("abundance_timeline_", sp_slug, ".png")),
@@ -2038,6 +2078,9 @@ report_params <- list(
   availability_by_idf    = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
   availability_plot_cal  = if (exists("p_availability_cal")) p_availability_cal else NULL,
   availability_plot_freq = if (exists("p_availability_freq")) p_availability_freq else NULL,
+  availability_cal_report_months = if (exists("availability_cal_report_months")) availability_cal_report_months else NULL,
+  availability_cal_full_filename = if (exists("availability_cal_full_filename")) availability_cal_full_filename else NULL,
+  idf_availability_top_n          = if (exists("idf_availability_top_n")) idf_availability_top_n else NULL,
 
   coverage_turbine_summary = if (exists("coverage_turbine_summary")) coverage_turbine_summary else NULL,
   coverage_idf_summary     = if (exists("coverage_idf_summary")) coverage_idf_summary else NULL,
@@ -2045,6 +2088,9 @@ report_params <- list(
   latency_by_turbine     = if (exists("summary_latency_by_turbine")) summary_latency_by_turbine else NULL,
   latency_bands          = if (exists("summary_latency_bands")) summary_latency_bands else NULL,
   latency_plot           = if (exists("p_latency")) p_latency else NULL,
+  latency_timeline_plot  = if (exists("p_latency_timeline")) p_latency_timeline else NULL,
+  latency_n_no_data      = if (exists("summary_latency")) summary_latency$n_no_data else NULL,
+  latency_pct_no_data    = if (exists("summary_latency")) summary_latency$pct_no_data else NULL,
   latency_n_below_cutin  = if (exists("summary_latency")) summary_latency$n_below_cutin else NULL,
   latency_pct_below_cutin = if (exists("summary_latency")) summary_latency$pct_below_cutin else NULL,
 
@@ -2131,6 +2177,7 @@ report_params <- list(
 
   curtailment_latency_decline_pct = curtailment_latency_decline_pct,
   curtailment_cutin_rpm           = curtailment_cutin_rpm,
+  response_timeline_unit          = response_timeline_unit,
 
   curtailment_example_window_before_min = curtailment_example_window_before_min,
   curtailment_example_window_after_min  = curtailment_example_window_after_min,

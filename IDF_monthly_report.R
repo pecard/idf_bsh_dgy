@@ -687,6 +687,23 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
     plot = p_latency, width = 180, height = 120, units = "mm", dpi = 300, bg = "white"
   )
 
+  # Padrao temporal da latencia (media +/- SD) -- secção "Latency Temporal
+  # Pattern" do relatorio. Ver a mesma secção em IDF_analysis.R (3.6b).
+  source("R/curtailment_response_timeline.R")
+
+  latency_timeline_dt <- summarise_latency_timeline(latency_dt, unit = response_timeline_unit)
+  p_latency_timeline  <- plot_latency_timeline(latency_timeline_dt)
+
+  write_xlsx_local(
+    list(Latency_timeline = latency_timeline_dt),
+    file.path(folder_output, sprintf("curtailment_response_latency_timeline_%s.xlsx", report_month))
+  )
+
+  ggsave(
+    file.path(folder_output, sprintf("curtailment_response_latency_timeline_%s.png", report_month)),
+    plot = p_latency_timeline, width = 180, height = 100, units = "mm", dpi = 300, bg = "white"
+  )
+
   ### 5.2c Exemplos ilustrativos de perfil de RPM -- mesma logica de
   ### IDF_analysis.R secção 8 (no_response/slowest a partir de latency_dt),
   ### aqui dentro da mesma secção 5 em vez de depender de uma secção de
@@ -990,6 +1007,9 @@ monthly_report_params <- list(
   latency_by_turbine      = if (exists("summary_latency_by_turbine")) summary_latency_by_turbine else NULL,
   latency_bands           = if (exists("summary_latency_bands")) summary_latency_bands else NULL,
   latency_plot            = if (exists("p_latency")) p_latency else NULL,
+  latency_timeline_plot   = if (exists("p_latency_timeline")) p_latency_timeline else NULL,
+  latency_n_no_data       = if (exists("summary_latency")) summary_latency$n_no_data else NULL,
+  latency_pct_no_data     = if (exists("summary_latency")) summary_latency$pct_no_data else NULL,
   latency_n_below_cutin   = if (exists("summary_latency")) summary_latency$n_below_cutin else NULL,
   latency_pct_below_cutin = if (exists("summary_latency")) summary_latency$pct_below_cutin else NULL,
 
@@ -1047,6 +1067,7 @@ monthly_report_params <- list(
 
   curtailment_latency_decline_pct = curtailment_latency_decline_pct,
   curtailment_cutin_rpm           = curtailment_cutin_rpm,
+  response_timeline_unit          = response_timeline_unit,
 
   curtailment_example_window_before_min = curtailment_example_window_before_min,
   curtailment_example_window_after_min  = curtailment_example_window_after_min,

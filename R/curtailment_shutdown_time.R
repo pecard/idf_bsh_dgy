@@ -53,10 +53,14 @@ time_to_rpm_thresholds <- function(curtl_dt, scada_dt, thresholds = c(2, 1, 0),
   dt <- as.data.table(curtl_dt)
   dt[, curtailment_id := .I]
 
-  ## baseline no start (tolerancia apertada) -- so seguimos curtailments com
-  ## match fiavel E acima do cut-in
+  ## baseline no start -- roll = start_end_gap_sec (LOCF, so' aceita leitura
+  ## ANTES do start, nunca depois), mesma razao de R/curtailment_response_latency.R,
+  ## time_to_first_decline(): so' seguimos curtailments com match fiavel E
+  ## acima do cut-in, e o cut-in em si (rpm >= cutin_rpm) nao pode ser
+  ## avaliado sobre uma leitura ja contaminada por uma desaceleracao real
+  ## pos-start
   start_events <- dt[, .(id = curtailment_id, turbine, event_time = start)]
-  start_match  <- match_nearest_rpm(start_events, scada_dt, max_gap_sec = start_end_gap_sec)
+  start_match  <- match_nearest_rpm(start_events, scada_dt, max_gap_sec = start_end_gap_sec, roll = start_end_gap_sec)
 
   valid_ids <- start_match[valid_match == TRUE & rpm >= cutin_rpm, id]
   dt_valid  <- dt[curtailment_id %in% valid_ids]

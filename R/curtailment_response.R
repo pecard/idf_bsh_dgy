@@ -53,7 +53,17 @@
 ##    events_dt precisa de: id, turbine, event_time
 ##    scada_dt precisa de: turbinelabel, datetime, value, readingname
 
-match_nearest_rpm <- function(events_dt, scada_dt, max_gap_sec = 15) {
+## roll (novo, 2026-08, ver discussao start_end_gap_sec em
+## R/curtailment_response_latency.R): por omissao "nearest" (leitura mais
+## proxima no tempo, antes OU depois do evento -- comportamento original,
+## mantido para todos os usos existentes). Quando usado para o BASELINE de
+## um curtailment (o "start"), um numero positivo (ex: roll = max_gap_sec)
+## restringe a LOCF -- so' aceita leitura a <= esse numero de segundos ANTES
+## do evento, nunca depois. Isto elimina, por construcao, o risco de o
+## baseline ja refletir uma desaceleracao real causada pelo proprio
+## curtailment (que so' pode acontecer numa leitura POSTERIOR ao sinal) --
+## permite relaxar a tolerancia (menos no_data) sem contaminar o baseline.
+match_nearest_rpm <- function(events_dt, scada_dt, max_gap_sec = 15, roll = "nearest") {
 
   rpm_dt <- scada_dt[readingname == "RPM", .(turbine = turbinelabel, datetime, rpm = value)]
   setkey(rpm_dt, turbine, datetime)
@@ -61,7 +71,7 @@ match_nearest_rpm <- function(events_dt, scada_dt, max_gap_sec = 15) {
   matched <- rpm_dt[
     events_dt,
     on = .(turbine, datetime = event_time),
-    roll = "nearest",
+    roll = roll,
     .(
       id             = i.id,
       turbine        = i.turbine,
