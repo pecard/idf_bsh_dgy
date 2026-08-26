@@ -59,8 +59,14 @@ data_coverage_summary <- function(track_dt, curtl_dt, scada_dt, heartb_dt) {
 
 daily_presence <- function(dt, datetime_col, label) {
 
+  # Ordem das colunas (date, n, dataset) tem de ser igual ao caso nao-vazio
+  # abaixo -- rbindlist() combina por posicao quando as colunas nao tem
+  # nomes identicos em toda a lista (ver use.names='check' warning), e um
+  # dataset vazio no mes do relatorio (ex: Curtailments, quando so' algumas
+  # turbinas tem cobertura IDF) e' o caso normal no relatorio mensal, nao
+  # uma excecao rara.
   if (is.null(dt) || nrow(dt) == 0L) {
-    return(data.table(dataset = character(), date = as.Date(character()), n = integer()))
+    return(data.table(date = as.Date(character()), n = integer(), dataset = character()))
   }
 
   dt <- as.data.table(dt)
@@ -81,7 +87,7 @@ data_coverage_calendar <- function(track_dt, curtl_dt, scada_dt, heartb_dt) {
     daily_presence(curtl_dt,  "start",     "Curtailments"),
     daily_presence(scada_dt,  "datetime",  "SCADA"),
     daily_presence(heartb_dt, "timestamp", "Heartbeats")
-  ))
+  ), use.names = TRUE)
 
   if (nrow(daily) == 0L) stop("Nenhuma das 4 bases de dados tem dados.")
 
@@ -144,7 +150,7 @@ daily_overlap <- function(dt_a, col_a, label_a, dt_b, col_b, label_b) {
   daily <- rbindlist(list(
     daily_presence(dt_a, col_a, label_a),
     daily_presence(dt_b, col_b, label_b)
-  ))
+  ), use.names = TRUE)
 
   if (nrow(daily) == 0L) stop("Nenhum dos dois datasets tem dados.")
 
@@ -219,9 +225,11 @@ plot_daily_overlap <- function(overlap_dt, label_a, label_b) {
 
 daily_presence_by_turbine <- function(dt, datetime_col, turbine_col, label) {
 
+  # Mesma nota de ordem de colunas de daily_presence() acima (turbine, date,
+  # n, dataset tem de bater com o caso nao-vazio).
   if (is.null(dt) || nrow(dt) == 0L) {
-    return(data.table(dataset = character(), turbine = character(),
-                      date = as.Date(character()), n = integer()))
+    return(data.table(turbine = character(), date = as.Date(character()),
+                      n = integer(), dataset = character()))
   }
 
   dt <- as.data.table(dt)
@@ -241,7 +249,7 @@ daily_overlap_by_turbine <- function(dt_a, col_a, turbine_col_a, label_a,
   daily <- rbindlist(list(
     daily_presence_by_turbine(dt_a, col_a, turbine_col_a, label_a),
     daily_presence_by_turbine(dt_b, col_b, turbine_col_b, label_b)
-  ))
+  ), use.names = TRUE)
 
   if (nrow(daily) == 0L) stop("Nenhum dos dois datasets tem dados.")
 
