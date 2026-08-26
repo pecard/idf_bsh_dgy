@@ -132,7 +132,10 @@ databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 ## filtra por substring "DGY" (confirmado pelo Paulo, 2026-08: aparece nos 4
 ## datasets principais, ao contrario do Bash onde heartbeats precisou de
 ## uma alternancia "BSH|Bash" -- ver farm_pattern em userSettings_BSH.R e
-## list_files_multi_dir(), R/read_utils.R).
+## list_files_multi_dir(), R/read_utils.R). Mantido como 2a camada de
+## filtro mesmo agora que "DGY" tambem esta' embutido em cada
+## *_pattern abaixo (redundante de proposito -- protege mesmo que um dos
+## padroes venha a ser relaxado no futuro).
 farm_pattern <- "DGY"
 
 ## Identificador curto e limpo do parque -- usado so' para nao colidir com
@@ -140,10 +143,16 @@ farm_pattern <- "DGY"
 ## partilhadas (ver IDF_analysis.R, logo apos o source() deste ficheiro).
 farm_code <- "DGY"
 
-trackreport_pattern  <- "_Track_"             # ex: ..._Track_...csv
-curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
-scada_pattern        <- "SCADA_.+csv"         # ex: SCADA_20260201_....csv
-heartbeats_pattern   <- "Heartbeats_.+csv"    # ex: Heartbeats_20260201_....csv
+## "DGY" aparece algures no nome de cada ficheiro, mas NAO numa posicao
+## fixa face a palavra-chave do dataset (confirmado pelo Paulo, 2026-08 --
+## nao e' sempre prefixo) -- por isso cada padrao aceita "DGY" antes OU
+## depois da palavra-chave (list.files()/grepl() do R base usa regex POSIX
+## Extended, sem lookahead, daqui a necessidade da alternancia explicita
+## nos 2 sentidos em vez de algo como "(?=.*DGY)(?=.*_Track_)").
+trackreport_pattern  <- "(DGY.*_Track_|_Track_.*DGY)"                                             # ex: ..._Track_...DGY...csv ou ...DGY..._Track_...csv
+curtailments_pattern <- "(DGY.*curtail_orders|curtail_orders.*DGY|DGY.*Curtailments|Curtailments.*DGY)" # ex: Curtailments_DGY_20260201_....xlsx
+scada_pattern        <- "(SCADA_.*DGY.*csv|DGY.*SCADA_.+csv)"                                     # ex: SCADA_DGY_20260201_....csv (DGY tambem antes de "SCADA_" ou depois de "csv" fica coberto)
+heartbeats_pattern   <- "(Heartbeats_.*DGY.*csv|DGY.*Heartbeats_.+csv)"                            # ex: Heartbeats_DGY_20260201_....csv (idem)
 
 ## As 4 unidades IDF confirmadas como "Existing Coverage" em IDF_DZH.shp
 ## (as outras 2 entradas desse shapefile, ambas "DZH-23", estao em pastas
