@@ -191,6 +191,17 @@ merged_ids <- groups_ev[, .N, by = synth_track_id][N == max(N), synth_track_id]
 ids_ev     <- groups_ev[synth_track_id == merged_ids, track_id]
 plot_candidate_tracks(track_dt_day, ids_ev, edges_dt = edges_ev[track_id_a %in% ids_ev & track_id_b %in% ids_ev])
 
+#
+# Plot do resultado FINAL (fragmentos originais em cinzento + trajetoria
+# sintetica reconciliada por cima, ver R/track_harmonization.R secção 8) --
+# para o maior grupo Steppe-Eagle ja validado nesta conversa:
+#
+groups_se    <- reconciliation_by_species[["Steppe-Eagle"]]$groups
+duplicate_se <- reconciliation_by_species[["Steppe-Eagle"]]$duplicate_edges
+synth_se     <- stitch_synthetic_tracks(track_dt_day, "Steppe-Eagle", groups_se, duplicate_se)
+big_group_se <- groups_se[, .N, by = synth_track_id][N == max(N), synth_track_id]
+plot_synthetic_track(track_dt_day, synth_se, big_group_se)
+
 
 
 ##
