@@ -1545,14 +1545,22 @@ if (isTRUE(run_sections$min_individuals)) {
   # altura ajustada ao nº de especies (1 facet por especie, ncol = 1)
   n_species_min_indiv <- length(unique(min_indiv_bins_dt$spec))
   
-  p_min_indiv <- plot_min_individuals_per_bin(min_indiv_bins_dt)
+  # species_sel = prioritysp (explicito) -- sem isto, os 2 plots abaixo
+  # caiam no default hardcoded de plot_min_individuals_per_bin()/
+  # plot_daily_max_individuals() (c("Egyptian-Vulture", "Steppe-Eagle"),
+  # afinado para os 2 incidentes do Bash) e mostravam so' essas 2 especies,
+  # por muito mais que estivesse em prioritysp -- inconsistente com
+  # n_species_min_indiv (altura da imagem) acima, que ja' conta TODAS as
+  # especies de prioritysp presentes nos dados. Faltava Golden-Eagle (e as
+  # restantes) no DGY por esta razao, 2026-08.
+  p_min_indiv <- plot_min_individuals_per_bin(min_indiv_bins_dt, species_sel = prioritysp)
   p_min_indiv
   ggsave(
     file.path(folder_output, "min_individuals_per_bin.png"),
     plot = p_min_indiv, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
   )
-  
-  p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt, date_breaks = "1 month", date_labels = "%Y-%m", geom_type = "bar")
+
+  p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt, species_sel = prioritysp, date_breaks = "1 month", date_labels = "%Y-%m", geom_type = "bar")
   p_min_indiv_daily
   ggsave(
     file.path(folder_output, "min_individuals_daily_max.png"),
