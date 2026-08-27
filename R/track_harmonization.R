@@ -386,6 +386,30 @@ stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edge
 ## que for). Pontos fora de qualquer janela multi-ativa (incluindo troços
 ## solo de um membro do cluster antes/depois de coexistir com outro) passam
 ## tal e qual, sem resampling.
+##
+## EM ABERTO (2026-08, caso real Steppe-Eagle, a retomar): mesmo com os 2
+## bugs acima corrigidos, plot_synthetic_track(..., show_raw = FALSE)
+## ainda mostra um padrao em leque nas zonas de cluster -- confirmado (via
+## velocidade implicita ponto-a-ponto) que NAO vem de oscilacao DENTRO dos
+## pontos "merged_duplicate" em si, que sao suaves. Vem da FRONTEIRA entre
+## um troço "single" (posicao bruta, na referencia da SUA propria unidade,
+## com o desvio de calibracao dessa unidade por corrigir) e o troço
+## "merged_duplicate" adjacente (media de 2+ unidades) -- ao entrar/sair de
+## um cluster, a posicao reportada salta de "so' a unidade A" para "media
+## de A e B", um salto de ~metade do desvio de calibracao entre as
+## unidades, mesmo sem o individuo se ter deslocado. Com varias
+## entradas/saidas de cluster proximas no tempo (caso do Steppe-Eagle: C142
+## entra/sai, FC6 entra/sai, ABE entra/sai, E4E2 entra/sai, tudo em ~2min),
+## os saltos acumulam-se visualmente num leque.
+##
+## Ideia do Paulo para retomar: os troços "single" adjacentes a um cluster
+## precisam da SUA PROPRIA correcao de calibracao (nao passar a posicao
+## bruta tal e qual) -- usar o desvio estimado durante a janela de
+## sobreposicao validada (ver find_duplicate_edges()/median_dist_m) para
+## puxar o troço solo dessa unidade para a mesma referencia do troço
+## fundido, eliminando o salto na fronteira. Em aberto: para que referencia
+## corrigir (unidade A, B, ou a media), e ate' que distancia/tempo do
+## cluster estender a correcao antes de decair.
 
 .merge_group_points <- function(pts, dup_pairs, grid_step_sec = 1) {
 
