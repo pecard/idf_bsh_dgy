@@ -14,27 +14,41 @@
 ##      293-310). Os 2 tracks NAO se sobrepoem no tempo.
 ##
 ##   2. "duplicate" -- 2 unidades IDF diferentes registam o MESMO individuo
-##      em SIMULTANEO (tracks sobrepostos no tempo), mas por erro de
-##      calibracao entre as 2 unidades ficam desviados espacialmente um do
-##      outro (tipicamente poucos metros, nao os ~50m do handoff). Testar
-##      isto por "distancia minima em algum instante" (como
+##      em SIMULTANEO (tracks sobrepostos no tempo), desviados espacialmente
+##      um do outro por um erro de calibracao/geometria ENTRE as 2 unidades.
+##      Testar isto por "distancia minima em algum instante" (como
 ##      count_min_individuals_per_bin(), R/track_min_individuals.R) daria
-##      demasiados falsos positivos -- 2 aves DIFERENTES podem passar a
-##      <50m uma da outra por um instante sem serem duplicados. O sinal real
-##      e' os 2 tracks manterem-se proximos ao longo de TODA a janela em que
-##      coexistem, nao so' num ponto.
+##      demasiados falsos positivos -- 2 aves DIFERENTES podem passar perto
+##      uma da outra por um instante sem serem duplicados. O sinal real e'
+##      os 2 tracks manterem uma distancia relativa ESTAVEL ao longo de TODA
+##      a janela em que coexistem, nao so' num ponto.
+##
+##      IMPORTANTE (revisto 2026-08 com dados reais BSH, unidades 31/32,
+##      Steppe-Eagle, 2026-08-07): o desvio de calibracao NAO e' "poucos
+##      metros" como se assumiu inicialmente a partir da inspecao visual --
+##      em 5 pares reais confirmados como o MESMO individuo, a distancia
+##      mediana andou entre 130-173m, MUITO acima de qualquer limiar
+##      absoluto pequeno (0% dentro de 20m OU 50m). O que distinguiu estes
+##      pares de 2 aves diferentes nao foi a MAGNITUDE da distancia, foi a
+##      sua ESTABILIDADE -- dist_max-dist_min ficou entre 6-49m dentro de
+##      cada par, i.e. um desvio sistematico quase constante entre as 2
+##      unidades para aquele objeto, nao um "por acaso perto". Por isso o
+##      teste usa max_median_dist_m (um teto de sanidade generoso sobre a
+##      magnitude, para nao fundir 2 aves em formacao) + max_spread_m (o
+##      criterio que realmente decide -- quao estavel e' o desvio em volta
+##      da SUA PROPRIA mediana, nao em volta de 0).
 ##
 ##   3. Combinacao das 2 -- 2 cadeias de handoff (uma por unidade IDF),
-##      ligadas entre si por um par "duplicate" -- ver
+##      ligadas entre si por um ou mais pares "duplicate" -- ver
 ##      build_reconciliation_groups() abaixo, que junta os 2 tipos de aresta
 ##      no MESMO grafo de componentes conexas, exatamente para capturar isto.
 ##
 ## Parametros acordados com o Paulo (2026-08): handoff testado a 15-30s /
-## 50m; duplicado testado por FRACCAO ALTA (nao 100%) dos instantes
-## sobrepostos dentro de uma distancia fixa (max_duplicate_dist_m), para
-## tolerar um ponto solto de calibracao mais ruidoso sem invalidar o par
-## inteiro. Os valores por omissao abaixo sao um ponto de partida, nao
-## valores validados -- a rever depois de ver casos reais (ver
+## 50m. Duplicado: FRACCAO ALTA (nao 100%) dos instantes sobrepostos dentro
+## de max_spread_m da MEDIANA do par (nao de um valor fixo), mais um teto de
+## sanidade max_median_dist_m sobre a propria mediana -- ver nota acima. Os
+## valores por omissao abaixo sao um ponto de partida, nao valores
+## validados -- a rever depois de ver mais casos reais (ver
 ## explore_track_harmonization.R).
 ##
 ## Depende de: data.table, plotly, R/track_min_individuals.R (.uf_components
@@ -120,18 +134,21 @@ find_handoff_edges <- function(track_dt, species, time_window_sec = 30, max_dist
 
 ##
 ## 2. Arestas "duplicate" -- 2 unidades IDF diferentes, tracks sobrepostos no
-##    tempo, proximos ao longo de uma FRACCAO ALTA (nao 100%) da janela de
-##    sobreposicao ----
+##    tempo, com um desvio ESTAVEL entre si ao longo de uma FRACCAO ALTA
+##    (nao 100%) da janela de sobreposicao ----
 ##
 ## 1º passo (foverlaps, barato): so' intervalos [start,end] sobrepostos.
 ## 2º passo (so' nos candidatos sobreviventes, mais caro): reamostra os 2
 ## tracks para uma grelha temporal comum (uniao dos timestamps de ambos
-## dentro da sobreposicao, interpolacao linear -- stats::approx()) e mede a
-## fraccao de instantes com distancia <= max_duplicate_dist_m.
+## dentro da sobreposicao, interpolacao linear -- stats::approx()) e mede,
+## para cada instante, o desvio da distancia A' PROPRIA MEDIANA do par (nao
+## a zero) -- ver nota no topo do ficheiro sobre porque a magnitude da
+## distancia (max_median_dist_m, so um teto de sanidade) NAO e' o criterio
+## decisivo, so' a sua estabilidade (max_spread_m) o e'.
 ##
 
-find_duplicate_edges <- function(track_dt, species, max_duplicate_dist_m = 20,
-                                  min_overlap_frac = 0.8, min_overlap_sec = 10) {
+find_duplicate_edges <- function(track_dt, species, max_median_dist_m = 300,
+                                  max_spread_m = 50, min_overlap_frac = 0.8, min_overlap_sec = 10) {
 
   dt <- track_dt[spec == species, .(track_id, timestamp, utm_x, utm_y, idf)]
   data.table::setorder(dt, track_id, timestamp)
@@ -139,7 +156,7 @@ find_duplicate_edges <- function(track_dt, species, max_duplicate_dist_m = 20,
 
   empty <- data.table::data.table(
     track_id_a = dt$track_id[0], track_id_b = dt$track_id[0],
-    overlap_sec = numeric(), frac_within_dist = numeric()
+    overlap_sec = numeric(), median_dist_m = numeric(), frac_within_spread = numeric()
   )
   if (data.table::uniqueN(dt$track_id) < 2L) return(empty)
 
@@ -184,7 +201,7 @@ find_duplicate_edges <- function(track_dt, species, max_duplicate_dist_m = 20,
     overlap_sec <- as.numeric(difftime(t1, t0, units = "secs"))
 
     if (overlap_sec < min_overlap_sec) {
-      list(overlap_sec = overlap_sec, frac_within_dist = NA_real_)
+      list(overlap_sec = overlap_sec, median_dist_m = NA_real_, frac_within_spread = NA_real_)
     } else {
       grid <- sort(unique(c(
         as.numeric(pa[timestamp >= t0 & timestamp <= t1, timestamp]),
@@ -195,11 +212,16 @@ find_duplicate_edges <- function(track_dt, species, max_duplicate_dist_m = 20,
       bx <- stats::approx(as.numeric(pb$timestamp), pb$utm_x, xout = grid, rule = 2)$y
       by_ <- stats::approx(as.numeric(pb$timestamp), pb$utm_y, xout = grid, rule = 2)$y
       d <- sqrt((ax - bx)^2 + (ay - by_)^2)
-      list(overlap_sec = overlap_sec, frac_within_dist = mean(d <= max_duplicate_dist_m))
+      med <- stats::median(d)
+      list(overlap_sec = overlap_sec, median_dist_m = med, frac_within_spread = mean(abs(d - med) <= max_spread_m))
     }
   }, by = .(track_id_a, track_id_b)]
 
-  out <- edges[overlap_sec >= min_overlap_sec & frac_within_dist >= min_overlap_frac]
+  out <- edges[
+    overlap_sec >= min_overlap_sec &
+      median_dist_m <= max_median_dist_m &
+      frac_within_spread >= min_overlap_frac
+  ]
   data.table::setorder(out, track_id_a, track_id_b)
   out[]
 }
@@ -373,7 +395,7 @@ stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edge
 
 ##
 ## 6. Diagnostico bruto -- TODOS os pares candidatos, SEM aplicar
-##    time_window_sec/max_dist_m (handoff) ou max_duplicate_dist_m/
+##    time_window_sec/max_dist_m (handoff) ou max_median_dist_m/max_spread_m/
 ##    min_overlap_frac (duplicate) ----
 ##
 ## Uso (2026-08, depois de Griffon-Vulture/Cinereous-Vulture/Steppe-Eagle
@@ -431,11 +453,12 @@ diagnose_handoff_candidates <- function(track_dt, species) {
 
 ## Todos os pares com QUALQUER sobreposicao temporal (>0s), com a
 ## distancia interpolada ao longo dessa sobreposicao resumida (min/mediana/
-## max + fraccao dentro de 20m e de 50m) -- para calibrar
-## max_duplicate_dist_m/min_overlap_frac contra casos reais em vez de
-## adivinhar. NAO filtra por idf_a != idf_b (ao contrario de
-## find_duplicate_edges()) -- serve tambem para despistar se a assuncao de
-## "1 unidade por track" aguenta nos dados reais.
+## max/spread + fraccao dentro de +-25m e +-50m DA PROPRIA MEDIANA do par,
+## nao de zero) -- para calibrar max_median_dist_m/max_spread_m/
+## min_overlap_frac contra casos reais em vez de adivinhar. NAO filtra por
+## idf_a != idf_b (ao contrario de find_duplicate_edges()) -- serve tambem
+## para despistar se a assuncao de "1 unidade por track" aguenta nos dados
+## reais.
 diagnose_overlap_candidates <- function(track_dt, species) {
 
   dt <- track_dt[spec == species, .(track_id, timestamp, utm_x, utm_y, idf)]
@@ -474,17 +497,26 @@ diagnose_overlap_candidates <- function(track_dt, species) {
     by_ <- stats::approx(as.numeric(pb$timestamp), pb$utm_y, xout = grid, rule = 2)$y
     d <- sqrt((ax - bx)^2 + (ay - by_)^2)
 
+    med <- stats::median(d)
+
     data.table::data.table(
       track_id_a = spans$track_id[i], track_id_b = spans$track_id[j],
       idf_a = spans$idf_units[i], idf_b = spans$idf_units[j],
-      overlap_sec     = overlap_sec,
-      dist_min        = min(d), dist_median = stats::median(d), dist_max = max(d),
-      frac_within_20m = mean(d <= 20), frac_within_50m = mean(d <= 50)
+      overlap_sec              = overlap_sec,
+      dist_min                 = min(d), dist_median = med, dist_max = max(d),
+      dist_spread              = max(d) - min(d),
+      frac_within_median_pm25m = mean(abs(d - med) <= 25),
+      frac_within_median_pm50m = mean(abs(d - med) <= 50)
     )
   }))
 
   if (is.null(out) || nrow(out) == 0L) return(data.table::data.table())
-  data.table::setorder(out, dist_median)
+  # ordena por ESTABILIDADE (dist_spread), nao pela magnitude da distancia --
+  # e' o spread pequeno que indica "mesmo individuo, desviado por
+  # calibracao", nao a distancia em si (ver nota no topo do ficheiro:
+  # confirmado nos dados reais que a mediana pode andar nos 130-180m e ainda
+  # assim ser o MESMO individuo)
+  data.table::setorder(out, dist_spread)
   out[]
 }
 

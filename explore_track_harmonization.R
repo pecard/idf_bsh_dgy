@@ -68,12 +68,20 @@ track_dt_day <- track_dt_unfilt[timestamp >= date_from & timestamp < date_to]
 ## depois de olhar para os grupos encontrados neste dia (ver
 ## R/track_harmonization.R para a justificacao de cada um)
 ##
+## duplicate_max_median_dist_m/duplicate_max_spread_m substituem o antigo
+## duplicate_max_dist_m (2026-08, dados reais BSH unidades 31/32,
+## Steppe-Eagle) -- o desvio de calibracao entre 2 unidades pode ir aos
+## 130-180m e ainda ser o MESMO individuo; o que importa e' a ESTABILIDADE
+## do desvio (max_spread_m), nao a sua magnitude (max_median_dist_m e' so'
+## um teto de sanidade generoso). Ver R/track_harmonization.R.
+##
 
-handoff_time_window_sec    <- 30
-handoff_max_dist_m         <- 50
-duplicate_max_dist_m       <- 20
-duplicate_min_overlap_frac <- 0.8
-duplicate_min_overlap_sec  <- 10
+handoff_time_window_sec      <- 30
+handoff_max_dist_m           <- 50
+duplicate_max_median_dist_m  <- 300
+duplicate_max_spread_m       <- 50
+duplicate_min_overlap_frac   <- 0.8
+duplicate_min_overlap_sec    <- 10
 
 
 ##
@@ -93,9 +101,10 @@ reconciliation_by_species <- lapply(species_sel, function(sp) {
   )
   duplicate_edges_dt <- find_duplicate_edges(
     track_dt_day, sp,
-    max_duplicate_dist_m = duplicate_max_dist_m,
-    min_overlap_frac     = duplicate_min_overlap_frac,
-    min_overlap_sec      = duplicate_min_overlap_sec
+    max_median_dist_m = duplicate_max_median_dist_m,
+    max_spread_m      = duplicate_max_spread_m,
+    min_overlap_frac  = duplicate_min_overlap_frac,
+    min_overlap_sec   = duplicate_min_overlap_sec
   )
   
   rec <- build_reconciliation_groups(track_dt_day, sp, handoff_edges_dt, duplicate_edges_dt)
