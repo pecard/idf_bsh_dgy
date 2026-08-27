@@ -419,7 +419,12 @@ diagnose_handoff_candidates <- function(track_dt, species) {
     )
   }))
 
-  data.table::setorder(out, abs(gap_sec))
+  # setorder() so aceita nomes de coluna, nao expressoes (abs(gap_sec) direto
+  # falha com "some columns are not in the data.table: [abs]") -- ordena por
+  # uma coluna auxiliar e remove-a a seguir
+  out[, abs_gap_sec := abs(gap_sec)]
+  data.table::setorder(out, abs_gap_sec)
+  out[, abs_gap_sec := NULL]
   out[]
 }
 
