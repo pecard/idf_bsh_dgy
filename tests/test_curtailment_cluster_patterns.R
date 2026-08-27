@@ -78,7 +78,7 @@ cat(paste(
 
 ## ---- summarise_turbine_marginal_contribution() ----
 
-marginal_dt <- summarise_turbine_marginal_contribution(curtl_cl_dt, c("TA1", "TB3"))
+marginal_dt <- summarise_turbine_marginal_contribution(curtl_cl_dt, c("TA1", "TB3"), cluster_dt_test)
 cat("\n===== summarise_turbine_marginal_contribution() =====\n")
 print(marginal_dt)
 cat(paste(
@@ -94,7 +94,7 @@ cat(paste(
 ## ---- permutation_test_marginal_contribution() ----
 ## H0: curtailments uniformemente distribuidos pelas turbinas do cluster.
 
-perm_ta1 <- permutation_test_marginal_contribution(curtl_cl_dt, "TA1", n_perm = 999, seed = 1)
+perm_ta1 <- permutation_test_marginal_contribution(curtl_cl_dt, "TA1", cluster_dt_test, n_perm = 999, seed = 1)
 cat("\n===== permutation_test_marginal_contribution('TA1') =====\n")
 print(perm_ta1)
 cat(paste(
@@ -106,7 +106,7 @@ cat(paste(
   "cluster de so' 2 turbinas nao e' surpreendente ao acaso.\n"
 ))
 
-perm_tb3 <- permutation_test_marginal_contribution(curtl_cl_dt, "TB3", n_perm = 999, seed = 1)
+perm_tb3 <- permutation_test_marginal_contribution(curtl_cl_dt, "TB3", cluster_dt_test, n_perm = 999, seed = 1)
 cat("\n===== permutation_test_marginal_contribution('TB3') =====\n")
 print(perm_tb3)
 cat(paste(
@@ -116,7 +116,51 @@ cat(paste(
   "plausivel (positivo, nao extremo) e nao um erro/NA.\n"
 ))
 
-perm_all <- permutation_test_marginal_contribution_all(curtl_cl_dt, c("TA1", "TA2", "TB1", "TB2", "TB3"), n_perm = 999, seed = 1)
+perm_all <- permutation_test_marginal_contribution_all(curtl_cl_dt, c("TA1", "TA2", "TB1", "TB2", "TB3"), cluster_dt_test, n_perm = 999, seed = 1)
 cat("\n===== permutation_test_marginal_contribution_all() =====\n")
 print(perm_all)
 cat("\nEsperado: 5 linhas, uma por turbina, todas com cluster_id/observed_n consistentes com as tabelas acima.\n")
+
+
+## ---- Turbina pertencente a um cluster mas SEM curtailments proprios ----
+## Bug real do DGY (corrigido 2026-08): cluster_id era inferido a partir
+## dos PROPRIOS curtailments da turbina (curtl_cl_dt), nao da sua pertenca
+## estrutural ao setor/cluster (cluster_dt) -- uma turbina de interesse sem
+## nenhum curtailment proprio (ex: sem cobertura IDF/SCADA, caso de todas
+## as turbinas de fatality_incidents no DGY) ficava com cluster_id = NA,
+## que por sua vez fazia falhar o merge por (turbine, cluster_id) em
+## summarise_turbine_critical_zone() -- a secção "zona critica" do
+## relatorio ficava vazia. Dataset isolado (nao usa cluster_dt_test/
+## curtl_cl_dt acima) para nao alterar as expectativas ja' documentadas.
+
+manual_test_zero <- list(ClusterC = c("TC1", "TC2"))
+cluster_dt_test_zero <- manual_turbine_clusters_dt(manual_test_zero)
+
+curtl_dt_test_zero <- data.table(
+  turbine  = c("TC1", "TC1"),  # TC2 nunca aparece -- 0 curtailments proprios
+  start    = c(w1, w1),
+  track_id = c("zero1", "zero2"),
+  species  = "Steppe-Eagle"
+)
+curtl_cl_dt_zero <- join_curtailments_to_clusters(curtl_dt_test_zero, cluster_dt_test_zero)
+
+marginal_tc2 <- summarise_turbine_marginal_contribution(curtl_cl_dt_zero, "TC2", cluster_dt_test_zero)
+cat("\n===== summarise_turbine_marginal_contribution('TC2', 0 curtailments proprios) =====\n")
+print(marginal_tc2)
+cat(paste(
+  "\nEsperado: cluster_id=ClusterC (NAO NA), n_turbines_in_cluster=2, n_total=0,",
+  "pct_of_cluster=0 (NAO NA), cluster_rank=1 (unico cluster), n_clusters=1,",
+  "median_weekly_pct_of_cluster=0. TC2 nunca teve curtailment proprio, mas",
+  "continua a entrar com valores reais -- antes desta correcao, ficava tudo NA.\n"
+))
+
+perm_tc2 <- permutation_test_marginal_contribution(curtl_cl_dt_zero, "TC2", cluster_dt_test_zero, n_perm = 999, seed = 1)
+cat("\n===== permutation_test_marginal_contribution('TC2', 0 curtailments proprios) =====\n")
+print(perm_tc2)
+cat(paste(
+  "\nEsperado: cluster_id=ClusterC (NAO NA), n_cluster_turbines=2 (TC1+TC2,",
+  "nao so' TC1 -- denominador tem de incluir toda a pertenca estrutural do",
+  "setor), n_cluster_total=2, observed_n=0, observed_pct=0.0,",
+  "expected_pct_uniform=50.0, p_value_gt_uniform=1 (0 e' sempre >= a",
+  "qualquer contagem simulada). Antes desta correcao, ficava tudo NA.\n"
+))

@@ -187,8 +187,8 @@ code_version <- get_code_version()
 source("R/write_utils.R")
 
 #WTG
-wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
-
+wtg <- sf::read_sf(file.path(folder_input, wtg_filename)) %>%
+  st_transform(crs_projection_plannar)
 ## IDs de turbina no shapefile (InternalNa) nao tem zero a esquerda para 1-9
 ## ("BSH1".."BSH9"), enquanto a matriz manual turbina<->IDF (ACWA_IDF_Coverage_Matrix.xlsx)
 ## e todos os outros datasets do projeto (curtailments, SCADA, tracks) usam
@@ -202,18 +202,67 @@ wtg <- sf::read_sf(file.path(folder_input, wtg_filename))
 ## (IDF_monthly_report.R, 2026-08) depois de o Paulo confirmar comparando
 ## sort(unique(wtg$InternalNa)) com sort(unique(turbine_idf_manual_dt[["Turbine ID"]])).
 ## Normalizado aqui, logo a seguir a leitura -- antes de QUALQUER consumidor
-## (o 1o e' compute_turbine_idf_coverage(), poucas linhas abaixo).
+## (o 1o e' compute_turbine_idf_coverage(), poucas linhas abaixo). Nome da
+## coluna de origem no shapefile: "InternalNa" por omissao (Bash_Turbines_UTM.shp
+## ja' tem essa coluna) -- o DGY (DZH_Turbines_Sergey_20250401_UTM.shp) so'
+## tem "Name" (confirmado 2026-08 via dbfread: sem InternalNa nenhuma), por
+## isso userSettings_DGY.R define wtg_source_id_col <- "Name". Todos os
+## consumidores a jusante (fatality_track_investigation.R,
+## coverage_3d_topography.R, curtailment_removal_risk.R,
+## track_species_clusters.R, turbine_spatial_clusters.R,
+## turbine_recent_activity.R, compute_turbine_idf_coverage() abaixo) ja'
+## recebem wtg_id_col = "InternalNa" por omissao nas suas proprias
+## assinaturas -- normalizar so' aqui, para a coluna InternalNa real, e'
+## suficiente, nao e' preciso mudar nenhuma dessas chamadas.
+wtg_source_id_col <- if (exists("wtg_source_id_col")) wtg_source_id_col else "InternalNa"
 wtg$InternalNa <- {
-  m <- regmatches(wtg$InternalNa, regexec("^([A-Za-z]+)([0-9]+)$", wtg$InternalNa))
-  vapply(seq_along(wtg$InternalNa), function(i) {
+  raw_id <- wtg[[wtg_source_id_col]]
+  m <- regmatches(raw_id, regexec("^([A-Za-z]+)([0-9]+)$", raw_id))
+  vapply(seq_along(raw_id), function(i) {
     g <- m[[i]]
-    if (length(g) < 3) return(wtg$InternalNa[i])
+    if (length(g) < 3) return(raw_id[i])
     paste0(g[2], sprintf("%02d", as.integer(g[3])))
   }, character(1))
 }
 
 #IDF
 idf <- sf::read_sf(file.path(folder_input, idf_filename))
+
+## Mesma normalizacao de nome de coluna que wtg$InternalNa acima --
+## "imaging_he" por omissao (Bash_IDF_coord.shp ja' tem essa coluna); o DGY
+## (IDF_DZH.shp) so' tem "Name" (com os mesmos valores de heartbeat_idf_units,
+## ex: "DZH01-01"), por isso userSettings_DGY.R define
+## idf_source_id_col <- "Name". Copiar para "imaging_he" (em vez de mudar o
+## idf_id_col em cada chamada) mantem compute_turbine_idf_coverage() e
+## qualquer outro consumidor futuro identicos entre parques.
+idf_source_id_col <- if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"
+idf$imaging_he <- idf[[idf_source_id_col]]
+
+## So' as unidades IDF realmente instaladas (idf_installed_units, quando
+## definido -- ver userSettings_DGY.R) -- o shapefile do DGY tem 2 registos
+## extra de cobertura suplementar/planeada (ambos "DZH-23", sem geometria
+## distinta de turbina), que entrariam na analise geometrica como unidades
+## fantasma se nao excluidos aqui. Sem efeito no Bash (nao define
+## idf_installed_units, idf fica como leu). NAO reutilizar
+## heartbeat_idf_units aqui -- essa variavel ja existe para o Bash com um
+## proposito DIFERENTE e mais estreito (filtro de heartbeats/fallback de
+## janela de fatalidade, linhas ~592/1277 abaixo, e nem sempre cobre TODAS
+## as unidades reais do parque) -- reutiliza-la para filtrar o shapefile
+## geometrico apagaria silenciosamente unidades IDF legitimas do Bash da
+## analise de cobertura.
+if (exists("idf_installed_units")) {
+  idf <- idf[idf$imaging_he %in% idf_installed_units, ]
+}
+
+## Reprojetar ANTES do buffer geometrico abaixo -- Bash_IDF_coord.shp ja'
+## esta' nativamente em UTM Zone 41N (mesmo crs_projection_plannar), por
+## isso isto e' um no-op para o Bash; IDF_DZH.shp (DGY) esta' em WGS84 puro
+## (graus) -- sem esta reprojecao, buffer_m = idf_op_detection_range
+## (metros) seria aplicado como se fossem 1000 GRAUS de raio, nao 1000m
+## (confirmado 2026-08 via os .prj de cada shapefile). Ha' outro
+## st_transform(idf, ...) mais abaixo (secção seguinte) para o resto do
+## script -- redundante mas inofensivo (reprojetar 2x para o mesmo CRS).
+idf <- sf::st_transform(idf, crs_projection_plannar)
 
 #Turbine <-> IDF unit coverage (matriz manual + validacao geometrica) --
 #turbine_idf_matrix_filename --> definido no userSettings_BSH.R
@@ -229,10 +278,10 @@ turbine_idf_coverage_wide_dt <- pivot_turbine_idf_coverage_wide(turbine_idf_cove
 
 turbine_idf_matrix_file <- file.path(folder_input, turbine_idf_matrix_filename)
 if (file.exists(turbine_idf_matrix_file)) {
-
+  
   turbine_idf_manual_dt <- readxl::read_xlsx(turbine_idf_matrix_file)
   turbine_idf_comparison_dt <- compare_turbine_idf_matrix(turbine_idf_manual_dt, turbine_idf_coverage_dt)
-
+  
   write_xlsx_local(
     list(
       Geometric_long   = turbine_idf_coverage_dt,
@@ -242,7 +291,7 @@ if (file.exists(turbine_idf_matrix_file)) {
     ),
     file.path(folder_output, "turbine_idf_coverage.xlsx")
   )
-
+  
 } else {
   print("Turbine-IDF manual matrix not available - comparison was skipped (geometric coverage still computed)")
   write_xlsx_local(
@@ -644,7 +693,7 @@ if (exists("heartb_dt")) {
   )
   
   idf_availability_summary <- summarise_availability(idf_availability_dt)
-
+  
   write_xlsx_local(
     list(By_idf = idf_availability_summary$by_idf, By_month = idf_availability_summary$by_month),
     file.path(folder_output, "idf_availability_summary.xlsx")
@@ -669,7 +718,7 @@ if (exists("heartb_dt")) {
     file.path(folder_output, availability_cal_full_filename),
     plot = p_availability_cal_full, width = 350, height = 300, units = "mm", dpi = 300, bg = "white"
   )
-
+  
   ## Calendario do corpo do relatorio -- mesmas top N unidades de idf_sel
   ## (ranking pelo historico completo, inalterado), mas so' os ultimos 6
   ## meses do periodo -- o historico completo, com muitos meses lado a
@@ -685,7 +734,7 @@ if (exists("heartb_dt")) {
     file.path(folder_output, paste0("idf_availability_calendar_", report_start, "to", report_end, ".png")),
     plot = p_availability_cal, width = 200, height = 90, units = "mm", dpi = 300, bg = "white"
   )
-
+  
   p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
   ggsave(
     file.path(folder_output, paste0("idf_availability_frequency_", report_start, "to", report_end, ".png")),
@@ -734,31 +783,31 @@ p_heartbeat_slots
 ## de decidir qual manter.
 
 if (exists("track_dt") && exists("curtl_dt")) {
-
+  
   source("R/id_transitions.R")
-
+  
   id_richness_dt <- track_species_summary(track_dt)
   id_richness_summary <- summarise_species_richness(id_richness_dt)
-
+  
   id_risk_dt <- classify_id_transition_risk(
     id_richness_dt, track_dt, curtl_dt, prioritysp,
     late_time_threshold_sec = id_transition_late_time_sec,
     late_dist_threshold_m = track_proximity_threshold_m
   )
   id_risk_summary <- summarise_id_transition_risk(id_risk_dt, curtl_dt)
-
+  
   # vista detalhada dos casos "late_curtailment", ordenada por gravidade
   # (both > dist_only > time_only), para inspecao caso a caso -- pedido do
   # Paulo depois de ver os resultados reais (146 casos)
   id_late_cases_dt <- id_transition_late_cases(id_risk_dt, curtl_dt)
-
+  
   # sensibilidade dos 2 limiares "tarde demais" -- despistar se algum e'
   # pouco efetivo/irrelevante antes de decidir a versao final (Paulo,
   # 2026-08: decidiu manter os 2, mas quer confirmar que ambos discriminam
   # alguma coisa)
   id_late_time_sensitivity_dt <- id_transition_late_time_sensitivity(id_risk_dt)
   id_late_dist_sensitivity_dt <- id_transition_late_dist_sensitivity(id_risk_dt)
-
+  
   write_xlsx_local(
     list(
       Track_species_richness = id_richness_dt,
@@ -775,35 +824,35 @@ if (exists("track_dt") && exists("curtl_dt")) {
     ),
     file.path(folder_output, "id_transitions.xlsx")
   )
-
+  
   p_id_richness <- plot_species_richness_hist(id_richness_dt)
   p_id_richness
   ggsave(
     file.path(folder_output, "id_transition_richness_hist.png"),
     plot = p_id_richness, width = 6, height = 4, dpi = 300, bg = "white"
   )
-
+  
   p_id_entropy <- plot_entropy_hist(id_richness_dt)
   p_id_entropy
   ggsave(
     file.path(folder_output, "id_transition_entropy_hist.png"),
     plot = p_id_entropy, width = 6, height = 4, dpi = 300, bg = "white"
   )
-
+  
   p_late_time <- plot_late_time_distribution(id_risk_dt, threshold_sec = id_transition_late_time_sec)
   p_late_time
   ggsave(
     file.path(folder_output, "id_transition_late_time_dist.png"),
     plot = p_late_time, width = 7, height = 4, dpi = 300, bg = "white"
   )
-
+  
   p_late_dist <- plot_late_dist_distribution(id_risk_dt, threshold_m = track_proximity_threshold_m)
   p_late_dist
   ggsave(
     file.path(folder_output, "id_transition_late_dist_dist.png"),
     plot = p_late_dist, width = 7, height = 4, dpi = 300, bg = "white"
   )
-
+  
   ## Species confusion matrix -- que outras especies aparecem no mesmo
   ## track que id_confusion_species_of_interest (Kestrel por omissao), em
   ## geral e restrito a tracks que dispararam curtailment
@@ -811,7 +860,7 @@ if (exists("track_dt") && exists("curtl_dt")) {
     track_dt, id_richness_dt, curtl_dt, id_confusion_species_of_interest
   )
   print_species_confusion_summary(id_confusion_summary, id_confusion_species_of_interest)
-
+  
   write_xlsx_local(
     list(
       Confusion_rate_compare  = id_confusion_summary$rate_compare,
@@ -820,7 +869,7 @@ if (exists("track_dt") && exists("curtl_dt")) {
     ),
     file.path(folder_output, sprintf("id_confusion_%s.xlsx", id_confusion_species_of_interest))
   )
-
+  
   p_confusion_general <- plot_species_confusion_involving(
     id_confusion_summary$confusion_general, id_confusion_species_of_interest,
     title = sprintf("Species confused with %s (all tracks)", id_confusion_species_of_interest)
@@ -829,7 +878,7 @@ if (exists("track_dt") && exists("curtl_dt")) {
     file.path(folder_output, sprintf("id_confusion_%s_general.png", id_confusion_species_of_interest)),
     plot = p_confusion_general, width = 7, height = 4, dpi = 300, bg = "white"
   )
-
+  
   p_confusion_curtailments <- plot_species_confusion_involving(
     id_confusion_summary$confusion_curtailments, id_confusion_species_of_interest,
     title = sprintf("Species confused with %s (curtailment tracks)", id_confusion_species_of_interest)
@@ -838,7 +887,7 @@ if (exists("track_dt") && exists("curtl_dt")) {
     file.path(folder_output, sprintf("id_confusion_%s_curtailments.png", id_confusion_species_of_interest)),
     plot = p_confusion_curtailments, width = 7, height = 4, dpi = 300, bg = "white"
   )
-
+  
 } else {message("track_dt/curtl_dt nao disponiveis -- 3.2 (ID transitions) saltada nesta ronda.")}
 
 
@@ -849,9 +898,9 @@ if (exists("track_dt") && exists("curtl_dt")) {
 ## decisao de politica permanente, nao uma metrica periodica -- ver
 ## R/curtailment_removal_risk.R para a metodologia acordada com o Paulo.
 if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt")) {
-
+  
   source("R/curtailment_removal_risk.R")
-
+  
   removal_dt <- evaluate_curtailment_removal_risk(
     curtl_dt_unfilt, track_dt_unfilt, prioritysp, wtg,
     removed_species = curtailment_removal_species_of_interest,
@@ -859,13 +908,13 @@ if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt")) {
   )
   removal_summary <- summarise_curtailment_removal_risk(removal_dt, proximity_threshold_m = track_proximity_threshold_m)
   print_curtailment_removal_risk_summary(removal_summary, curtailment_removal_species_of_interest)
-
+  
   # linhas COMPLETAS de curtl_dt_unfilt (todas as colunas originais) para os
   # eventos protegidos por reclassificacao -- pronto para inspecao/defesa de
   # um caso concreto sem ter de correr nada manualmente (ver
   # curtailment_removal_case_detail() em R/curtailment_removal_risk.R)
   removal_case_detail_dt <- curtailment_removal_case_detail(removal_dt, curtl_dt_unfilt)
-
+  
   write_xlsx_local(
     list(
       Removal_overview          = removal_summary$overview,
@@ -877,19 +926,19 @@ if (exists("track_dt_unfilt") && exists("curtl_dt_unfilt")) {
     ),
     file.path(folder_output, sprintf("curtailment_removal_risk_%s.xlsx", curtailment_removal_species_of_interest))
   )
-
+  
   p_removal_time_gap <- plot_removal_time_gap(removal_dt)
   ggsave(
     file.path(folder_output, sprintf("curtailment_removal_%s_time_gap.png", curtailment_removal_species_of_interest)),
     plot = p_removal_time_gap, width = 7, height = 4, dpi = 300, bg = "white"
   )
-
+  
   p_removal_dist_gap <- plot_removal_dist_gap(removal_dt, threshold_m = track_proximity_threshold_m)
   ggsave(
     file.path(folder_output, sprintf("curtailment_removal_%s_dist_gap.png", curtailment_removal_species_of_interest)),
     plot = p_removal_dist_gap, width = 7, height = 4, dpi = 300, bg = "white"
   )
-
+  
 } else {message("track_dt_unfilt/curtl_dt_unfilt nao disponiveis -- curtailment removal risk saltada nesta ronda.")}
 
 golden_eagle_cases <- curtailment_removal_case_detail(removal_dt, curtl_dt_unfilt, "Golden-Eagle")
@@ -903,20 +952,20 @@ print(golden_eagle_cases)
 ## othersp) fica visivel -- o script original descartava-o em silencio.
 
 if (exists("curtl_dt")) {
-
+  
   source("R/curtailment_species.R")
-
+  
   species_curt_dt <- classify_curtailment_species(curtl_dt, prioritysp, nonprioritysp, othersp)
   species_curt_by_species_dt <- summarise_curtailment_species(species_curt_dt)
   species_curt_by_group_dt   <- summarise_curtailment_species_group(species_curt_dt)
-
+  
   if (species_curt_by_group_dt[species_group == "uncategorized", .N] > 0) {
     message(sprintf(
       "Aviso: %d curtailments com species fora de prioritysp/nonprioritysp/othersp -- ver folha Curtailments_by_species (grupo 'uncategorized').",
       species_curt_by_group_dt[species_group == "uncategorized", n]
     ))
   }
-
+  
   write_xlsx_local(
     list(
       Curtailments_by_species = species_curt_by_species_dt,
@@ -924,7 +973,7 @@ if (exists("curtl_dt")) {
     ),
     file.path(folder_output, "curtailment_species.xlsx")
   )
-
+  
 } else {message("curtl_dt nao disponivel -- 3.3 (species-specific curtailment) saltada nesta ronda.")}
 
 
@@ -937,15 +986,15 @@ if (exists("curtl_dt")) {
 ## desatualizado -- ver correcao em "0. Filter data" acima).
 
 if (exists("track_dt") && exists("curtl_dt")) {
-
+  
   source("R/curtailment_short_track.R")
-
+  
   short_track_dt <- classify_short_track_curtailments(
     track_dt, curtl_dt, min_points = shorttrack_min_points, eval_range_m = shorttrack_eval_range
   )
   short_track_summary_dt <- summarise_short_track_curtailments(track_dt, short_track_dt, shorttrack_min_points)
   short_track_by_species_dt <- summarise_short_track_by_species(short_track_dt, prioritysp)
-
+  
   write_xlsx_local(
     list(
       Short_track_summary    = short_track_summary_dt,
@@ -954,7 +1003,7 @@ if (exists("track_dt") && exists("curtl_dt")) {
     ),
     file.path(folder_output, "curtailment_short_track.xlsx")
   )
-
+  
 } else {message("track_dt/curtl_dt nao disponiveis -- 3.4 (short-track curtailment) saltada nesta ronda.")}
 
 
@@ -992,7 +1041,7 @@ if (exists("track_dt") && exists("curtl_dt")) {
 # $by_turbine — agrupa os mesmos totais por turbina, cruzando os dois critérios numa linha por turbina.
 # 
 if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas corre se tiver dados de SCADA e o switch estiver ligado
-
+  
   source("R/curtailment_response.R")
   
   curtl_scada_dt <- curtl_dt[
@@ -1049,7 +1098,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
   summary_tt_bands      <- summarise_time_to_threshold_bands(
     tt_dt, low_cut = shutdown_time_low_cut, high_cut = shutdown_time_high_cut
   )
-
+  
   write_xlsx_local(
     list(
       Time_to_threshold = tt_dt,
@@ -1058,22 +1107,24 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     ),
     file.path(folder_output, paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end), ".xlsx"))
   )
-
+  
   p_shutdown_time <- plot_time_to_threshold(tt_dt)
-  ggsave(
-    file.path(folder_output, paste0("curtailment_shutdown_time_hist_", date(scada_ini), "to", date(scada_end), ".png")),
-    plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
-  )
-
+  if (!is.null(p_shutdown_time)) {
+    ggsave(
+      file.path(folder_output, paste0("curtailment_shutdown_time_hist_", date(scada_ini), "to", date(scada_end), ".png")),
+      plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
+    )
+  }
+  
   ### 3.6b. Latencia de resposta e eventos sem resposta ----
   ## Ver R/curtailment_response_latency.R -- pergunta diferente do shutdown
   ## time acima (quanto tempo ate a turbina ATINGIR um RPM baixo): esta
   ## mede quanto tempo ate a turbina COMECAR a reagir. Um "no-response
   ## event" e' um curtailment sem decline_pct_threshold detetado dentro da
   ## mesma janela de folga usada no shutdown time (shutdown_time_buffer_sec).
-
+  
   source("R/curtailment_response_latency.R")
-
+  
   latency_dt <- time_to_first_decline(
     curtl_scada_dt, scada_dt, decline_pct_threshold = curtailment_latency_decline_pct,
     start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec,
@@ -1082,7 +1133,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
   summary_latency            <- summarise_latency(latency_dt)
   summary_latency_by_turbine <- summarise_latency_by_turbine(latency_dt)
   summary_latency_bands      <- summarise_latency_bands(latency_dt)
-
+  
   write_xlsx_local(
     list(
       Latency    = latency_dt,
@@ -1092,39 +1143,39 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     ),
     file.path(folder_output, paste0("curtailment_response_latency_", date(scada_ini), "to", date(scada_end), ".xlsx"))
   )
-
+  
   p_latency <- plot_latency_histogram(latency_dt)
   ggsave(
     file.path(folder_output, paste0("curtailment_response_latency_hist_", date(scada_ini), "to", date(scada_end), ".png")),
     plot = p_latency, width = 180, height = 120, units = "mm", dpi = 300, bg = "white"
   )
-
+  
   # Padrao temporal da latencia (media +/- SD, por response_timeline_unit) --
   # secção "Latency Temporal Pattern" (3.1.3) do relatorio. Farm-wide, nao
   # depende de fenologia/min_indiv_bins_dt (ao contrario da secção 8, que
   # reutiliza este MESMO latency_timeline_dt em vez de o recalcular).
   source("R/curtailment_response_timeline.R")
-
+  
   latency_timeline_dt <- summarise_latency_timeline(latency_dt, unit = response_timeline_unit)
   p_latency_timeline  <- plot_latency_timeline(latency_timeline_dt)
-
+  
   write_xlsx_local(
     list(Latency_timeline = latency_timeline_dt),
     file.path(folder_output, paste0("curtailment_response_latency_timeline_", date(scada_ini), "to", date(scada_end), ".xlsx"))
   )
-
+  
   ggsave(
     file.path(folder_output, paste0("curtailment_response_latency_timeline_", date(scada_ini), "to", date(scada_end), ".png")),
     plot = p_latency_timeline, width = 180, height = 100, units = "mm", dpi = 300, bg = "white"
   )
-
+  
   ### 3.7. Safe distance (metodologia KNE) ----
-
+  
   #safe_dist_rpm_threshold, safe_dist_speed_trim_q, safe_dist_reference_line_m,
   #safe_dist_already_slowing_rpm --> definidos no userSettings_BSH.R
-
+  
   source("R/curtailment_safe_distance.R")
-
+  
   safe_dist_dt <- compute_safe_distance(
     curtl_scada_dt, scada_dt, track_dt,
     start_end_gap_sec = curtailment_start_end_gap_sec,
@@ -1133,7 +1184,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     already_slowing_rpm_threshold = safe_dist_already_slowing_rpm
   )
   summary_safe_dist <- summarise_safe_distance(safe_dist_dt, prioritysp)
-
+  
   # cenario mais gravoso (turbina a velocidade normal no disparo) vs cenario
   # de beneficio (turbina ja a abrandar de outro curtailment) -- ver
   # documentacao de turbine_state em R/curtailment_safe_distance.R
@@ -1143,7 +1194,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
   summary_safe_dist_already_slowing <- summarise_safe_distance(
     safe_dist_dt[turbine_state == "already_slowing"], prioritysp
   )
-
+  
   write_xlsx_local(
     list(
       Safe_distance                = safe_dist_dt,
@@ -1156,7 +1207,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     ),
     file.path(folder_output, paste0("curtailment_safe_distance_", date(scada_ini), "to", date(scada_end), ".xlsx"))
   )
-
+  
   p_safe_dist_hist <- plot_safe_distance_hist(
     safe_dist_dt, species_sel = prioritysp, ref_line_m = safe_dist_reference_line_m, facet = TRUE
   )
@@ -1166,7 +1217,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
       plot = p_safe_dist_hist, width = 8, height = 8, dpi = 300, bg = "white"
     )
   } else {message("Sem safe-distance calculavel para especies prioritarias -- plot nao gerado.")}
-
+  
   p_trigger_dist_status <- plot_trigger_distance_status(
     safe_dist_dt, species_sel = prioritysp, ref_line_m = safe_dist_reference_line_m, facet = TRUE
   )
@@ -1176,7 +1227,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
       plot = p_trigger_dist_status, width = 8, height = 8, dpi = 300, bg = "white"
     )
   } else {message("Sem x2d/status calculavel para especies prioritarias -- plot nao gerado.")}
-
+  
 } else {message("run_sections$curtailment_response = FALSE ou SCADA nao disponivel -- 3.5-3.7 saltadas nesta ronda.")}
 
 summary_safe_dist
@@ -1192,22 +1243,22 @@ p_trigger_dist_status
 # turbine_idf_manual_dt (se existir) vem da seccao 0 (matriz turbina<->IDF)
 
 if (isTRUE(run_sections$fatality_investigation)) {
-
+  
   # 1) tracks da especie perto da turbina, na janela -- nao depende de
   #    scada_dt, so precisa de track_dt, curtl_dt e wtg.
   source("R/fatality_track_investigation.R")
-
+  
   fatality_tracks_dt <- investigate_fatality_incidents(
     fatality_incidents, track_dt, curtl_dt, wtg,
     proximity_threshold_m = track_proximity_threshold_m
   )
-
+  
   # sumario -- contagens por sinal (quantidades por tipo de track classificado)
   # e os tracks candidatos mais provaveis a colisao (ver signal ==
   # no_curtailment_lost_near_turbine / curtailment_lost_near_turbine em
   # R/fatality_track_investigation.R)
   fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
-
+  
   # 2) disponibilidade das unidades IDF da turbina + resposta a curtailments
   #    (latencia/no-response), na mesma janela -- reutiliza os thresholds de
   #    3.1/3.5-3.6b (ver R/fatality_window_analysis.R). Precisa de heartb_dt;
@@ -1215,13 +1266,13 @@ if (isTRUE(run_sections$fatality_investigation)) {
   #    tambem existir (fica com detail/summary vazios caso contrario, sem
   #    gerar erro).
   if (exists("heartb_dt")) {
-
+    
     source("R/availability_daylight.R")
     source("R/curtailment_response.R")
     source("R/curtailment_response_latency.R")
     source("R/track_min_individuals.R")
     source("R/fatality_window_analysis.R")
-
+    
     fatality_windows <- summarise_fatality_windows(
       fatality_incidents, heartb_dt,
       curtl_dt = curtl_dt,
@@ -1238,7 +1289,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
       global_response_from = if (exists("scada_ini")) scada_ini else NULL,
       global_response_to   = if (exists("scada_end")) scada_end else NULL
     )
-
+    
     # achatar para exportacao -- 1 linha por incidente+unidade (disponibilidade),
     # 1 linha por incidente+curtailment (resposta), com incident_id anexado
     fatality_window_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
@@ -1247,21 +1298,21 @@ if (isTRUE(run_sections$fatality_investigation)) {
       dt[, incident_id := id]
       dt[]
     }), fill = TRUE)
-
+    
     fatality_window_response_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
       dt <- fatality_windows[[id]]$curtailment_response$detail
       if (nrow(dt) == 0L) return(NULL)
       dt[, incident_id := id]
       dt[]
     }), fill = TRUE)
-
+    
     fatality_window_response_summary_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
       dt <- fatality_windows[[id]]$curtailment_response$summary
       if (nrow(dt) == 0L) return(NULL)
       dt[, incident_id := id]
       dt[]
     }), fill = TRUE)
-
+    
     # baseline "global" -- mesma estrutura, para comparar lado a lado com as
     # tabelas de janela acima (degradou ou melhorou na janela do incidente?)
     fatality_global_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
@@ -1270,14 +1321,14 @@ if (isTRUE(run_sections$fatality_investigation)) {
       dt[, incident_id := id]
       dt[]
     }), fill = TRUE)
-
+    
     fatality_global_response_summary_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
       dt <- fatality_windows[[id]]$curtailment_response_global$summary
       if (is.null(dt) || nrow(dt) == 0L) return(NULL)
       dt[, incident_id := id]
       dt[]
     }), fill = TRUE)
-
+    
     # abundancia pre/pos-incidente -- descritivo, ver
     # summarise_individuals_pre_post() em R/fatality_window_analysis.R
     fatality_abundance_pre_post_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
@@ -1286,7 +1337,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
       dt[, incident_id := id]
       dt[]
     }), fill = TRUE)
-
+    
     write_xlsx_local(
       list(
         Fatality_tracks               = fatality_tracks_dt,
@@ -1301,7 +1352,7 @@ if (isTRUE(run_sections$fatality_investigation)) {
       ),
       file.path(folder_output, "fatality_track_investigation.xlsx")
     )
-
+    
   } else {
     message("heartb_dt nao disponivel -- analises de janela (disponibilidade/resposta) da secção 4 saltadas, so os tracks foram exportados.")
     write_xlsx_local(
@@ -1313,18 +1364,13 @@ if (isTRUE(run_sections$fatality_investigation)) {
       file.path(folder_output, "fatality_track_investigation.xlsx")
     )
   }
-
+  
 } else {
   message("run_sections$fatality_investigation = FALSE -- 4 saltada nesta ronda.")
 }
 
 fatality_global_response_summary_dt
 fatality_abundance_pre_post_dt
-
-attr(curtl_scada_dt$start, "tzone")  # expected "Asia/Samarkand"
-curtl_scada_dt[track_id == "F96FD9F7-E742-4588-B495-DEA851EB5495", start]  # esperado: 06:44:52
-
-
 
 ##
 ## 5. Coverage ----
@@ -1352,7 +1398,7 @@ if (identical(wtg_3d_coverage, "all")) {
 }
 
 if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
-
+  
   source("R/coverage_3d_topography.R")
   # usa a totalidade dos dados de track sem filtros
   cov_all <- run_coverage_3d_all_turbines(
@@ -1363,47 +1409,47 @@ if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
     wtg_sel = wtg_3d_coverage,
     min_sample_records = coverage_min_sample_records
   )
-
+  
   summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))
-
+  
   write_xlsx_local(
     list(By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band),
     file.path(folder_output, "coverage_3d_summary.xlsx")
   )
-
+  
   # Plots individuais por turbina, em HTML (cobertura + o inverso: pontos
   # da malha "air" SEM deteções de aves dentro de prox_thresh_m)
   save_coverage_3d_plots(
     cov_all, file.path(folder_output, "coverage_3d"),
     radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height
   )
-
+  
   # Para ver o plot interativo de UMA turbina no Viewer do RStudio, mesmo que
   # cov_all tenha varias -- correr manualmente, ex:
   # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height)
   # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height, not_covered = TRUE)
-
+  
 } else {message("run_sections$coverage_3d = FALSE ou DEM nao disponivel -- 5.2 saltada nesta ronda.")}
 
 ## Plots interativos de turbinas especificas, so' quando cov_all foi mesmo
 ## (re)criado nesta ronda -- caso contrario "object 'cov_all' not found"
 ## (cov_all so' existe dentro do if acima; se run_sections$coverage_3d =
 ## FALSE ou o DEM nao existir, nao ha cov_all para usar aqui)
-if (exists("cov_all")) {
-
-  plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
-                               coverage_cylinder_height)
-
-  plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
-                               coverage_cylinder_height, not_covered = TRUE)
-
-  plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
-                               coverage_cylinder_height)
-
-  plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
-                               coverage_cylinder_height, not_covered = TRUE)
-
-} else {message("cov_all nao disponivel nesta ronda -- plots individuais BSH61/BSH14 saltados.")}
+# if (exists("cov_all")) {
+#   
+#   plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
+#                                coverage_cylinder_height)
+#   
+#   plot_coverage_3d_for_turbine(cov_all, "BSH61", coverage_cylinder_wider_radius,
+#                                coverage_cylinder_height, not_covered = TRUE)
+#   
+#   plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
+#                                coverage_cylinder_height)
+#   
+#   plot_coverage_3d_for_turbine(cov_all, "BSH14", coverage_cylinder_wider_radius,
+#                                coverage_cylinder_height, not_covered = TRUE)
+#   
+# } else {message("cov_all nao disponivel nesta ronda -- plots individuais BSH61/BSH14 saltados.")}
 
 ##
 ## 6. Biological (supporting info) ----
@@ -1419,9 +1465,9 @@ if (exists("cov_all")) {
 ## negativas (flight_height_qa(), visivel em vez de descartado em silencio).
 
 if (exists("track_dt")) {
-
+  
   source("R/bio_flight_metrics.R")
-
+  
   flight_base_dt <- flight_metrics_base(
     track_dt, prioritysp, min_track_points = flight_min_track_points,
     speed_ms_min = flight_speed_ms_min, speed_ms_max = flight_speed_ms_max
@@ -1432,7 +1478,7 @@ if (exists("track_dt")) {
     track_dt, prioritysp, min_track_points = flight_min_track_points,
     speed_ms_min = flight_speed_ms_min, speed_ms_max = flight_speed_ms_max
   )
-
+  
   write_xlsx_local(
     list(
       Flight_speed_by_species  = flight_speed_summary_dt,
@@ -1441,7 +1487,7 @@ if (exists("track_dt")) {
     ),
     file.path(folder_output, "bio_flight_metrics.xlsx")
   )
-
+  
   p_flight_metrics <- plot_flight_metrics_distribution(flight_base_dt, riskHeight_lower, riskHeight_upper)
   p_flight_metrics
   n_species_flight <- length(unique(flight_base_dt$spec))
@@ -1449,7 +1495,7 @@ if (exists("track_dt")) {
     file.path(folder_output, "bio_flight_metrics_distribution.png"),
     plot = p_flight_metrics, width = 8, height = max(4, 2.2 * n_species_flight), dpi = 300, bg = "white"
   )
-
+  
 } else {message("track_dt nao disponivel -- 6.1-6.2 (flight speed/height) saltadas nesta ronda.")}
 
 
@@ -1473,46 +1519,58 @@ if (exists("track_dt")) {
 # dias antes de uma fatalidade).
 
 if (isTRUE(run_sections$min_individuals)) {
+  
+  source("R/track_min_individuals.R")
+  
+  min_indiv_bins_dt <- count_min_individuals_per_bin(
+    track_dt, species = prioritysp,
+    bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m
+  )
+  
+  min_indiv_summary_dt <- summarise_min_individuals(min_indiv_bins_dt)
+  
+  # sintese diaria (maximo diario por especie) -- leitura fenologica/sazonal,
+  # menos densa que os bins de 2min para todo o periodo do projeto
+  min_indiv_daily_dt <- summarise_daily_max_individuals(min_indiv_bins_dt)
+  
+  write_xlsx_local(
+    list(
+      Min_individuals_bins    = min_indiv_bins_dt,
+      Min_individuals_summary = min_indiv_summary_dt,
+      Min_individuals_daily   = min_indiv_daily_dt
+    ),
+    file.path(folder_output, "min_individuals_per_bin.xlsx")
+  )
+  
+  # altura ajustada ao nº de especies (1 facet por especie, ncol = 1)
+  n_species_min_indiv <- length(unique(min_indiv_bins_dt$spec))
+  
+  # species_sel = prioritysp (explicito) -- sem isto, os 2 plots abaixo
+  # caiam no default hardcoded de plot_min_individuals_per_bin()/
+  # plot_daily_max_individuals() (c("Egyptian-Vulture", "Steppe-Eagle"),
+  # afinado para os 2 incidentes do Bash) e mostravam so' essas 2 especies,
+  # por muito mais que estivesse em prioritysp -- inconsistente com
+  # n_species_min_indiv (altura da imagem) acima, que ja' conta TODAS as
+  # especies de prioritysp presentes nos dados. Faltava Golden-Eagle (e as
+  # restantes) no DGY por esta razao, 2026-08.
+  p_min_indiv <- plot_min_individuals_per_bin(min_indiv_bins_dt, species_sel = prioritysp)
+  p_min_indiv
+  ggsave(
+    file.path(folder_output, "min_individuals_per_bin.png"),
+    plot = p_min_indiv, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
+  )
 
-source("R/track_min_individuals.R")
-
-min_indiv_bins_dt <- count_min_individuals_per_bin(
-  track_dt, species = prioritysp,
-  bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m
-)
-
-min_indiv_summary_dt <- summarise_min_individuals(min_indiv_bins_dt)
-
-# sintese diaria (maximo diario por especie) -- leitura fenologica/sazonal,
-# menos densa que os bins de 2min para todo o periodo do projeto
-min_indiv_daily_dt <- summarise_daily_max_individuals(min_indiv_bins_dt)
-
-write_xlsx_local(
-  list(
-    Min_individuals_bins    = min_indiv_bins_dt,
-    Min_individuals_summary = min_indiv_summary_dt,
-    Min_individuals_daily   = min_indiv_daily_dt
-  ),
-  file.path(folder_output, "min_individuals_per_bin.xlsx")
-)
-
-# altura ajustada ao nº de especies (1 facet por especie, ncol = 1)
-n_species_min_indiv <- length(unique(min_indiv_bins_dt$spec))
-
-p_min_indiv <- plot_min_individuals_per_bin(min_indiv_bins_dt)
-p_min_indiv
-ggsave(
-  file.path(folder_output, "min_individuals_per_bin.png"),
-  plot = p_min_indiv, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
-)
-
-p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt, date_breaks = "1 month", date_labels = "%Y-%m", geom_type = "bar")
-p_min_indiv_daily
-ggsave(
-  file.path(folder_output, "min_individuals_daily_max.png"),
-  plot = p_min_indiv_daily, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
-)
-
+  # "Protected" excluido deste plot -- pedido do Paulo, 2026-08 (categoria
+  # generica, sem valor de leitura fenologica por especie ao lado das
+  # restantes). Mantido em prioritysp para as restantes secções (ex:
+  # summarise_min_individuals(), tabela 8.1) -- exclusao so' neste plot.
+  p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt, species_sel = setdiff(prioritysp, "Protected"), date_breaks = "1 month", date_labels = "%Y-%m", geom_type = "bar")
+  p_min_indiv_daily
+  ggsave(
+    file.path(folder_output, "min_individuals_daily_max.png"),
+    plot = p_min_indiv_daily, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
+  )
+  
 } else {message("run_sections$min_individuals = FALSE -- 6.4 saltada nesta ronda.")}
 
 inspect_min_individuals_bin(track_dt, species = "Steppe-Eagle", bin_start = "2026-02-18 14:34:00")
@@ -1569,9 +1627,9 @@ write_xlsx_local(
 ##
 
 if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
-
+  
   source("R/curtailment_response_timeline.R")
-
+  
   # Exemplos ilustrativos de perfil de RPM -- ate curtailment_example_n
   # curtailments "no_response"/"slowest" (mesma classificacao de
   # latency_dt, secção 3.6b acima), com o perfil de RPM e as linhas
@@ -1580,10 +1638,10 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
   # R/curtailment_response_latency.R, e plot_curtailment_events_rpm(),
   # R/curtailment_forensic_trace.R.
   source("R/curtailment_forensic_trace.R")
-
+  
   no_response_examples_dt      <- select_latency_examples(latency_dt, "no_response", n = curtailment_example_n)
   slowest_response_examples_dt <- select_latency_examples(latency_dt, "slowest", n = curtailment_example_n)
-
+  
   p_no_response_examples <- plot_curtailment_events_rpm(
     no_response_examples_dt, scada_dt,
     window_before_min = curtailment_example_window_before_min,
@@ -1597,7 +1655,7 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
       units = "cm", dpi = 300, bg = "white"
     )
   }
-
+  
   p_slowest_response_examples <- plot_curtailment_events_rpm(
     slowest_response_examples_dt, scada_dt,
     window_before_min = curtailment_example_window_before_min,
@@ -1611,21 +1669,21 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
       units = "cm", dpi = 300, bg = "white"
     )
   }
-
+  
   write_xlsx_local(
     list(No_response_examples = no_response_examples_dt, Slowest_response_examples = slowest_response_examples_dt),
     file.path(folder_output, "curtailment_response_examples.xlsx")
   )
-
+  
   # latency_timeline_dt ja' calculado na secção 3.6b (mesmo latency_dt,
   # mesmo response_timeline_unit) -- reutilizado aqui, nao recalculado
   abundance_timeline_dt <- summarise_abundance_timeline(min_indiv_bins_dt, unit = response_timeline_unit)
-
+  
   write_xlsx_local(
     list(Response_timeline = latency_timeline_dt, Abundance_timeline = abundance_timeline_dt),
     file.path(folder_output, "response_vs_phenology_timeline.xlsx")
   )
-
+  
   # um par de plots por especie de fatality_incidents -- contexto direto
   # para a seccao nova do relatorio
   for (sp in unique(fatality_incidents$species)) {
@@ -1644,7 +1702,7 @@ if (exists("curtl_scada_dt") && exists("min_indiv_bins_dt")) {
       plot = p_pair$abundance_plot, width = 8, height = 4, dpi = 300, bg = "white"
     )
   }
-
+  
 } else {
   message("curtl_scada_dt e/ou min_indiv_bins_dt nao disponiveis -- seccao 8 (performance vs. fenologia) saltada.")
 }
@@ -1694,27 +1752,43 @@ if (!exists("track_dt_unfilt")) {
 } else if (!isTRUE(run_sections$turbine_clustering) && !isTRUE(run_sections$risk_clusters)) {
   message("10 saltada: nem run_sections$turbine_clustering nem run_sections$risk_clusters = TRUE (confirma se o userSettings_BSH.R em memoria esta atualizado -- corre source() outra vez se tiveres duvidas).")
 } else {
-
+  
   source("R/turbine_spatial_clusters.R")
   source("R/curtailment_cluster_patterns.R")
   source("R/track_species_clusters.R")
   source("R/turbine_critical_zone_summary.R")
-
+  
   run_stat   <- isTRUE(run_sections$turbine_clustering)
   run_manual <- isTRUE(run_sections$risk_clusters)
-
-
+  # 3a via de agrupamento -- por unidade IDF partilhada (Primary IDF, da
+  # matriz de cobertura turbine_idf_manual_dt), em vez de setor geografico
+  # (manual) ou distancia (estatistica). Pedido do Paulo, 2026-08: para
+  # farms com cobertura IDF parcial (ex: DGY, so' 4 unidades para 79
+  # turbinas), o setor geografico de uma turbina de incidente pode nao
+  # conter NENHUMA outra turbina com curtailments (ver diagnostico
+  # confirmado nesta data -- Setor_E/B/D das 3 incidentes do DGY, 0
+  # curtailments em qualquer uma), tornando a comparacao por setor
+  # estruturalmente vazia. Agrupar pelas turbinas que partilham a MESMA
+  # unidade IDF e' a comparacao mais relevante, ja' que a atividade de
+  # curtailment esta' ligada a presenca de IDF/SCADA, nao a geografia --
+  # reusa o mesmo run_sections$risk_clusters (nao e' um switch novo,
+  # mesma funcionalidade "risco por agrupamento"). Mesma vantagem para o
+  # Bash (cobertura IDF total): a comparacao fica 1-para-1 com o setor
+  # geografico onde a cobertura for completa, mas nao depende disso.
+  run_idf    <- run_manual && exists("turbine_idf_manual_dt")
+  
+  
   ### 10.0. Clusters + mapa de referencia (cada via so' corre com o seu switch) ----
-
+  
   if (run_stat) {
     turbine_dist_mat <- turbine_distance_matrix(wtg)
     cluster_dt_stat   <- cluster_turbines_by_distance(turbine_dist_mat, max_dist_m = cluster_max_dist_m)
     cluster_sens_dt   <- turbine_cluster_threshold_sensitivity(turbine_dist_mat, thresholds_m = cluster_threshold_sweep_m)
-
+    
     # cluster que contem as turbinas de fatality_incidents -- para destacar
     # no plot (a vermelho) em vez de ter de os procurar a olho na legenda
     highlight_clusters_stat <- unique(cluster_dt_stat[turbine %in% fatality_incidents$turbine, cluster_id])
-
+    
     p_map_stat <- plot_turbine_clusters_map(
       wtg, cluster_dt_stat, highlight_turbines = fatality_incidents$turbine,
       title = sprintf("Statistical turbine clusters (max_dist_m=%g)", cluster_max_dist_m)
@@ -1724,11 +1798,11 @@ if (!exists("track_dt_unfilt")) {
       plot = p_map_stat, width = 10, height = 8, dpi = 300, bg = "white"
     )
   } else {message("10 (via estatistica) saltada: run_sections$turbine_clustering != TRUE.")}
-
+  
   if (run_manual) {
     cluster_dt_manual <- manual_turbine_clusters_dt(manual_turbine_clusters)
     highlight_clusters_manual <- unique(cluster_dt_manual[turbine %in% fatality_incidents$turbine, cluster_id])
-
+    
     p_map_manual <- plot_turbine_clusters_map(
       wtg, cluster_dt_manual, highlight_turbines = fatality_incidents$turbine,
       title = "Manual turbine sectors"
@@ -1739,9 +1813,37 @@ if (!exists("track_dt_unfilt")) {
     )
   } else {message("10 (via manual/risk_clusters) saltada: run_sections$risk_clusters != TRUE.")}
 
+  if (run_idf) {
+    # cluster_dt_idf: mesmo schema turbine/cluster_id de sempre (ver
+    # manual_turbine_clusters_dt()/cluster_turbines_by_distance(),
+    # R/turbine_spatial_clusters.R) -- aqui cluster_id = unidade IDF
+    # primaria (coluna "Primary IDF" da matriz de cobertura). Turbinas sem
+    # Primary IDF (NA -- fora do alcance de qualquer unidade) ficam DE FORA
+    # deste cluster_dt (nao um cluster "NA") -- mesma logica de "turbina
+    # fora de todos os setores" ja tratada por summarise_turbine_marginal_
+    # contribution()/permutation_test_marginal_contribution() (R/curtailment_
+    # cluster_patterns.R), que devolvem NA_character_ para essas turbinas.
+    cluster_dt_idf <- data.table::as.data.table(turbine_idf_manual_dt)
+    data.table::setnames(cluster_dt_idf, old = c("Turbine ID", "Primary IDF"), new = c("turbine", "cluster_id"))
+    cluster_dt_idf <- cluster_dt_idf[!is.na(cluster_id), .(turbine, cluster_id)]
 
+    highlight_clusters_idf <- unique(cluster_dt_idf[turbine %in% fatality_incidents$turbine, cluster_id])
+
+    p_map_idf <- plot_turbine_clusters_map(
+      wtg, cluster_dt_idf, highlight_turbines = fatality_incidents$turbine,
+      title = "Turbines grouped by shared IDF unit (Primary IDF)"
+    )
+    ggsave(
+      file.path(folder_output, "turbine_clusters_map_idf.png"),
+      plot = p_map_idf, width = 10, height = 8, dpi = 300, bg = "white"
+    )
+  } else if (run_manual) {
+    message("10 (via IDF) saltada: turbine_idf_manual_dt nao existe (matriz de cobertura IDF nao carregada -- ver secção 0).")
+  }
+  
+  
   ### 10.1. Curtailments por cluster de turbinas ----
-
+  
   if (run_stat) {
     curtl_cl_stat_dt <- join_curtailments_to_clusters(
       curtl_dt_unfilt, cluster_dt_stat, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
@@ -1755,11 +1857,11 @@ if (!exists("track_dt_unfilt")) {
     }
     cluster_summary_stat    <- summarise_cluster_curtailments(curtl_cl_stat_dt)
     cluster_weekly_stat_dt  <- summarise_cluster_curtailments_weekly(curtl_cl_stat_dt)
-    marginal_stat_dt        <- summarise_turbine_marginal_contribution(curtl_cl_stat_dt, fatality_incidents$turbine)
+    marginal_stat_dt        <- summarise_turbine_marginal_contribution(curtl_cl_stat_dt, fatality_incidents$turbine, cluster_dt_stat)
     perm_stat_dt            <- permutation_test_marginal_contribution_all(
-      curtl_cl_stat_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
+      curtl_cl_stat_dt, fatality_incidents$turbine, cluster_dt_stat, n_perm = cluster_perm_n
     )
-
+    
     write_xlsx_local(
       list(
         Cluster_threshold_sweep    = cluster_sens_dt,
@@ -1771,7 +1873,7 @@ if (!exists("track_dt_unfilt")) {
       ),
       file.path(folder_output, "curtailment_cluster_patterns_statistical.xlsx")
     )
-
+    
     p_curtl_stat_total <- plot_cluster_curtailments_total(
       cluster_summary_stat, highlight_clusters = highlight_clusters_stat,
       title = "Curtailments by statistical cluster (full period)"
@@ -1780,7 +1882,7 @@ if (!exists("track_dt_unfilt")) {
       file.path(folder_output, "cluster_curtailments_stat_total.png"),
       plot = p_curtl_stat_total, width = 8, height = 5, dpi = 300, bg = "white"
     )
-
+    
     p_curtl_stat_weekly <- plot_cluster_curtailments_weekly(
       cluster_weekly_stat_dt, highlight_clusters = highlight_clusters_stat,
       title = "Weekly curtailments by statistical cluster"
@@ -1790,7 +1892,7 @@ if (!exists("track_dt_unfilt")) {
       plot = p_curtl_stat_weekly, width = 9, height = 5, dpi = 300, bg = "white"
     )
   }
-
+  
   if (run_manual) {
     curtl_cl_manual_dt <- join_curtailments_to_clusters(
       curtl_dt_unfilt, cluster_dt_manual, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
@@ -1804,11 +1906,11 @@ if (!exists("track_dt_unfilt")) {
     }
     cluster_summary_manual   <- summarise_cluster_curtailments(curtl_cl_manual_dt)
     cluster_weekly_manual_dt <- summarise_cluster_curtailments_weekly(curtl_cl_manual_dt)
-    marginal_manual_dt       <- summarise_turbine_marginal_contribution(curtl_cl_manual_dt, fatality_incidents$turbine)
+    marginal_manual_dt       <- summarise_turbine_marginal_contribution(curtl_cl_manual_dt, fatality_incidents$turbine, cluster_dt_manual)
     perm_manual_dt           <- permutation_test_marginal_contribution_all(
-      curtl_cl_manual_dt, fatality_incidents$turbine, n_perm = cluster_perm_n
+      curtl_cl_manual_dt, fatality_incidents$turbine, cluster_dt_manual, n_perm = cluster_perm_n
     )
-
+    
     write_xlsx_local(
       list(
         Manual_cluster_by_turbine  = cluster_summary_manual$by_turbine,
@@ -1819,7 +1921,7 @@ if (!exists("track_dt_unfilt")) {
       ),
       file.path(folder_output, "curtailment_cluster_patterns_manual.xlsx")
     )
-
+    
     p_curtl_manual_total <- plot_cluster_curtailments_total(
       cluster_summary_manual, highlight_clusters = highlight_clusters_manual,
       title = "Curtailments by manual sector (full period)"
@@ -1828,7 +1930,7 @@ if (!exists("track_dt_unfilt")) {
       file.path(folder_output, "cluster_curtailments_manual_total.png"),
       plot = p_curtl_manual_total, width = 8, height = 5, dpi = 300, bg = "white"
     )
-
+    
     p_curtl_manual_weekly <- plot_cluster_curtailments_weekly(
       cluster_weekly_manual_dt, highlight_clusters = highlight_clusters_manual,
       title = "Weekly curtailments by manual sector"
@@ -1839,32 +1941,64 @@ if (!exists("track_dt_unfilt")) {
     )
   }
 
+  if (run_idf) {
+    curtl_cl_idf_dt <- join_curtailments_to_clusters(
+      curtl_dt_unfilt, cluster_dt_idf, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
+    )
+    cluster_summary_idf   <- summarise_cluster_curtailments(curtl_cl_idf_dt)
+    cluster_weekly_idf_dt <- summarise_cluster_curtailments_weekly(curtl_cl_idf_dt)
+    marginal_idf_dt       <- summarise_turbine_marginal_contribution(curtl_cl_idf_dt, fatality_incidents$turbine, cluster_dt_idf)
+    perm_idf_dt           <- permutation_test_marginal_contribution_all(
+      curtl_cl_idf_dt, fatality_incidents$turbine, cluster_dt_idf, n_perm = cluster_perm_n
+    )
+
+    write_xlsx_local(
+      list(
+        IDF_cluster_by_turbine  = cluster_summary_idf$by_turbine,
+        IDF_cluster_by_cluster  = cluster_summary_idf$by_cluster,
+        IDF_cluster_weekly      = cluster_weekly_idf_dt,
+        IDF_marginal_contrib    = marginal_idf_dt,
+        IDF_permutation_test    = perm_idf_dt
+      ),
+      file.path(folder_output, "curtailment_cluster_patterns_idf.xlsx")
+    )
+
+    p_curtl_idf_total <- plot_cluster_curtailments_total(
+      cluster_summary_idf, highlight_clusters = highlight_clusters_idf,
+      title = "Curtailments by IDF unit (full period)"
+    )
+    ggsave(
+      file.path(folder_output, "cluster_curtailments_idf_total.png"),
+      plot = p_curtl_idf_total, width = 8, height = 5, dpi = 300, bg = "white"
+    )
+  }
+
 
   ### 10.2. Ocorrencia de tracks de especie por cluster de turbinas ----
   ###       (species_tracks_dt/species_weekly_dt/species_by_turbine_dt sao
   ###       partilhados pelas 2 vias -- calculados 1 so' vez)
-
+  
   species_tracks_dt <- assign_tracks_to_nearest_turbine(track_dt_unfilt, wtg, species_sel = cluster_species_sel)
   species_label_txt  <- paste(cluster_species_sel, collapse = "/")
-
+  
   species_weekly_dt     <- summarise_track_occurrence_weekly(species_tracks_dt)
   species_by_turbine_dt <- summarise_track_occurrence_by_turbine(species_tracks_dt)
-
+  
   species_xlsx_list <- list(Species_weekly = species_weekly_dt, Species_by_turbine = species_by_turbine_dt)
-
+  
   p_species_weekly <- plot_species_occurrence_weekly(species_weekly_dt, species_label = species_label_txt)
   ggsave(
     file.path(folder_output, "species_occurrence_weekly.png"),
     plot = p_species_weekly, width = 9, height = 4, dpi = 300, bg = "white"
   )
-
+  
   if (run_stat) {
     species_by_cluster_stat <- summarise_track_occurrence_by_cluster(species_tracks_dt, cluster_dt_stat)
     species_xlsx_list <- c(species_xlsx_list, list(
       Species_stat_cluster = species_by_cluster_stat$by_cluster,
       Species_stat_weekly  = species_by_cluster_stat$weekly
     ))
-
+    
     p_species_stat_total <- plot_cluster_species_total(
       species_by_cluster_stat, highlight_clusters = highlight_clusters_stat, species_label = species_label_txt
     )
@@ -1872,7 +2006,7 @@ if (!exists("track_dt_unfilt")) {
       file.path(folder_output, "cluster_species_stat_total.png"),
       plot = p_species_stat_total, width = 8, height = 5, dpi = 300, bg = "white"
     )
-
+    
     p_species_stat_weekly <- plot_cluster_species_weekly(
       species_by_cluster_stat, highlight_clusters = highlight_clusters_stat, species_label = species_label_txt
     )
@@ -1881,14 +2015,14 @@ if (!exists("track_dt_unfilt")) {
       plot = p_species_stat_weekly, width = 9, height = 5, dpi = 300, bg = "white"
     )
   }
-
+  
   if (run_manual) {
     species_by_cluster_manual <- summarise_track_occurrence_by_cluster(species_tracks_dt, cluster_dt_manual)
     species_xlsx_list <- c(species_xlsx_list, list(
       Species_manual_cluster = species_by_cluster_manual$by_cluster,
       Species_manual_weekly  = species_by_cluster_manual$weekly
     ))
-
+    
     p_species_manual_total <- plot_cluster_species_total(
       species_by_cluster_manual, highlight_clusters = highlight_clusters_manual, species_label = species_label_txt
     )
@@ -1896,7 +2030,7 @@ if (!exists("track_dt_unfilt")) {
       file.path(folder_output, "cluster_species_manual_total.png"),
       plot = p_species_manual_total, width = 8, height = 5, dpi = 300, bg = "white"
     )
-
+    
     p_species_manual_weekly <- plot_cluster_species_weekly(
       species_by_cluster_manual, highlight_clusters = highlight_clusters_manual, species_label = species_label_txt
     )
@@ -1905,74 +2039,117 @@ if (!exists("track_dt_unfilt")) {
       plot = p_species_manual_weekly, width = 9, height = 5, dpi = 300, bg = "white"
     )
   }
-
+  
   write_xlsx_local(species_xlsx_list, file.path(folder_output, "track_species_clusters.xlsx"))
-
-
+  
+  
   ### 10.3. Sumario "zona critica" -- comparacao expedita por turbina de
   ###       interesse: cluster com muitos curtailments E muito movimento
   ###       da especie ----
-
+  
   if (run_stat) {
     species_cluster_rank_stat_dt <- summarise_turbine_species_cluster_rank(
-      species_tracks_dt, cluster_dt_stat, fatality_incidents$turbine
+      species_tracks_dt, cluster_dt_stat, unique(fatality_incidents$turbine)
     )
     critical_zone_stat_dt <- summarise_turbine_critical_zone(marginal_stat_dt, species_cluster_rank_stat_dt)
     write_xlsx_local(
       list(Critical_zone_statistical = critical_zone_stat_dt),
       file.path(folder_output, "turbine_critical_zone_summary_statistical.xlsx")
     )
-
+    
     # vista combinada para o relatorio -- mesma logica de fatality_risk_summary_dt
-    # (via manual, abaixo), aqui para a via estatistica
+    # (via manual, abaixo), aqui para a via estatistica. 1 linha por
+    # INCIDENTE (nao por turbina) -- juntar a partir de fatality_incidents
+    # (base) e' o que traz incident_id para a tabela, e faz o "fan-out"
+    # correto quando 2 incidentes partilham a mesma turbina (ex: DGY_TBD1/
+    # DGY_TBD2 -- ambos em DZH58 -- ficam com as MESMAS estatisticas de
+    # setor, uma linha cada, 2026-08)
     stat_risk_summary_dt <- merge(
+      fatality_incidents[, .(incident_id, turbine, species, incident_date)],
       critical_zone_stat_dt,
+      by = "turbine"
+    )
+    stat_risk_summary_dt <- merge(
+      stat_risk_summary_dt,
       perm_stat_dt[, .(turbine, observed_pct, expected_pct_uniform, p_value_gt_uniform)],
       by = "turbine"
     )
+    data.table::setorder(stat_risk_summary_dt, incident_id)
   }
-
+  
   if (run_manual) {
     species_cluster_rank_manual_dt <- summarise_turbine_species_cluster_rank(
-      species_tracks_dt, cluster_dt_manual, fatality_incidents$turbine
+      species_tracks_dt, cluster_dt_manual, unique(fatality_incidents$turbine)
     )
     critical_zone_manual_dt <- summarise_turbine_critical_zone(marginal_manual_dt, species_cluster_rank_manual_dt)
     write_xlsx_local(
       list(Critical_zone_manual = critical_zone_manual_dt),
       file.path(folder_output, "turbine_critical_zone_summary_manual.xlsx")
     )
-
+    
     # Sumario UNICO para o relatorio (secção "Fatality Investigation & Risk
     # Clusters") -- junta o critical_zone_manual_dt (contributo marginal +
     # ranking de atividade da especie) com o p-value do teste de permutacao
     # (perm_manual_dt), so' para as turbinas de incidente. Nao substitui os
     # 2 exports xlsx acima (mantidos tal como estavam, dados tecnicos
-    # completos) -- e' so' uma vista combinada para apresentacao.
+    # completos) -- e' so' uma vista combinada para apresentacao. 1 linha
+    # por INCIDENTE (mesma logica de stat_risk_summary_dt acima, incluindo
+    # o fan-out quando 2 incidentes partilham a mesma turbina).
     fatality_risk_summary_dt <- merge(
+      fatality_incidents[, .(incident_id, turbine, species, incident_date)],
       critical_zone_manual_dt,
+      by = "turbine"
+    )
+    fatality_risk_summary_dt <- merge(
+      fatality_risk_summary_dt,
       perm_manual_dt[, .(turbine, observed_pct, expected_pct_uniform, p_value_gt_uniform)],
       by = "turbine"
     )
+    data.table::setorder(fatality_risk_summary_dt, incident_id)
   }
 
-
+  if (run_idf) {
+    # Mesma vista de fatality_risk_summary_dt/stat_risk_summary_dt acima,
+    # mas agrupando por unidade IDF partilhada (cluster_dt_idf) em vez de
+    # setor geografico/distancia -- sem o ranking de atividade da especie
+    # (nao ha' um species_cluster_rank_idf_dt equivalente, so' o
+    # contributo marginal de curtailments, que e' o que motivou esta
+    # 3a via -- ver nota em run_idf, acima). Turbinas de incidente sem
+    # Primary IDF (fora do alcance de qualquer unidade -- caso das 3
+    # incidentes do DGY confirmado 2026-08) continuam com cluster_id = NA
+    # aqui tambem, mas essa e' a resposta correta: nao ha' unidade IDF
+    # nenhuma para comparar.
+    idf_risk_summary_dt <- merge(
+      fatality_incidents[, .(incident_id, turbine, species, incident_date)],
+      marginal_idf_dt,
+      by = "turbine"
+    )
+    idf_risk_summary_dt <- merge(
+      idf_risk_summary_dt,
+      perm_idf_dt[, .(turbine, observed_pct, expected_pct_uniform, p_value_gt_uniform)],
+      by = "turbine"
+    )
+    data.table::setorder(idf_risk_summary_dt, incident_id)
+  }
+  
+  
   ### 10.4. Atividade e exposicao ao risco-altura, por cluster, para as
   ###       especies dos incidentes de fatalidade (complementa 10.3 -- em
   ###       vez do contributo marginal para curtailments, aqui olhamos para
   ###       a atividade de voo da propria especie, no historico completo,
   ###       para dar contexto de base sobre se o cluster de cada turbina de
   ###       incidente se destaca ou nao dos restantes clusters) ----
-
+  
   source("R/species_cluster_risk_ranking.R")
   source("R/bio_flight_metrics.R")
-
+  
   incident_species_sel <- unique(fatality_incidents$species)
   incident_flight_base_dt <- flight_metrics_base(
     track_dt_unfilt, incident_species_sel,
     min_track_points = flight_min_track_points,
     speed_ms_min = flight_speed_ms_min, speed_ms_max = flight_speed_ms_max
   )
-
+  
   if (run_stat) {
     incident_tracks_stat_dt <- assign_species_to_clusters(track_dt_unfilt, wtg, cluster_dt_stat, incident_species_sel)
     species_activity_stat_dt <- summarise_species_cluster_activity(incident_tracks_stat_dt)
@@ -1991,7 +2168,7 @@ if (!exists("track_dt_unfilt")) {
       file.path(folder_output, "species_cluster_risk_ranking_statistical.xlsx")
     )
   }
-
+  
   if (run_manual) {
     incident_tracks_manual_dt <- assign_species_to_clusters(track_dt_unfilt, wtg, cluster_dt_manual, incident_species_sel)
     species_activity_manual_dt <- summarise_species_cluster_activity(incident_tracks_manual_dt)
@@ -2010,7 +2187,7 @@ if (!exists("track_dt_unfilt")) {
       file.path(folder_output, "species_cluster_risk_ranking_manual.xlsx")
     )
   }
-
+  
 }
 
 
@@ -2074,17 +2251,17 @@ report_params <- list(
   analysis_date = format(Sys.time(), "%Y-%m-%d"),
   username      = username,
   code_version  = if (exists("code_version")) code_version else "unknown",
-
+  
   availability_by_idf    = if (exists("idf_availability_summary")) idf_availability_summary$by_idf else NULL,
   availability_plot_cal  = if (exists("p_availability_cal")) p_availability_cal else NULL,
   availability_plot_freq = if (exists("p_availability_freq")) p_availability_freq else NULL,
   availability_cal_report_months = if (exists("availability_cal_report_months")) availability_cal_report_months else NULL,
   availability_cal_full_filename = if (exists("availability_cal_full_filename")) availability_cal_full_filename else NULL,
   idf_availability_top_n          = if (exists("idf_availability_top_n")) idf_availability_top_n else NULL,
-
+  
   coverage_turbine_summary = if (exists("coverage_turbine_summary")) coverage_turbine_summary else NULL,
   coverage_idf_summary     = if (exists("coverage_idf_summary")) coverage_idf_summary else NULL,
-
+  
   latency_by_turbine     = if (exists("summary_latency_by_turbine")) summary_latency_by_turbine else NULL,
   latency_bands          = if (exists("summary_latency_bands")) summary_latency_bands else NULL,
   latency_plot           = if (exists("p_latency")) p_latency else NULL,
@@ -2093,49 +2270,53 @@ report_params <- list(
   latency_pct_no_data    = if (exists("summary_latency")) summary_latency$pct_no_data else NULL,
   latency_n_below_cutin  = if (exists("summary_latency")) summary_latency$n_below_cutin else NULL,
   latency_pct_below_cutin = if (exists("summary_latency")) summary_latency$pct_below_cutin else NULL,
-
+  
   shutdown_by_turbine = if (exists("summary_tt_by_turbine")) summary_tt_by_turbine else NULL,
   shutdown_bands      = if (exists("summary_tt_bands")) summary_tt_bands else NULL,
   shutdown_plot       = if (exists("p_shutdown_time")) p_shutdown_time else NULL,
-
+  
   coverage3d_by_turbine = if (exists("summary_cov")) summary_cov$by_turbine else NULL,
-
+  
   safe_dist_overall    = if (exists("summary_safe_dist")) summary_safe_dist$overall else NULL,
   safe_dist_by_species = if (exists("summary_safe_dist")) summary_safe_dist$by_species else NULL,
   safe_dist_plot       = if (exists("p_safe_dist_hist")) p_safe_dist_hist else NULL,
-
+  
   no_response_examples_plot  = if (exists("p_no_response_examples")) p_no_response_examples else NULL,
   slowest_response_examples_plot = if (exists("p_slowest_response_examples")) p_slowest_response_examples else NULL,
   n_no_response_examples     = if (exists("no_response_examples_dt")) nrow(no_response_examples_dt) else NULL,
   n_slowest_examples         = if (exists("slowest_response_examples_dt")) nrow(slowest_response_examples_dt) else NULL,
-
+  
   fatality_signal_counts    = if (exists("fatality_summary")) fatality_summary$counts_by_signal else NULL,
   fatality_top_candidates   = if (exists("fatality_summary")) fatality_summary$top_candidates else NULL,
   fatality_window_response_summary = if (exists("fatality_window_response_summary_dt")) fatality_window_response_summary_dt else NULL,
   fatality_abundance_pre_post       = if (exists("fatality_abundance_pre_post_dt")) fatality_abundance_pre_post_dt else NULL,
-
+  
   risk_cluster_map    = if (exists("p_map_manual")) p_map_manual else NULL,
   risk_cluster_summary = if (exists("cluster_summary_manual")) cluster_summary_manual$by_cluster else NULL,
   risk_fatality_summary = if (exists("fatality_risk_summary_dt")) fatality_risk_summary_dt else NULL,
-
+  
   species_activity_manual    = if (exists("species_activity_manual_dt")) species_activity_manual_dt else NULL,
   species_risk_height_manual = if (exists("species_risk_height_manual_dt")) species_risk_height_manual_dt else NULL,
   incident_risk_context_manual = if (exists("incident_risk_context_manual_dt")) incident_risk_context_manual_dt else NULL,
-
+  
   stat_cluster_map     = if (exists("p_map_stat")) p_map_stat else NULL,
   stat_cluster_summary = if (exists("cluster_summary_stat")) cluster_summary_stat$by_cluster else NULL,
   stat_risk_summary    = if (exists("stat_risk_summary_dt")) stat_risk_summary_dt else NULL,
-
+  
   species_activity_stat    = if (exists("species_activity_stat_dt")) species_activity_stat_dt else NULL,
   species_risk_height_stat = if (exists("species_risk_height_stat_dt")) species_risk_height_stat_dt else NULL,
   incident_risk_context_stat = if (exists("incident_risk_context_stat_dt")) incident_risk_context_stat_dt else NULL,
 
+  idf_cluster_map     = if (exists("p_map_idf")) p_map_idf else NULL,
+  idf_cluster_summary = if (exists("cluster_summary_idf")) cluster_summary_idf$by_cluster else NULL,
+  idf_risk_summary    = if (exists("idf_risk_summary_dt")) idf_risk_summary_dt else NULL,
+
   min_indiv_summary  = if (exists("min_indiv_summary_dt")) min_indiv_summary_dt else NULL,
   min_indiv_plot_daily = if (exists("p_min_indiv_daily")) p_min_indiv_daily else NULL,
-
+  
   n_turbines_total = n_turbines_total,
   n_idf_total      = n_idf_total,
-
+  
   ## Nomes (basename) dos xlsx de anexo -- 1 por tabela do relatorio, so'
   ## para o texto "ver anexo ...xlsx" junto de cada tabela (report/
   ## report_template.rmd). Fixos exceto os 3 que incluem a janela de SCADA
@@ -2154,9 +2335,10 @@ report_params <- list(
   xlsx_stat_critical_zone    = "turbine_critical_zone_summary_statistical.xlsx",
   xlsx_species_risk_manual   = "species_cluster_risk_ranking_manual.xlsx",
   xlsx_species_risk_stat     = "species_cluster_risk_ranking_statistical.xlsx",
+  xlsx_curtailment_cluster_idf = "curtailment_cluster_patterns_idf.xlsx",
   xlsx_curtailment_examples = "curtailment_response_examples.xlsx",
   xlsx_min_indiv           = "min_individuals_per_bin.xlsx",
-
+  
   ## Literais de configuracao (userSettings_BSH.R) -- so' para texto
   ## descritivo no Rmd (ver report/report_template.rmd), NAO controlam
   ## nenhum calculo aqui. Sempre definidos independentemente dos switches
@@ -2164,40 +2346,40 @@ report_params <- list(
   ## mesmo padrao de IDF_monthly_report.R/monthly_report_template.rmd.
   heartbeat_interval_min    = heartbeat_interval_min,
   heartbeat_offline_gap_min = heartbeat_offline_gap_min,
-
+  
   curtailment_start_end_gap_sec  = curtailment_start_end_gap_sec,
   curtailment_max_next_gap_sec   = curtailment_max_next_gap_sec,
   curtailment_drop_pct_threshold = curtailment_drop_pct_threshold,
   safe_shutdown_rpm               = safe_shutdown_rpm,
-
+  
   shutdown_time_thresholds = shutdown_time_thresholds,
   shutdown_time_low_cut    = shutdown_time_low_cut,
   shutdown_time_high_cut   = shutdown_time_high_cut,
   shutdown_time_buffer_sec = shutdown_time_buffer_sec,
-
+  
   curtailment_latency_decline_pct = curtailment_latency_decline_pct,
   curtailment_cutin_rpm           = curtailment_cutin_rpm,
   response_timeline_unit          = response_timeline_unit,
-
+  
   curtailment_example_window_before_min = curtailment_example_window_before_min,
   curtailment_example_window_after_min  = curtailment_example_window_after_min,
-
+  
   safe_dist_reference_line_m   = safe_dist_reference_line_m,
   safe_dist_rpm_threshold        = safe_dist_rpm_threshold,
   safe_dist_already_slowing_rpm  = safe_dist_already_slowing_rpm,
-
+  
   track_proximity_threshold_m = track_proximity_threshold_m,
   fatality_post_incident_days = fatality_post_incident_days,
-
+  
   flight_min_track_points = flight_min_track_points,
   flight_speed_ms_min     = flight_speed_ms_min,
   flight_speed_ms_max     = flight_speed_ms_max,
   risk_height_lower        = riskHeight_lower,
   risk_height_upper        = riskHeight_upper,
-
+  
   cluster_max_dist_m = cluster_max_dist_m,
   cluster_perm_n      = cluster_perm_n,
-
+  
   min_individuals_bin_min      = min_individuals_bin_min,
   min_individuals_merge_dist_m = min_individuals_merge_dist_m
 )

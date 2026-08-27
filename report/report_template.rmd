@@ -65,6 +65,10 @@ params:
   species_risk_height_stat: !r NULL
   incident_risk_context_stat: !r NULL
 
+  idf_cluster_map: !r NULL
+  idf_cluster_summary: !r NULL
+  idf_risk_summary: !r NULL
+
   min_indiv_summary: !r NULL
   min_indiv_plot_daily: !r NULL
 
@@ -87,6 +91,7 @@ params:
   xlsx_stat_critical_zone: !r NULL
   xlsx_species_risk_manual: !r NULL
   xlsx_species_risk_stat: !r NULL
+  xlsx_curtailment_cluster_idf: !r NULL
   xlsx_curtailment_examples: !r NULL
   xlsx_min_indiv: !r NULL
 
@@ -690,7 +695,7 @@ The tracks most likely associated with each incident -- those whose last recorde
 
 <!-- Source: fatality_summary$top_candidates <- summarise_fatality_tracks(fatality_tracks_dt)$top_candidates, R/fatality_track_investigation.R -->
 ```{r fatality-top-candidates-table}
-if (!is.null(params$fatality_top_candidates)) {
+if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candidates) > 0) {
   dt <- as.data.frame(params$fatality_top_candidates)
   dt <- dt[, intersect(c("incident_id", "turbine", "species", "triggered_curtailment", "signal"), names(dt)), drop = FALSE]
   report_table(rename_display(
@@ -698,6 +703,11 @@ if (!is.null(params$fatality_top_candidates)) {
     c(incident_id = "Incident", turbine = "Turbine", species = "Species",
       triggered_curtailment = "Triggered Curtailment", signal = "Signal")
   ))
+}
+```
+```{r fatality-top-candidates-empty, results='asis'}
+if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candidates) == 0) {
+  cat("No candidate tracks meeting the analysis requirements (signal type and proximity window, see Candidate Tracks by Signal above) were found for the known incidents.\n\n")
 }
 ```
 ```{r fatality-top-candidates-annex, results='asis'}
@@ -709,8 +719,21 @@ annex_note(params$xlsx_fatality)
 Response latency and no-response events (same definitions as the farm-wide "Curtailment Response & Latency" section, R/curtailment_response_latency.R) restricted to each incident's turbine and window of days before the incident. This covers every curtailment recorded at that turbine during the window, from any track, not only the candidate track(s) identified in "Top Candidate Tracks" above -- a track with no associated curtailment there (Triggered Curtailment = False) is not represented in the Curtailments count here, and a low or zero No Response figure reflects only the curtailments that did occur during the window, not necessarily a response to that specific candidate. Curtailments without a SCADA baseline within `r params$curtailment_start_end_gap_sec` s before the signal are reported separately (No Data) rather than excluded outright -- with few curtailments per incident, an unassessed one is proportionally more significant here than in the farm-wide tables above.
 
 <!-- Source: fatality_window_response_summary_dt <- rbindlist over fatality_windows[[id]]$curtailment_response$summary, R/fatality_window_analysis.R -->
+```{r fatality-window-response-empty, results='asis'}
+# fatality_windows[[id]]$curtailment_response$summary sempre devolve 1 linha
+# por incidente (mesmo sem NENHUM curtailment na janela, ver
+# summarise_latency() -- R/curtailment_response_latency.R), por isso a
+# tabela abaixo nunca fica genuinamente vazia (0 linhas); quando NENHUM
+# incidente teve curtailments na sua janela, fica so com "Incident" e
+# zeros/NA em todas as outras colunas, o que e' informativo mas pode
+# parecer uma tabela "vazia" -- esta nota explica o padrao antes da tabela.
+if (!is.null(params$fatality_window_response_summary) && nrow(params$fatality_window_response_summary) > 0 &&
+    all(params$fatality_window_response_summary$n_curtailments == 0)) {
+  cat("No curtailments were recorded at any incident turbine during its analysis window, so no response-latency figures could be computed for this section (Curtailments = 0 for every incident below).\n\n")
+}
+```
 ```{r fatality-window-response-table}
-if (!is.null(params$fatality_window_response_summary)) {
+if (!is.null(params$fatality_window_response_summary) && nrow(params$fatality_window_response_summary) > 0) {
   report_table(
     rename_display(
       drop_cols(params$fatality_window_response_summary, c("n_curtailments", "n_known", "n_below_cutin", "pct_below_cutin")),
@@ -738,9 +761,9 @@ Minimum-individuals abundance of the incident's species, comparing the `r params
 if (!is.null(params$fatality_abundance_pre_post)) {
   report_table(
     rename_display(
-      params$fatality_abundance_pre_post,
+      drop_cols(params$fatality_abundance_pre_post, "mean_individuals"),
       c(incident_id = "Incident", period = "Period", n_days = "Days", n_bins = "Bins",
-        peak_individuals = "Peak Individuals", mean_individuals = "Mean Individuals")
+        peak_individuals = "Peak Individuals")
     ),
     max_col_width_cm = 1.5
   )
@@ -751,19 +774,23 @@ annex_note(params$xlsx_fatality)
 ```
 
 ```{r cluster-section-guards, include=FALSE}
-# Secção 8 combina a via manual (antigas 7.5-7.8) e a via estatistica
-# (antiga secção 8 standalone) num so' capitulo, cada uma na sua propria
-# subsecção (8.1/8.2) -- cada uma so' aparece (titulo incluido) quando tem
-# conteudo: manual liga/desliga com run_sections$risk_clusters, estatistica
-# com run_sections$turbine_clustering (ambas em userSettings_BSH.R).
+# Secção 8 combina a via manual (antigas 7.5-7.8), a via estatistica
+# (antiga secção 8 standalone) e a via por unidade IDF partilhada (2026-08)
+# num so' capitulo, cada uma na sua propria subsecção -- cada uma so'
+# aparece (titulo incluido) quando tem conteudo: manual liga/desliga com
+# run_sections$risk_clusters, estatistica com run_sections$turbine_clustering
+# (ambas em userSettings_BSH.R), IDF com o mesmo run_sections$risk_clusters
+# da via manual (ver run_idf, IDF_analysis.R secção 10 -- nao e' um switch
+# novo).
 show_manual_cluster <- !is.null(params$risk_cluster_map) || !is.null(params$risk_cluster_summary) || !is.null(params$risk_fatality_summary) || !is.null(params$species_activity_manual)
 show_stat_cluster    <- !is.null(params$stat_cluster_map) || !is.null(params$stat_cluster_summary) || !is.null(params$stat_risk_summary) || !is.null(params$species_activity_stat)
+show_idf_cluster     <- !is.null(params$idf_cluster_map) || !is.null(params$idf_cluster_summary) || !is.null(params$idf_risk_summary)
 ```
 
 ```{r cluster-section-heading, results='asis'}
-if (show_manual_cluster || show_stat_cluster) {
+if (show_manual_cluster || show_stat_cluster || show_idf_cluster) {
   cat("# Turbine Clustering & Risk by Sector\n\n")
-  cat("Turbines grouped into clusters, 2 independent methods: manual sectors (pre-defined, `manual_turbine_clusters`) and statistical clusters (grouped by distance, max ", params$cluster_max_dist_m, " m between turbines in the same cluster). Each method groups the same underlying curtailment and track data differently; for each, curtailments per cluster, a permutation-test-based risk summary at the incident turbines, and species activity/risk-height exposure by cluster for the fatality-incident species (rank + permutation test, ", params$cluster_perm_n, " permutations where applicable).\n\n", sep = "")
+  cat("Turbines grouped into clusters, up to 3 independent methods: manual sectors (pre-defined, `manual_turbine_clusters`), statistical clusters (grouped by distance, max ", params$cluster_max_dist_m, " m between turbines in the same cluster), and IDF-unit groups (turbines sharing the same Primary IDF unit, from the turbine/IDF coverage matrix). Each method groups the same underlying curtailment and track data differently; for each, curtailments per cluster and a permutation-test-based risk summary at the incident turbines (species activity/risk-height exposure by cluster, for the fatality-incident species, is computed for the manual and statistical clusters only -- rank + permutation test, ", params$cluster_perm_n, " permutations where applicable).\n\n", sep = "")
 }
 ```
 
@@ -797,16 +824,16 @@ annex_note(params$xlsx_risk_cluster_patterns)
 ```
 
 ```{r manual-risk-summary-heading, results='asis'}
-if (!is.null(params$risk_fatality_summary)) cat("### Risk Summary at Incident Turbines\n\nFor each incident's turbine: its share of its manual sector's curtailments (Sector Curtlms.), and its rank among the sector's turbines by that share (Curtlm. Rank).\n\n")
+if (!is.null(params$risk_fatality_summary)) cat("### Risk Summary at Incident Turbines\n\nOne row per known fatality incident: its turbine's share of its manual sector's curtailments (Sector Curtlms.), and its rank among the sector's turbines by that share (Curtlm. Rank). Two incidents at the same turbine share the same sector figures.\n\n")
 ```
-<!-- Source: fatality_risk_summary_dt <- merge(critical_zone_manual_dt, perm_manual_dt), IDF_analysis.R section 10.3 (critical_zone_manual_dt from summarise_turbine_critical_zone(), R/turbine_critical_zone_summary.R; perm_manual_dt from permutation_test_marginal_contribution_all(), R/curtailment_cluster_patterns.R) -->
+<!-- Source: fatality_risk_summary_dt <- merge(fatality_incidents, critical_zone_manual_dt, perm_manual_dt), IDF_analysis.R section 10.3 (critical_zone_manual_dt from summarise_turbine_critical_zone(), R/turbine_critical_zone_summary.R; perm_manual_dt from permutation_test_marginal_contribution_all(), R/curtailment_cluster_patterns.R) -->
 ```{r risk-fatality-summary-table}
 if (!is.null(params$risk_fatality_summary)) {
   dt <- as.data.frame(params$risk_fatality_summary)
-  dt <- dt[, intersect(c("turbine", "n_total", "cluster_rank"), names(dt)), drop = FALSE]
+  dt <- dt[, intersect(c("incident_id", "turbine", "n_total", "cluster_rank"), names(dt)), drop = FALSE]
   report_table(rename_display(
     dt,
-    c(turbine = "Turbine", n_total = "Sector Curtlms.", cluster_rank = "Curtlm. Rank")
+    c(incident_id = "Incident", turbine = "Turbine", n_total = "Sector Curtlms.", cluster_rank = "Curtlm. Rank")
   ))
 }
 ```
@@ -879,21 +906,38 @@ if (!is.null(params$incident_risk_context_manual) && nrow(params$incident_risk_c
   cat("\n")
   for (i in seq_len(nrow(dt))) {
     r <- dt[i, ]
-    verdict <- if (isTRUE(r$low_baseline_risk_supported)) {
-      "its sector is below median on both metrics, so the baseline activity/exposure data do not contradict treating this sector's risk as comparatively lower than the farm's other sectors"
+    # NA (nao FALSE) quando a especie do incidente nao tem NENHUM track
+    # farm-wide que passe os filtros de summarise_species_cluster_activity()/
+    # summarise_species_cluster_risk_height() (R/species_cluster_risk_ranking.R)
+    # -- ex: uma especie nunca detetada pelo sistema IDF, so' confirmada por
+    # observacao humana no achado da carcaca. Sem este caso a parte "else"
+    # abaixo lia-se como "confirmamos que nao esta' abaixo da mediana", o que
+    # e' FALSO quando na realidade nao houve dados nenhuns para avaliar.
+    if (is.na(r$track_activity_rank) || is.na(r$risk_height_rank)) {
+      cat(sprintf(
+        "- **%s** (%s, %s): sector %s -- no farm-wide track of this species meeting the analysis requirements was found, so no activity/risk-height ranking could be computed for its sector (the species may not have been detected by the IDF system at all).\n",
+        r$incident_id, r$turbine, r$species, r$cluster_id
+      ))
     } else {
-      "its sector is not below median on both metrics, so these data do not support treating this sector's risk as comparatively low"
+      verdict <- if (isTRUE(r$low_baseline_risk_supported)) {
+        "its sector is below median on both metrics, so the baseline activity/exposure data do not contradict treating this sector's risk as comparatively lower than the farm's other sectors"
+      } else {
+        "its sector is not below median on both metrics, so these data do not support treating this sector's risk as comparatively low"
+      }
+      cat(sprintf(
+        "- **%s** (%s, %s): sector %s ranks %s of %s by track activity (%s%% of the species' farm-wide tracks) and %s of %s by time in the risk-height zone (%s%%) -- %s.\n",
+        r$incident_id, r$turbine, r$species, r$cluster_id,
+        r$track_activity_rank, r$n_clusters, r$track_pct_of_total,
+        r$risk_height_rank, r$n_clusters, r$pct_in_risk_zone,
+        verdict
+      ))
     }
-    cat(sprintf(
-      "- **%s** (%s, %s): sector %s ranks %s of %s by track activity (%s%% of the species' farm-wide tracks) and %s of %s by time in the risk-height zone (%s%%) -- %s.\n",
-      r$incident_id, r$turbine, r$species, r$cluster_id,
-      r$track_activity_rank, r$n_clusters, r$track_pct_of_total,
-      r$risk_height_rank, r$n_clusters, r$pct_in_risk_zone,
-      verdict
-    ))
   }
   cat("\n")
 }
+```
+```{r incident-risk-context-manual-annex, results='asis'}
+annex_note(params$xlsx_species_risk_manual)
 ```
 
 ```{r stat-cluster-heading, results='asis'}
@@ -931,18 +975,18 @@ if (!is.null(params$stat_risk_summary)) {
   cat("Same combined view as the manual sectors section above, computed instead over the statistical clusters.\n\n")
 }
 ```
-<!-- Source: stat_risk_summary_dt <- merge(critical_zone_stat_dt, perm_stat_dt), IDF_analysis.R section 10.3 -->
+<!-- Source: stat_risk_summary_dt <- merge(fatality_incidents, critical_zone_stat_dt, perm_stat_dt), IDF_analysis.R section 10.3 -->
 ```{r stat-risk-summary-table}
 if (!is.null(params$stat_risk_summary)) {
   dt <- as.data.frame(params$stat_risk_summary)
   dt <- dt[, intersect(c(
-    "turbine", "cluster_id", "n_total", "pct_of_cluster", "cluster_rank",
+    "incident_id", "turbine", "cluster_id", "n_total", "pct_of_cluster", "cluster_rank",
     "track_pct_of_total", "track_cluster_rank", "observed_pct"
   ), names(dt)), drop = FALSE]
   report_table(
     rename_display(
       dt,
-      c(turbine = "Turbine", cluster_id = "Cluster", n_total = "Cluster Curtailments",
+      c(incident_id = "Incident", turbine = "Turbine", cluster_id = "Cluster", n_total = "Cluster Curtailments",
         pct_of_cluster = "% of Cluster", cluster_rank = "Curtailment Rank",
         track_pct_of_total = "% of Cluster Tracks", track_cluster_rank = "Track Rank",
         observed_pct = "Observed %")
@@ -1018,21 +1062,85 @@ if (!is.null(params$incident_risk_context_stat) && nrow(params$incident_risk_con
   cat("\n")
   for (i in seq_len(nrow(dt))) {
     r <- dt[i, ]
-    verdict <- if (isTRUE(r$low_baseline_risk_supported)) {
-      "its cluster is below median on both metrics, so the baseline activity/exposure data do not contradict treating this cluster's risk as comparatively lower than the farm's other clusters"
+    # mesma razao de incident-risk-context-manual-text acima -- NA (nao
+    # FALSE) quando a especie do incidente nao tem NENHUM track farm-wide
+    # valido, distinto de "confirmamos que nao esta' abaixo da mediana"
+    if (is.na(r$track_activity_rank) || is.na(r$risk_height_rank)) {
+      cat(sprintf(
+        "- **%s** (%s, %s): cluster %s -- no farm-wide track of this species meeting the analysis requirements was found, so no activity/risk-height ranking could be computed for its cluster (the species may not have been detected by the IDF system at all).\n",
+        r$incident_id, r$turbine, r$species, r$cluster_id
+      ))
     } else {
-      "its cluster is not below median on both metrics, so these data do not support treating this cluster's risk as comparatively low"
+      verdict <- if (isTRUE(r$low_baseline_risk_supported)) {
+        "its cluster is below median on both metrics, so the baseline activity/exposure data do not contradict treating this cluster's risk as comparatively lower than the farm's other clusters"
+      } else {
+        "its cluster is not below median on both metrics, so these data do not support treating this cluster's risk as comparatively low"
+      }
+      cat(sprintf(
+        "- **%s** (%s, %s): cluster %s ranks %s of %s by track activity (%s%% of the species' farm-wide tracks) and %s of %s by time in the risk-height zone (%s%%) -- %s.\n",
+        r$incident_id, r$turbine, r$species, r$cluster_id,
+        r$track_activity_rank, r$n_clusters, r$track_pct_of_total,
+        r$risk_height_rank, r$n_clusters, r$pct_in_risk_zone,
+        verdict
+      ))
     }
-    cat(sprintf(
-      "- **%s** (%s, %s): cluster %s ranks %s of %s by track activity (%s%% of the species' farm-wide tracks) and %s of %s by time in the risk-height zone (%s%%) -- %s.\n",
-      r$incident_id, r$turbine, r$species, r$cluster_id,
-      r$track_activity_rank, r$n_clusters, r$track_pct_of_total,
-      r$risk_height_rank, r$n_clusters, r$pct_in_risk_zone,
-      verdict
-    ))
   }
   cat("\n")
 }
+```
+```{r incident-risk-context-stat-annex, results='asis'}
+annex_note(params$xlsx_species_risk_stat)
+```
+
+```{r idf-cluster-heading, results='asis'}
+if (show_idf_cluster) {
+  cat("## IDF Unit Grouping\n\n")
+  cat("Turbines grouped by shared Primary IDF unit (turbine/IDF coverage matrix) instead of geographic sector or distance -- curtailment activity is tied to IDF/SCADA presence, not geography, so this is the most direct comparison group where IDF coverage is partial (a turbine outside the range of every IDF unit has no group here at all, and is reported as such rather than compared against an unrelated geographic sector).\n\n")
+}
+```
+
+```{r idf-cluster-map-heading, results='asis'}
+if (!is.null(params$idf_cluster_map)) cat("### IDF Unit Map\n\nTurbine groups as defined by shared Primary IDF unit, with the incident turbines highlighted. A turbine with no Primary IDF assigned falls outside the range of every IDF unit and has no group (shown as \"(no cluster)\").\n\n")
+```
+<!-- Source: p_map_idf <- plot_turbine_clusters_map(wtg, cluster_dt_idf, ...), R/turbine_spatial_clusters.R -->
+```{r idf-cluster-map, fig.width=6.30, fig.height=5.04}
+if (!is.null(params$idf_cluster_map)) print(params$idf_cluster_map)
+```
+
+```{r idf-cluster-summary-heading, results='asis'}
+if (!is.null(params$idf_cluster_summary)) cat("### Curtailments by IDF Unit\n\nTotal curtailments per IDF unit, over the full project history.\n\n")
+```
+<!-- Source: cluster_summary_idf$by_cluster <- summarise_cluster_curtailments(curtl_cl_idf_dt)$by_cluster, R/curtailment_cluster_patterns.R -->
+```{r idf-cluster-summary-table}
+if (!is.null(params$idf_cluster_summary)) {
+  report_table(rename_display(
+    params$idf_cluster_summary,
+    c(cluster_id = "IDF Unit", n_turbines = "Turbines", n_total = "Curtailments",
+      mean_per_turbine = "Mean per Turbine", cluster_rank = "Rank")
+  ))
+}
+```
+```{r idf-cluster-summary-annex, results='asis'}
+annex_note(params$xlsx_curtailment_cluster_idf)
+```
+
+```{r idf-risk-summary-heading, results='asis'}
+if (!is.null(params$idf_risk_summary)) cat("### Risk Summary at Incident Turbines\n\nOne row per known fatality incident: its turbine's share of curtailments among turbines sharing the same Primary IDF unit (IDF Curtlms.), and its rank among those turbines by that share (Curtlm. Rank). An incident turbine with no Primary IDF assigned (outside the range of every IDF unit) shows no group and no ranking below -- this reflects the real absence of IDF/curtailment coverage at that turbine, not a computation error.\n\n")
+```
+<!-- Source: idf_risk_summary_dt <- merge(fatality_incidents, marginal_idf_dt, perm_idf_dt), IDF_analysis.R section 10.3 (marginal_idf_dt from summarise_turbine_marginal_contribution(), perm_idf_dt from permutation_test_marginal_contribution_all(), both R/curtailment_cluster_patterns.R, grouped by cluster_dt_idf) -->
+```{r idf-risk-summary-table}
+if (!is.null(params$idf_risk_summary)) {
+  dt <- as.data.frame(params$idf_risk_summary)
+  dt <- dt[, intersect(c("incident_id", "turbine", "cluster_id", "n_total", "cluster_rank"), names(dt)), drop = FALSE]
+  report_table(rename_display(
+    dt,
+    c(incident_id = "Incident", turbine = "Turbine", cluster_id = "IDF Unit",
+      n_total = "IDF Curtlms.", cluster_rank = "Curtlm. Rank")
+  ))
+}
+```
+```{r idf-risk-summary-annex, results='asis'}
+annex_note(params$xlsx_curtailment_cluster_idf)
 ```
 
 # Minimum Individuals per Time Bin
@@ -1057,8 +1165,8 @@ annex_note(params$xlsx_min_indiv)
 
 ## Daily Peak, by Species
 
-<!-- Source: plot_daily_max_individuals(min_indiv_daily_dt, date_breaks = "1 month", geom_type = "bar"), R/track_min_individuals.R -->
-```{r min-indiv-daily-plot, fig.width=6.30, fig.height=6.30}
+<!-- Source: plot_daily_max_individuals(min_indiv_daily_dt, species_sel = setdiff(prioritysp, "Protected"), date_breaks = "1 month", geom_type = "bar"), R/track_min_individuals.R -->
+```{r min-indiv-daily-plot, fig.width=6.30, fig.height=8.66}
 if (!is.null(params$min_indiv_plot_daily)) print(params$min_indiv_plot_daily)
 ```
 

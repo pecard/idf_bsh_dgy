@@ -54,6 +54,11 @@ project_ref <- "Dzhankeldy WPP"
 wtg_filename                <- "DZH_Turbines_Sergey_20250401_UTM.shp"
 turbine_idf_matrix_filename <- "ACWA_IDF_Coverage_Matrix_DGY.xlsx"
 
+## Nome da coluna de ID no shapefile de turbinas -- ver a nota completa em
+## userSettings_DGY.R e IDF_monthly_report.R, secção "0. Import data"
+## (DZH_Turbines_Sergey_20250401_UTM.shp so' tem "Name", sem "InternalNa").
+wtg_source_id_col <- "Name"
+
 proj_lat      <- 40.89
 proj_lon      <- 63.38
 proj_timezone <- "Asia/Samarkand"
@@ -75,8 +80,9 @@ databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 # databases_dir_alt <- "//192.168.1.11/.../IDF_PortalData/DGY"
 
 ## databases_dir e' partilhada com o projeto BSH -- farm_pattern filtra por
-## substring "DGY" (sem alternancia -- ao contrario do Bash, aparece nos 4
-## datasets principais tal e qual, ver userSettings_DGY.R).
+## substring "DGY" -- mantido como 2a camada de filtro mesmo agora que
+## "DGY" tambem esta' embutido em cada *_pattern abaixo (ver
+## userSettings_DGY.R para a nota completa).
 farm_pattern <- "DGY"
 
 ## Identificador curto do parque -- usado so' para nao colidir com o Bash
@@ -84,10 +90,12 @@ farm_pattern <- "DGY"
 ## userSettings_DGY.R, e o mesmo uso em IDF_monthly_report.R).
 farm_code <- "DGY"
 
-trackreport_pattern  <- "_Track_"
-curtailments_pattern <- "curtail_orders|Curtailments"
-scada_pattern        <- "SCADA_.+csv"
-heartbeats_pattern   <- "Heartbeats_.+csv"
+## "DGY" aparece algures no nome de cada ficheiro, sem posicao fixa face a
+## palavra-chave do dataset -- mesma nota completa em userSettings_DGY.R.
+trackreport_pattern  <- "(DGY.*TrackReport_|TrackReport_.*DGY)"
+curtailments_pattern <- "(DGY.*curtail_orders|curtail_orders.*DGY|DGY.*Curtailments|Curtailments.*DGY)"
+scada_pattern        <- "(SCADA_.*DGY.*csv|DGY.*SCADA_.+csv)"
+heartbeats_pattern   <- "(Heartbeats_.*DGY.*csv|DGY.*Heartbeats_.+csv)"
 
 # Sem heartbeat_idf_units (subconjunto manual de userSettings_DGY.R) -- o
 # relatorio mensal usa TODAS as unidades IDF com heartbeat, sem filtro (so'

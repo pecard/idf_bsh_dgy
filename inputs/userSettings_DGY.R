@@ -38,11 +38,11 @@
 
 run_sections <- list(
   curtailment_response   = TRUE,  # 3.5-3.7 -- so' cobre as poucas turbinas com unidade IDF (turbinas_scada abaixo)
-  fatality_investigation = FALSE, # 4 -- LIGAR so' depois de preencher fatality_incidents abaixo (vazio por omissao); mesmo preenchido, so' a parte de tracks tem dados (turbinas de incidente sem IDF -- ver nota no topo do ficheiro)
-  coverage_3d             = FALSE,  # 5.2 -- LIGAR so' depois de colocar dem_filename (abaixo) em inputs/
+  fatality_investigation = T, # 4 -- LIGAR so' depois de preencher fatality_incidents abaixo (vazio por omissao); mesmo preenchido, so' a parte de tracks tem dados (turbinas de incidente sem IDF -- ver nota no topo do ficheiro)
+  coverage_3d             = T,  # 5.2 -- LIGAR so' depois de colocar dem_filename (abaixo) em inputs/
   min_individuals          = TRUE,  # 6.4 -- prioridade do Paulo para o DGY (atividade sazonal por especie prioritaria)
   turbine_clustering       = TRUE,  # 10 (via ESTATISTICA, por distancia) -- via principal do DGY por agora (sem setores manuais definidos)
-  risk_clusters            = FALSE  # 10 (via MANUAL/setores) -- LIGAR so' depois de manual_turbine_clusters estar definido abaixo (ainda por fazer)
+  risk_clusters            = T  # 10 (via MANUAL/setores) -- LIGAR so' depois de manual_turbine_clusters estar definido abaixo (ainda por fazer)
 )
 
 
@@ -57,33 +57,56 @@ project_ref <- "Dzhankeldy WPP"
 # nao existem, mesma situacao do BSH69 em userSettings_BSH.R, nao e' erro)
 wtg_filename <- "DZH_Turbines_Sergey_20250401_UTM.shp"  # in .shp
 
+## Nome da coluna de ID no shapefile de turbinas -- o Bash tem "InternalNa"
+## (omissao em IDF_analysis.R/IDF_monthly_report.R), mas
+## DZH_Turbines_Sergey_20250401_UTM.shp so' tem "Name" (confirmado 2026-08
+## via dbfread: sem InternalNa nenhuma) -- ver a nota completa em
+## IDF_analysis.R, secção "0. Import data".
+wtg_source_id_col <- "Name"
+
+## Idem para a coluna de ID no shapefile de unidades IDF -- o Bash tem
+## "imaging_he" (Bash_IDF_coord.shp); IDF_DZH.shp so' tem "Name" (com os
+## mesmos valores de heartbeat_idf_units abaixo, ex: "DZH01-01").
+idf_source_id_col <- "Name"
+
 # 6 registos no shapefile, mas so' 4 sao cobertura "Existing" (o resto e'
 # cobertura suplementar/planeada, nao unidades instaladas -- ver
 # heartbeat_idf_units abaixo)
 idf_filename <- "IDF_DZH.shp"  # in .shp
 
-## TODO(Paulo): sem ficheiros de tier scheme para o DGY ainda -- os nomes
-## abaixo sao placeholders (o ficheiro nao precisa de existir: IDF_analysis.R
-## agora le tier/tier3 de forma opcional, ver secção "0. Import data" --
-## tier_dt/tier3_dt nao alimentam nenhuma secção ativa do relatorio de
-## qualquer forma). Ajustar so' se algum dia precisares de tier scheme real
-## para o DGY.
+## Tier scheme ignorado por agora (decisao do Paulo, 2026-08) -- os nomes
+## abaixo sao placeholders, os ficheiros nao existem em inputs/ e nao
+## precisam de existir (IDF_analysis.R le tier/tier3 de forma opcional, ver
+## secção "0. Import data" -- tier_dt/tier3_dt nao alimentam nenhuma secção
+## ativa do relatorio de qualquer forma). Ajustar so' se algum dia precisar
+## de tier scheme real para o DGY.
 tier_start_scheme_filename  <- "Dzhankeldy_tier_scheme.xlsx"
 tier3_start_scheme_filename <- "Dzhankeldy_tier_3_commissioning.xlsx"
 
-## TODO(Paulo): sem matriz manual turbina<->IDF (equivalente a
-## ACWA_IDF_Coverage_Matrix.xlsx do Bash) para o DGY ainda -- opcional
-## (IDF_analysis.R ja verifica file.exists() antes de ler, so' fica sem a
-## comparacao geometria-vs-manual em turbine_idf_coverage.xlsx). Com so' 4
-## unidades e' facil de montar a mao se vier a fazer falta.
+## Matriz turbina<->IDF derivada GEOMETRICAMENTE (2026-08, Paulo pediu para
+## "criar a nossa" em vez de montar a mao) -- buffer de 1km a volta de cada
+## turbina e de cada unidade IDF, % de sobreposicao pelo mesmo metodo de
+## R/turbine_idf_coverage.R (compute_turbine_idf_coverage()), gravada no
+## formato "manual" (colunas Site/Turbine ID/Primary IDF/Secondary IDF(s))
+## para poder ser lida como qualquer outra matriz manual. So' 15 das 79
+## turbinas caem dentro de 1km de alguma das 4 unidades IDF -- as restantes
+## ficam com Primary/Secondary em branco (sem cobertura a esta distancia),
+## nao e' um erro. Inclui uma 2a folha (Geometric_Detail) com a % de
+## sobreposicao por par turbina+unidade, para auditoria. NOTA: como
+## DZH_Turbines_Sergey_20250401_UTM.shp esta' em UTM (metros) e IDF_DZH.shp
+## esta' em WGS84 (graus), a unidade IDF foi reprojetada para
+## crs_projection_plannar (32641) antes do calculo -- sem isto o buffer de
+## "1000" seria 1000 GRAUS para as unidades IDF, nao 1000m (bug silencioso
+## que teria de ser corrigido em R/turbine_idf_coverage.R tambem se essa
+## funcao vier a ser chamada diretamente sobre os 2 shapefiles do DGY).
 turbine_idf_matrix_filename <- "ACWA_IDF_Coverage_Matrix_DGY.xlsx"
 
 # Centroide aproximado das unidades IDF/turbinas (IDF_DZH.shp, bbox
 # lat 40.850-40.934, lon 63.285-63.468) -- so' usado para calculo de
 # posicao do sol (disponibilidade diurna, secção 3.1), nao precisa de ser
 # exato ao metro
-proj_lat      <- 40.89
-proj_lon      <- 63.38
+proj_lat      <- 40.87486
+proj_lon      <- 63.38871
 proj_timezone <- "Asia/Samarkand"
 
 # Zona UTM 41N (60-66°E) cobre tambem a longitude do DGY (~63.3-63.5°E) --
@@ -103,13 +126,18 @@ databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 ## tem databases_dir_alt, ver userSettings_BSH.R) -- omitido por omissao
 ## (IDF_analysis.R so' usa databases_dir_alt se a variavel existir). Definir
 ## aqui se houver uma pasta de rede equivalente para o DGY.
-# databases_dir_alt <- "//192.168.1.11/.../IDF_PortalData/DGY"
+
+
+databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-2025_BSH_DGY/IDF_PortalData/DGY"
 
 ## databases_dir acima e' PARTILHADA com o projeto BSH -- farm_pattern
 ## filtra por substring "DGY" (confirmado pelo Paulo, 2026-08: aparece nos 4
 ## datasets principais, ao contrario do Bash onde heartbeats precisou de
 ## uma alternancia "BSH|Bash" -- ver farm_pattern em userSettings_BSH.R e
-## list_files_multi_dir(), R/read_utils.R).
+## list_files_multi_dir(), R/read_utils.R). Mantido como 2a camada de
+## filtro mesmo agora que "DGY" tambem esta' embutido em cada
+## *_pattern abaixo (redundante de proposito -- protege mesmo que um dos
+## padroes venha a ser relaxado no futuro).
 farm_pattern <- "DGY"
 
 ## Identificador curto e limpo do parque -- usado so' para nao colidir com
@@ -117,10 +145,16 @@ farm_pattern <- "DGY"
 ## partilhadas (ver IDF_analysis.R, logo apos o source() deste ficheiro).
 farm_code <- "DGY"
 
-trackreport_pattern  <- "_Track_"             # ex: ..._Track_...csv
-curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
-scada_pattern        <- "SCADA_.+csv"         # ex: SCADA_20260201_....csv
-heartbeats_pattern   <- "Heartbeats_.+csv"    # ex: Heartbeats_20260201_....csv
+## "DGY" aparece algures no nome de cada ficheiro, mas NAO numa posicao
+## fixa face a palavra-chave do dataset (confirmado pelo Paulo, 2026-08 --
+## nao e' sempre prefixo) -- por isso cada padrao aceita "DGY" antes OU
+## depois da palavra-chave (list.files()/grepl() do R base usa regex POSIX
+## Extended, sem lookahead, daqui a necessidade da alternancia explicita
+## nos 2 sentidos em vez de algo como "(?=.*DGY)(?=.*_Track_)").
+trackreport_pattern  <- "(DGY.*TrackReport_|TrackReport_.*DGY)"                                             # ex: ..._Track_...DGY...csv ou ...DGY..._Track_...csv
+curtailments_pattern <- "(DGY.*curtail_orders|curtail_orders.*DGY|DGY.*Curtailments|Curtailments.*DGY)" # ex: Curtailments_DGY_20260201_....xlsx
+scada_pattern        <- "(SCADA_.*DGY.*csv|DGY.*SCADA_.+csv)"                                     # ex: SCADA_DGY_20260201_....csv (DGY tambem antes de "SCADA_" ou depois de "csv" fica coberto)
+heartbeats_pattern   <- "(Heartbeats_.*DGY.*csv|DGY.*Heartbeats_.+csv)"                            # ex: Heartbeats_DGY_20260201_....csv (idem)
 
 ## As 4 unidades IDF confirmadas como "Existing Coverage" em IDF_DZH.shp
 ## (as outras 2 entradas desse shapefile, ambas "DZH-23", estao em pastas
@@ -129,6 +163,16 @@ heartbeats_pattern   <- "Heartbeats_.+csv"    # ex: Heartbeats_20260201_....csv
 ## daqui; confirmar com o Paulo se "DZH-23" corresponde a alguma unidade
 ## real antes de a incluir).
 heartbeat_idf_units <- c("DZH01-01", "DZH03-02", "DZH64-03", "DZH62-04")
+
+## Mesmas 4 unidades, reutilizadas para filtrar o shapefile IDF_DZH.shp
+## antes da analise geometrica turbina<->IDF (secção "0. Import data",
+## IDF_analysis.R) -- variavel SEPARADA de heartbeat_idf_units de proposito
+## (nome generico, nao "heartbeat_..."): para o Bash, heartbeat_idf_units
+## tem um proposito mais estreito (filtro de heartbeats/fallback de
+## fatalidade) e nao necessariamente cobre TODAS as unidades reais do
+## parque, por isso o codigo em IDF_analysis.R nao reutiliza essa variavel
+## para o filtro geometrico -- so' idf_installed_units, aqui um alias.
+idf_installed_units <- heartbeat_idf_units
 
 
 ##
@@ -139,8 +183,8 @@ heartbeat_idf_units <- c("DZH01-01", "DZH03-02", "DZH64-03", "DZH62-04")
 ## pipeline so' usa dados que existirem dentro deste intervalo; nao ha
 ## problema em deixar largo, so' ajustar se search precisar de restringir a
 ## um periodo mais curto)
-ini <- as.POSIXct('2024-01-01 00:00:00', tz = proj_timezone)
-end <- as.POSIXct('2026-12-31 23:59:59', tz = proj_timezone)
+ini <- as.POSIXct('2025-08-01 00:00:00', tz = proj_timezone)
+end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
 
 
 ##
@@ -162,14 +206,14 @@ prioritysp <- c(
   'White-Tailed-Eagle',
   'Protected',
   'Booted-Eagle',
-  'Short-Toed-Snake-Eagle'
+  'Short-Toed-Snake-Eagle',
+  'Greater-Spotted-Eagle'
 )
 
 nonprioritysp <- c(
   'Accipiter',
   'Kestrel',
   'Common-Buzzard',
-  'Greater-Spotted-Eagle',
   "Harrier",
   'Honey-Buzzard',
   'Long-Legged-Buzzard',
@@ -246,12 +290,12 @@ shorttrack_eval_range <- 300
 
 ## TODO(Paulo): janela de SCADA por confirmar -- largos por omissao, mesma
 ## nota que ini/end acima
-scada_ini <- as.POSIXct('2024-01-01 00:00:00', tz = proj_timezone)
-scada_end <- as.POSIXct('2026-12-31 23:59:59', tz = proj_timezone)
+scada_ini <- as.POSIXct('2026-01-01 00:00:00', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
 
 # As 4 turbinas com unidade IDF confirmada (heartbeat_idf_units acima, sem
 # o sufixo "-NN" da unidade) -- so' estas tem curtailments/SCADA
-turbinas_scada <- c('DZH01', 'DZH03', 'DZH62', 'DZH64')
+turbinas_scada <- c('DZH01', 'DZH01','DZH03', 'DZH62', 'DZH63','DZH64')
 
 safe_shutdown_rpm <- 1
 
@@ -313,12 +357,25 @@ safe_dist_already_slowing_rpm <- 6
 track_proximity_threshold_m <- 100
 fatality_post_incident_days <- 3
 
+## CORRIGIDO 2026-08 (Claude) -- a versao que o Paulo colocou aqui (commit
+## "adjustments for 1st run") tinha erros de sintaxe R que impediam este
+## ficheiro de sequer ser lido (character()/integer() usados como se
+## fossem c() -- essas funcoes criam um vetor VAZIO desse comprimento, nao
+## aceitam os valores como argumentos; e "2026-02-25" sem aspas e' invalido
+## como expressao R). Tambem troquei "DGY58"/"DGY15"/"DGY44" por
+## "DZH58"/"DZH15"/"DZH44" -- DGY e' o farm_code do parque (linha ~141),
+## NENHUMA turbina real usa esse prefixo (todas sao "DZH.." em
+## turbinas_scada, no shapefile, em toda a base de dados); DZH58/DZH15/DZH44
+## sao turbinas reais (confirmadas contra DZH_Turbines_Sergey_20250401_UTM.shp).
+## incident_id: os 2 primeiros ("DGY_0000X"/"DGY000Y" no original) tinham
+## X/Y literais, nao parecem IDs reais -- deixados como placeholder
+## "DGY_TBD1"/"DGY_TBD2" ate' o Paulo confirmar os valores certos.
 fatality_incidents <- data.table::data.table(
-  incident_id   = character(),
-  turbine       = character(),
-  species       = character(),
-  incident_date = as.Date(character()),
-  days_before   = integer()
+  incident_id   = c("DGY_TBD1", "DGY_TBD2", "DGY0004", "DGY0006"),
+  turbine       = c("DZH58", "DZH58", "DZH15", "DZH44"),
+  species       = c("Golden-Eagle", "Golden-Eagle", "Greater-Spotted-Eagle", "Egyptian-Vulture"),
+  incident_date = as.Date(c("2026-02-25", "2026-03-18", "2026-05-19", "2026-06-24")),
+  days_before   = c(8, 8, 8, 8)
 )
 
 
@@ -332,10 +389,11 @@ coverage_cylinder_inner_radius <- 600
 
 ## -- 5.2. WTG coverage 3D com topografia (DEM) --
 
-## TODO(Paulo): colocar o GeoTIFF do DGY (ex: Copernicus GLO-30) em
-## inputs/ com este nome (ou ajustar o nome aqui) e mudar
-## run_sections$coverage_3d acima para TRUE
-dem_filename <- "DZH_DEM_copernicus30m.tif"
+## TODO(Paulo): ainda falta colocar o GeoTIFF do DGY (ex: Copernicus
+## GLO-30) em inputs/ com este nome -- ficheiro nao encontrado em inputs/
+## (2026-08). Quando existir, mudar run_sections$coverage_3d acima para
+## TRUE.
+dem_filename <- "DGY_dem_copernicus30m.tif"
 
 wtg_3d_coverage <- c('all')
 
@@ -407,11 +465,34 @@ cluster_perm_n <- 999
 ## sequer referenciada por agora) -- definir aqui, no mesmo formato de
 ## manual_turbine_clusters em userSettings_BSH.R, quando houver uma proposta
 ## de setores para as 79 turbinas do DGY.
-# manual_turbine_clusters <- list(
-#   Setor_A = c("DZH01", "DZH02", ...),
-#   ...
-# )
+## CORRIGIDO 2026-08 (Claude) -- a versao do Paulo (commit "adjustments
+## for 1st run") nao era R valido: virgulas a mais/a menos (trailing comma
+## antes de ")", e virgulas iniciais de linha tipo ", "DZH19"" que deixam
+## um argumento vazio entre 2 virgulas) e um bloco de "DZH11" repetido 8x
+## dentro do Setor_B (visivelmente um erro de copy/paste). Tambem corrigi
+## "DZ57" -> "DZH57" (Setor_E) -- sem o H nao e' o nome de nenhuma turbina
+## real. Removidas as duplicatas e reconstruida a lista so' com turbinas
+## reais; verificado por programa que as 79 turbinas de
+## DZH_Turbines_Sergey_20250401_UTM.shp aparecem aqui exatamente 1 vez cada
+## (nenhuma em falta, nenhuma duplicada entre setores) -- confirmar que o
+## AGRUPAMENTO em si (que turbina pertence a que setor) reflete o layout
+## pretendido, so' a sintaxe/duplicacao foi corrigida, nao a distribuicao.
+manual_turbine_clusters <- list(
+  Setor_A = c("DZH01", "DZH02", "DZH03", "DZH04", "DZH05", "DZH07", "DZH08", "DZH09", "DZH10"),
+  Setor_B = c("DZH11", "DZH12", "DZH13", "DZH14", "DZH15", "DZH16", "DZH17", "DZH18",
+              "DZH19", "DZH20", "DZH21", "DZH22", "DZH23", "DZH24", "DZH26", "DZH27"),
+  Setor_C = c("DZH06", "DZH28", "DZH30", "DZH31", "DZH32", "DZH33", "DZH34", "DZH35",
+              "DZH36", "DZH37", "DZH38", "DZH61"),
+  Setor_D = c("DZH39", "DZH41", "DZH42", "DZH43", "DZH44"),
+  Setor_E = c("DZH49", "DZH50", "DZH51", "DZH52", "DZH53", "DZH54", "DZH55",
+              "DZH56", "DZH58", "DZH59", "DZH60", "DZH57"),
+  Setor_F = c("DZH62", "DZH63", "DZH64", "DZH65", "DZH66", "DZH67", "DZH68",
+              "DZH70"),
+  Setor_G = c("DZH71", "DZH72", "DZH73", "DZH74", "DZH75", "DZH76", "DZH77",
+              "DZH78", "DZH79", "DZH80", "DZH81", "DZH82", "DZH83", "DZH84",
+              "DZH86", "DZH87", "DZH88")
+)
 
 ## -- 10.2. Kestrel (ou outra especie) track occurrence por cluster --
 
-cluster_species_sel <- c("Kestrel")
+cluster_species_sel <- c("Golden-Eagle")

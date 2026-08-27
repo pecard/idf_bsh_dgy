@@ -256,12 +256,17 @@ wtg <- sf::st_transform(wtg, crs_projection_plannar)
 ## (confirmado pelo Paulo comparando sort(unique(wtg$InternalNa)) com
 ## sort(unique(turbine_idf_manual_dt[["Turbine ID"]])), 2026-08). Normaliza
 ## so' aqui -- InternalNa nao e' usado em mais nenhuma secção do relatorio
-## mensal (ver comentario acima).
+## mensal (ver comentario acima). wtg_source_id_col: mesma logica de
+## IDF_analysis.R (secção "0. Import data") -- "InternalNa" por omissao
+## (Bash), "Name" para o DGY (DZH_Turbines_Sergey_20250401_UTM.shp so' tem
+## essa coluna, sem InternalNa).
+wtg_source_id_col <- if (exists("wtg_source_id_col")) wtg_source_id_col else "InternalNa"
 wtg$InternalNa <- {
-  m <- regmatches(wtg$InternalNa, regexec("^([A-Za-z]+)([0-9]+)$", wtg$InternalNa))
-  vapply(seq_along(wtg$InternalNa), function(i) {
+  raw_id <- wtg[[wtg_source_id_col]]
+  m <- regmatches(raw_id, regexec("^([A-Za-z]+)([0-9]+)$", raw_id))
+  vapply(seq_along(raw_id), function(i) {
     g <- m[[i]]
-    if (length(g) < 3) return(wtg$InternalNa[i])
+    if (length(g) < 3) return(raw_id[i])
     paste0(g[2], sprintf("%02d", as.integer(g[3])))
   }, character(1))
 }
@@ -674,10 +679,12 @@ if (exists("scada_dt") && isTRUE(run_sections_monthly$curtailment_response_delay
   )
 
   p_shutdown_time <- plot_time_to_threshold(tt_dt)
-  ggsave(
-    file.path(folder_output, sprintf("curtailment_shutdown_time_hist_%s.png", report_month)),
-    plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
-  )
+  if (!is.null(p_shutdown_time)) {
+    ggsave(
+      file.path(folder_output, sprintf("curtailment_shutdown_time_hist_%s.png", report_month)),
+      plot = p_shutdown_time, width = 180, height = 200, units = "mm", dpi = 300, bg = "white"
+    )
+  }
 
   ### 5.2b Latencia de resposta e eventos sem resposta -- ver
   ### R/curtailment_response_latency.R e a nota equivalente em

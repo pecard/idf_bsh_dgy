@@ -214,6 +214,17 @@ plot_time_to_threshold <- function(time_to_threshold_dt, threshold_sel = NULL) {
 
   dt <- time_to_threshold_dt[!is.na(time_to_threshold_sec)]
   if (!is.null(threshold_sel)) dt <- dt[threshold %in% threshold_sel]
+
+  # sem linhas -- facet_wrap(~threshold_lab) nao tem valores para facetar e
+  # falha com "Faceting variables must have at least one value" (mesma razao
+  # de plot_safe_distance_hist(), R/curtailment_safe_distance.R). NULL
+  # devolvido em vez de um plot partido -- caller ja trata NULL como "sem
+  # dados este periodo, saltar".
+  if (nrow(dt) == 0L) {
+    message("plot_time_to_threshold(): nenhum curtailment atingiu um limiar de RPM (apos threshold_sel) -- NULL devolvido.")
+    return(NULL)
+  }
+
   dt[, threshold_lab := paste0("<= ", threshold, " rpm")]
   dt[, threshold_lab := factor(threshold_lab, levels = paste0("<= ", sort(unique(dt$threshold), decreasing = TRUE), " rpm"))]
 
