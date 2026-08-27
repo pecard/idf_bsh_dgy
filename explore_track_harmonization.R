@@ -86,7 +86,7 @@ species_sel <- sort(unique(track_dt_day$spec))
 species_sel <- species_sel[!is.na(species_sel)]
 
 reconciliation_by_species <- lapply(species_sel, function(sp) {
-
+  
   handoff_edges_dt <- find_handoff_edges(
     track_dt_day, sp,
     time_window_sec = handoff_time_window_sec, max_dist_m = handoff_max_dist_m
@@ -97,9 +97,9 @@ reconciliation_by_species <- lapply(species_sel, function(sp) {
     min_overlap_frac     = duplicate_min_overlap_frac,
     min_overlap_sec      = duplicate_min_overlap_sec
   )
-
+  
   rec <- build_reconciliation_groups(track_dt_day, sp, handoff_edges_dt, duplicate_edges_dt)
-
+  
   list(species = sp, groups = rec$groups, edges = rec$edges, duplicate_edges = duplicate_edges_dt)
 })
 names(reconciliation_by_species) <- species_sel
@@ -107,11 +107,11 @@ names(reconciliation_by_species) <- species_sel
 reconciliation_by_species <- Filter(function(x) nrow(x$edges) > 0L, reconciliation_by_species)
 
 if (length(reconciliation_by_species) == 0L) {
-
+  
   message("Nenhuma aresta candidata (handoff/duplicate) encontrada em ", date_from, " - ", date_to, " com os limiares atuais.")
-
+  
 } else {
-
+  
   reconciliation_summary_dt <- data.table::rbindlist(lapply(reconciliation_by_species, function(x) {
     s <- summarise_reconciliation(x$groups)
     s[, `:=`(
@@ -123,14 +123,14 @@ if (length(reconciliation_by_species) == 0L) {
     s
   }))
   data.table::setorder(reconciliation_summary_dt, -n_merged_synth_tracks)
-
+  
   edges_by_species <- data.table::rbindlist(lapply(reconciliation_by_species, function(x) {
     e <- data.table::copy(x$edges)
     e[, spec := x$species]
     e
   }))
   data.table::setcolorder(edges_by_species, "spec")
-
+  
   print(reconciliation_summary_dt)
   print(edges_by_species)
 }
@@ -149,38 +149,39 @@ if (length(reconciliation_by_species) == 0L) {
 
 print(track_dt_day[, .N, by = spec][order(-N)])
 
-species_to_debug <- c("Griffon-Vulture", "Cinereous-Vulture", "Steppe-Eagle")
+species_to_debug <- c("Bearded-Vulture", "Cinereous-Vulture", "Steppe-Eagle")
 
 for (sp in species_to_debug) {
-
+  
   cat(sprintf("\n===== %s -- handoff candidates (todos os pares, sem limiar) =====\n", sp))
   print(diagnose_handoff_candidates(track_dt_day, sp))
-
+  
   cat(sprintf("\n===== %s -- overlap candidates (todos os pares com sobreposicao temporal) =====\n", sp))
   print(diagnose_overlap_candidates(track_dt_day, sp))
 }
 
 
-##
-## Plot interativo (plotly) -- ver R/track_harmonization.R secção 7,
-## plot_candidate_tracks(). Funciona com QUALQUER tabela de arestas com
-## colunas track_id_a/track_id_b -- as filtradas (find_handoff_edges/
-## find_duplicate_edges) ou as brutas (diagnose_handoff_candidates/
-## diagnose_overlap_candidates). Depois de confirmares o dia/especie certos
-## para Griffon-Vulture/Cinereous-Vulture/Steppe-Eagle, o padrao e':
-##
-##   cand <- diagnose_handoff_candidates(track_dt_day, "Steppe-Eagle")[1:5]  # os 5 pares mais proximos no tempo
-##   plot_candidate_tracks(track_dt_day, unique(c(cand$track_id_a, cand$track_id_b)), edges_dt = cand)
-##
-## Exemplo ja' disponivel com os dados de hoje -- o maior grupo encontrado
-## (Egyptian-Vulture, 7 tracks originais fundidos, ver reconciliation_summary_dt):
-##
-##   groups_ev  <- reconciliation_by_species[["Egyptian-Vulture"]]$groups
-##   edges_ev   <- reconciliation_by_species[["Egyptian-Vulture"]]$edges
-##   merged_ids <- groups_ev[, .N, by = synth_track_id][N == max(N), synth_track_id]
-##   ids_ev     <- groups_ev[synth_track_id == merged_ids, track_id]
-##   plot_candidate_tracks(track_dt_day, ids_ev, edges_dt = edges_ev[track_id_a %in% ids_ev & track_id_b %in% ids_ev])
-##
+#
+# Plot interativo (plotly) -- ver R/track_harmonization.R secção 7,
+# plot_candidate_tracks(). Funciona com QUALQUER tabela de arestas com
+# colunas track_id_a/track_id_b -- as filtradas (find_handoff_edges/
+# find_duplicate_edges) ou as brutas (diagnose_handoff_candidates/
+# diagnose_overlap_candidates). Depois de confirmares o dia/especie certos
+# para Griffon-Vulture/Cinereous-Vulture/Steppe-Eagle, o padrao e':
+#
+cand <- diagnose_handoff_candidates(track_dt_day, "Steppe-Eagle")[1:5]  # os 5 pares mais proximos no tempo
+plot_candidate_tracks(track_dt_day, unique(c(cand$track_id_a, cand$track_id_b)), edges_dt = cand)
+
+#
+# Exemplo ja' disponivel com os dados de hoje -- o maior grupo encontrado
+# (Egyptian-Vulture, 7 tracks originais fundidos, ver reconciliation_summary_dt):
+#
+groups_ev  <- reconciliation_by_species[["Egyptian-Vulture"]]$groups
+edges_ev   <- reconciliation_by_species[["Egyptian-Vulture"]]$edges
+merged_ids <- groups_ev[, .N, by = synth_track_id][N == max(N), synth_track_id]
+ids_ev     <- groups_ev[synth_track_id == merged_ids, track_id]
+plot_candidate_tracks(track_dt_day, ids_ev, edges_dt = edges_ev[track_id_a %in% ids_ev & track_id_b %in% ids_ev])
+
 
 
 ##
