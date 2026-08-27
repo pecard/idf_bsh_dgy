@@ -100,7 +100,10 @@ find_handoff_edges <- function(track_dt, species, time_window_sec = 30, max_dist
   )]
   data.table::setkey(closing, wstart, wend)
 
-  cand <- data.table::foverlaps(opening, closing, type = "any", nomatch = NULL)
+  cand <- data.table::foverlaps(
+    opening, closing, by.x = c("wstart", "wend"), by.y = c("wstart", "wend"),
+    type = "any", nomatch = NULL
+  )
   cand <- cand[closing_track_id != opening_track_id]
   if (nrow(cand) == 0L) return(empty)
 
@@ -163,7 +166,10 @@ find_duplicate_edges <- function(track_dt, species, max_duplicate_dist_m = 20,
   b[, `:=`(wstart = as.numeric(bstart), wend = as.numeric(bend))]
 
   data.table::setkey(a, wstart, wend)
-  cand <- data.table::foverlaps(b, a, type = "any", nomatch = NULL)
+  cand <- data.table::foverlaps(
+    b, a, by.x = c("wstart", "wend"), by.y = c("wstart", "wend"),
+    type = "any", nomatch = NULL
+  )
 
   # cada par sobreposto aparece 2x (A-B e B-A), e cada track sobrepoe-se
   # trivialmente a si propria -- fica so com 1 linha por par nao-trivial
