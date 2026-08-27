@@ -333,7 +333,7 @@ inspect_reconciliation_group <- function(track_dt, groups_dt, edges_dt, target_s
 ## FC67642E E a E4E2BB64 em simultaneo) -- ver .merge_group_points() abaixo.
 ##
 
-stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edges_dt) {
+stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edges_dt, grid_step_sec = 1) {
 
   dt <- track_dt[spec == species, .(track_id, timestamp, utm_x, utm_y)]
   dt <- merge(dt, groups_dt[, .(track_id, synth_track_id)], by = "track_id")
@@ -344,34 +344,50 @@ stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edge
     data.table::data.table(track_id_a = dt$track_id[0], track_id_b = dt$track_id[0])
   }
 
-  out <- dt[, .merge_group_points(.SD, dup_pairs), by = synth_track_id]
+  out <- dt[, .merge_group_points(.SD, dup_pairs, grid_step_sec = grid_step_sec), by = synth_track_id]
   data.table::setorder(out, synth_track_id, timestamp)
   out[]
 }
 
 
 ## Funde os overlaps de um grupo em CLUSTERS de duplicado, nao par a par
-## sequencialmente ----
+## sequencialmente, numa grelha REGULAR (nao a uniao dos timestamps
+## brutos) ----
 ##
-## Bug corrigido (2026-08, caso real Steppe-Eagle): quando uma track (ex:
-## ABE4713A) tem arestas "duplicate" validadas com 2 OUTRAS tracks (ex:
-## FC67642E e E4E2BB64), a versao anterior processava cada par
-## isoladamente -- para o troço em que os 2 pares se sobrepunham no tempo
-## (ABE4713A simultaneamente ativa com AMBAS), produzia 2 medias
-## ligeiramente diferentes para o mesmo instante (media com FC6, media com
-## E4E2), e ordenar tudo por timestamp fazia o caminho final saltar entre
-## as 2 -- o padrao em zig-zag visto no plot.
+## 2 bugs corrigidos em sucessao (2026-08, caso real Steppe-Eagle), o 2º so'
+## visivel depois de corrigir o 1º:
 ##
-## Correcao: as arestas "duplicate" validadas do grupo formam os seus
-## proprios clusters (componentes conexas SO' dessas arestas, nao de todo o
-## grupo -- uma track ligada so' por handoff a outras fica de fora). Dentro
-## de cada cluster, para cada instante da grelha combinada, faz-se a media
-## de TODAS as tracks do cluster que estiverem ativas NESSE INSTANTE (1, 2,
-## 3+, o que for) -- 1 unico calculo conjunto, nao pares sobrepostos.
-## Pontos fora de qualquer janela multi-ativa (incluindo troços solo de um
-## membro do cluster antes/depois de coexistir com outro) passam tal e qual.
+##   1. Par a par sequencial (1ª versao): quando uma track (ex: ABE4713A)
+##      tem arestas "duplicate" validadas com 2 OUTRAS tracks (ex: FC67642E
+##      e E4E2BB64), processar cada par isoladamente dava 2 medias
+##      ligeiramente diferentes para o MESMO instante (troço em que os 2
+##      pares se sobrepunham) -- corrigido agrupando por CLUSTER (ver
+##      abaixo), 1 unico calculo conjunto por cluster.
+##
+##   2. Grelha = uniao dos timestamps BRUTOS (2ª versao): mesmo so' com 1
+##      cluster, cada instante da grelha "pertence" a' unidade que la'
+##      calhou de amostrar -- 2 unidades IDF amostram em relogios proprios,
+##      tipicamente intercalados, NUNCA exatamente nos mesmos instantes. Com
+##      um desvio de dezenas a centenas de metros entre unidades (ver nota
+##      no topo do ficheiro), a media num instante "da unidade A" fica
+##      puxada principalmente para A (a B so' entra interpolada), e no
+##      instante seguinte "da unidade B" fica puxada para B -- um zig-zag
+##      visivel de amplitude ~metade do desvio entre unidades, NAO um erro
+##      de agrupamento. Corrigido usando uma grelha REGULAR (passo fixo
+##      grid_step_sec, por omissao 1s -- a cadencia tipica de deteccao
+##      observada nestes dados), igual para todos os membros do cluster, em
+##      vez da uniao dos timestamps de cada um.
+##
+## As arestas "duplicate" validadas do grupo formam os seus proprios
+## clusters (componentes conexas SO' dessas arestas, nao de todo o grupo --
+## uma track ligada so' por handoff a outras fica de fora). Dentro de cada
+## cluster, para cada instante da grelha regular, faz-se a media de TODAS
+## as tracks do cluster que estiverem ativas NESSE INSTANTE (1, 2, 3+, o
+## que for). Pontos fora de qualquer janela multi-ativa (incluindo troços
+## solo de um membro do cluster antes/depois de coexistir com outro) passam
+## tal e qual, sem resampling.
 
-.merge_group_points <- function(pts, dup_pairs) {
+.merge_group_points <- function(pts, dup_pairs, grid_step_sec = 1) {
 
   ids_here <- unique(pts$track_id)
   relevant <- dup_pairs[track_id_a %in% ids_here & track_id_b %in% ids_here]
@@ -400,7 +416,13 @@ stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edge
     spans <- cpts[, .(t0 = as.numeric(min(timestamp)), t1 = as.numeric(max(timestamp))), by = track_id]
     data.table::setkey(spans, track_id)
 
-    grid <- sort(unique(as.numeric(cpts$timestamp)))
+    # grelha REGULAR (passo fixo), NAO a uniao dos timestamps brutos --
+    # ver nota acima do ficheiro (bug 2): com a uniao bruta, cada instante
+    # "pertence" a' unidade que la' amostrou, puxando a media
+    # alternadamente para cada lado e criando um zig-zag
+    t0_all <- min(spans$t0); t1_all <- max(spans$t1)
+    if (t1_all <= t0_all) next
+    grid <- seq(t0_all, t1_all, by = grid_step_sec)
 
     # posicao interpolada (rule=2) de CADA membro em TODOS os instantes da
     # grelha do cluster em que estiver ativo (dentro do seu proprio
@@ -436,12 +458,21 @@ stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edge
       orig_track_id = orig_id_m, source = "merged_duplicate"
     )
 
-    # exclui, de cada membro, so' os pontos ORIGINAIS cujo timestamp caia
-    # num instante realmente multi-ativo -- nao o [t0,t1] inteiro do
-    # cluster, para nao apagar um troço solo de um membro antes/depois de
-    # coexistir com outro
-    grid_multi_set <- grid[multi]
-    excluded <- excluded | (pts$track_id %in% members & as.numeric(pts$timestamp) %in% grid_multi_set)
+    # intervalos CONTIGUOS onde n_active>=2 (rle sobre a grelha regular) --
+    # exclui, de cada membro, so' os pontos BRUTOS cujo timestamp caia
+    # dentro de algum desses intervalos (precisao = 1 passo de grelha,
+    # suficiente aqui), nao o [t0,t1] inteiro do cluster -- para nao apagar
+    # um troço solo de um membro antes/depois de coexistir com outro
+    runs <- rle(multi)
+    run_ends   <- cumsum(runs$lengths)
+    run_starts <- run_ends - runs$lengths + 1L
+    for (r in which(runs$values)) {
+      t_start <- grid[run_starts[r]]; t_end <- grid[run_ends[r]]
+      excluded <- excluded | (
+        pts$track_id %in% members &
+          as.numeric(pts$timestamp) >= t_start & as.numeric(pts$timestamp) <= t_end
+      )
+    }
   }
 
   # utm_x/utm_y forcados a double -- track_dt guarda-os como integer, mas o
