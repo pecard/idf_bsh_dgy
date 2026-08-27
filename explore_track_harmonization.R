@@ -1,0 +1,153 @@
+##
+## Script de exploracao -- harmonizacao/reconciliacao de tracks fragmentados
+## (candidatos a MESMO individuo com track_id diferentes). NAO faz parte do
+## pipeline de producao (IDF_analysis.R/IDF_monthly_report.R nunca o chamam).
+##
+## Motivacao (Paulo, 2026-08): estudo a parte dos relatorios BSH/DGY atuais,
+## dos 3 padroes de fragmentacao identificados visualmente em dados BSH de
+## 2026-08-07 -- handoff (fim de um track perto no tempo+espaco do inicio de
+## outro), duplicado (2 unidades IDF registam o mesmo individuo em
+## simultaneo, desviadas por erro de calibracao) e a combinacao dos 2. Ver
+## R/track_harmonization.R para o metodo e a justificacao de cada limiar.
+##
+## Reutiliza a MESMA cache (fst) ja gravada por uma corrida anterior de
+## run_annual_analysis_BSH.R -- NAO rele os ficheiros brutos, so' o dataset
+## track_dt_unfilt. Se ainda nao correste o pipeline pelo menos 1 vez para
+## BSH, corre isso primeiro (so precisas da cache, nao do relatorio docx
+## completo).
+##
+## Uso:
+##   1) Ajustar date_from/date_to abaixo se quiseres outro dia/janela.
+##   2) Dar Source A ESTE FICHEIRO.
+##   3) Ver reconciliation_summary_dt (1 linha por especie com >=1 aresta
+##      candidata nesse dia) e edges_by_species (as arestas propriamente
+##      ditas, com edge_type).
+##   4) Para um grupo especifico que pareca suspeito, usar os exemplos no
+##      fim do ficheiro -- inspect_reconciliation_group() para os dados
+##      brutos por track (cruzar com o portal IdentiFlight antes de confiar
+##      na fusao) e stitch_synthetic_tracks() para a reconstrucao
+##      geometrica (plottar por cima do portal/outro GIS).
+##
+
+project_settings_file <- "userSettings_BSH.R"  ## ajustar para "userSettings_DGY.R" se for o caso
+
+source(file.path("inputs", project_settings_file))
+source("R/data_cache.R")
+source("R/track_min_individuals.R")  # .uf_components()
+source("R/track_harmonization.R")
+
+## cache/<farm_code>/ (layout atual) -- se ainda nao existir, tenta cache/
+## direto (layout anterior a' mudanca de 2026-08 que separou a cache por
+## farm_code)
+folder_cache <- file.path("cache", farm_code)
+if (!file.exists(file.path(folder_cache, "track_dt_unfilt.fst")) && file.exists(file.path("cache", "track_dt_unfilt.fst"))) {
+  message("Aviso: a usar cache/ (layout antigo, sem separacao por farm_code) -- nao encontrada em ", folder_cache, ". Corre run_annual_analysis_BSH.R outra vez para regravar no layout novo.")
+  folder_cache <- "cache"
+}
+
+track_dt_unfilt <- load_or_read_cache(
+  file.path(folder_cache, "track_dt_unfilt.fst"),
+  function() stop("track_dt_unfilt.fst nao encontrado -- corre run_annual_analysis_BSH.R pelo menos 1 vez primeiro."),
+  force_reread = FALSE, tz = proj_timezone
+)
+
+
+##
+## Janela de estudo -- dia identificado pelo Paulo com casos bons para testar
+## o metodo (2026-08). Ajustar aqui para explorar outro dia/periodo.
+##
+
+date_from <- as.POSIXct("2026-08-07 00:00:00", tz = proj_timezone)
+date_to   <- as.POSIXct("2026-08-08 00:00:00", tz = proj_timezone)
+
+track_dt_day <- track_dt_unfilt[timestamp >= date_from & timestamp < date_to]
+
+
+##
+## Limiares -- pontos de partida acordados com o Paulo (2026-08), a rever
+## depois de olhar para os grupos encontrados neste dia (ver
+## R/track_harmonization.R para a justificacao de cada um)
+##
+
+handoff_time_window_sec    <- 30
+handoff_max_dist_m         <- 50
+duplicate_max_dist_m       <- 20
+duplicate_min_overlap_frac <- 0.8
+duplicate_min_overlap_sec  <- 10
+
+
+##
+## Corre a reconciliacao por especie -- so' guarda especies com pelo menos 1
+## aresta candidata (a maioria das especies num dia normal nao tem nenhuma
+## fragmentacao detetada com estes limiares)
+##
+
+species_sel <- sort(unique(track_dt_day$spec))
+species_sel <- species_sel[!is.na(species_sel)]
+
+reconciliation_by_species <- lapply(species_sel, function(sp) {
+
+  handoff_edges_dt <- find_handoff_edges(
+    track_dt_day, sp,
+    time_window_sec = handoff_time_window_sec, max_dist_m = handoff_max_dist_m
+  )
+  duplicate_edges_dt <- find_duplicate_edges(
+    track_dt_day, sp,
+    max_duplicate_dist_m = duplicate_max_dist_m,
+    min_overlap_frac     = duplicate_min_overlap_frac,
+    min_overlap_sec      = duplicate_min_overlap_sec
+  )
+
+  rec <- build_reconciliation_groups(track_dt_day, sp, handoff_edges_dt, duplicate_edges_dt)
+
+  list(species = sp, groups = rec$groups, edges = rec$edges, duplicate_edges = duplicate_edges_dt)
+})
+names(reconciliation_by_species) <- species_sel
+
+reconciliation_by_species <- Filter(function(x) nrow(x$edges) > 0L, reconciliation_by_species)
+
+if (length(reconciliation_by_species) == 0L) {
+
+  message("Nenhuma aresta candidata (handoff/duplicate) encontrada em ", date_from, " - ", date_to, " com os limiares atuais.")
+
+} else {
+
+  reconciliation_summary_dt <- data.table::rbindlist(lapply(reconciliation_by_species, function(x) {
+    s <- summarise_reconciliation(x$groups)
+    s[, `:=`(
+      spec              = x$species,
+      n_handoff_edges   = sum(x$edges$edge_type == "handoff"),
+      n_duplicate_edges = sum(x$edges$edge_type == "duplicate")
+    )]
+    data.table::setcolorder(s, "spec")
+    s
+  }))
+  data.table::setorder(reconciliation_summary_dt, -n_merged_synth_tracks)
+
+  edges_by_species <- data.table::rbindlist(lapply(reconciliation_by_species, function(x) {
+    e <- data.table::copy(x$edges)
+    e[, spec := x$species]
+    e
+  }))
+  data.table::setcolorder(edges_by_species, "spec")
+
+  print(reconciliation_summary_dt)
+  print(edges_by_species)
+}
+
+
+##
+## Exemplos -- inspecionar/reconstruir UM grupo especifico, antes de confiar
+## na fusao automatica:
+##
+##   sp1        <- reconciliation_summary_dt$spec[1]
+##   groups1    <- reconciliation_by_species[[sp1]]$groups
+##   edges1     <- reconciliation_by_species[[sp1]]$edges
+##   dup_edges1 <- reconciliation_by_species[[sp1]]$duplicate_edges
+##
+##   merged_ids <- groups1[, .N, by = synth_track_id][N > 1, synth_track_id]
+##   inspect_reconciliation_group(track_dt_day, groups1, edges1, merged_ids[1])
+##
+##   synth_dt1 <- stitch_synthetic_tracks(track_dt_day, sp1, groups1, dup_edges1)
+##   synth_dt1[synth_track_id == merged_ids[1]]  # pontos ja reconciliados, prontos a plottar
+##
