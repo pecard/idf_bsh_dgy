@@ -728,32 +728,38 @@ plot_candidate_tracks <- function(track_dt, track_ids = NULL, edges_dt = NULL, t
 ##   plot_synthetic_track(track_dt_day, synth_dt, "SYN_Steppe-Eagle_004")
 ##
 
-plot_synthetic_track <- function(track_dt, synth_dt, target_synth_id, title = NULL) {
+plot_synthetic_track <- function(track_dt, synth_dt, target_synth_id, title = NULL, show_raw = TRUE) {
 
   synth_pts <- synth_dt[synth_track_id == target_synth_id]
   if (nrow(synth_pts) == 0L) stop("plot_synthetic_track(): synth_track_id nao encontrado em synth_dt.")
   data.table::setorder(synth_pts, timestamp)
 
-  # track_ids originais envolvidos -- orig_track_id e' ou um unico track_id
-  # ("single") ou "idA+idB" ("merged_duplicate", ver stitch_synthetic_tracks())
-  orig_ids <- unique(unlist(strsplit(synth_pts$orig_track_id, "+", fixed = TRUE)))
-
-  raw_pts <- track_dt[track_id %in% orig_ids, .(track_id, timestamp, utm_x, utm_y, idf)]
-  data.table::setorder(raw_pts, track_id, timestamp)
-
   p <- plotly::plot_ly()
 
-  # fragmentos originais -- finos/cinzentos, so' para comparar com o resultado
-  for (tid in unique(raw_pts$track_id)) {
-    pts <- raw_pts[track_id == tid]
-    p <- p %>% plotly::add_trace(
-      data = pts, x = ~utm_x, y = ~utm_y, type = "scatter", mode = "lines+markers",
-      name = paste0("orig: ", tid), legendgroup = "orig",
-      line = list(width = 1, color = "grey70"), marker = list(size = 3, color = "grey70"),
-      opacity = 0.6,
-      text = ~sprintf("orig track_id: %s<br>idf: %s<br>%s", tid, idf, format(timestamp, "%Y-%m-%d %H:%M:%S")),
-      hoverinfo = "text"
-    )
+  # fragmentos originais -- finos/cinzentos, so' para comparar com o
+  # resultado. show_raw = FALSE isola so' a trajetoria sintetica (util para
+  # confirmar se um padrao em zig-zag vem mesmo do caminho final ou e' so'
+  # o aspeto visual de varios fragmentos brutos sobrepostos no mesmo
+  # corredor espacial -- caso real Steppe-Eagle, 2026-08: o zig-zag
+  # aparente era dos fragmentos cinzentos, nao da trajetoria sintetica,
+  # que ja tinha sido confirmada suave via velocidade implicita
+  # ponto-a-ponto)
+  if (show_raw) {
+    orig_ids <- unique(unlist(strsplit(synth_pts$orig_track_id, "+", fixed = TRUE)))
+    raw_pts <- track_dt[track_id %in% orig_ids, .(track_id, timestamp, utm_x, utm_y, idf)]
+    data.table::setorder(raw_pts, track_id, timestamp)
+
+    for (tid in unique(raw_pts$track_id)) {
+      pts <- raw_pts[track_id == tid]
+      p <- p %>% plotly::add_trace(
+        data = pts, x = ~utm_x, y = ~utm_y, type = "scatter", mode = "lines+markers",
+        name = paste0("orig: ", tid), legendgroup = "orig",
+        line = list(width = 1, color = "grey70"), marker = list(size = 3, color = "grey70"),
+        opacity = 0.6,
+        text = ~sprintf("orig track_id: %s<br>idf: %s<br>%s", tid, idf, format(timestamp, "%Y-%m-%d %H:%M:%S")),
+        hoverinfo = "text"
+      )
+    }
   }
 
   # trajetoria final -- 1 linha continua ligando TODOS os pontos sinteticos
@@ -776,8 +782,14 @@ plot_synthetic_track <- function(track_dt, synth_dt, target_synth_id, title = NU
     )
   }
 
+  default_title <- if (show_raw) {
+    sprintf("Synthetic track %s (raw fragments in grey)", target_synth_id)
+  } else {
+    sprintf("Synthetic track %s (synthetic path only)", target_synth_id)
+  }
+
   p %>% plotly::layout(
-    title = if (is.null(title)) sprintf("Synthetic track %s (raw fragments in grey)", target_synth_id) else title,
+    title = if (is.null(title)) default_title else title,
     xaxis = list(title = "UTM X", scaleanchor = "y"),
     yaxis = list(title = "UTM Y"),
     showlegend = TRUE
