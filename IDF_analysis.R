@@ -1560,7 +1560,11 @@ if (isTRUE(run_sections$min_individuals)) {
     plot = p_min_indiv, width = 8, height = max(4, 2.2 * n_species_min_indiv), dpi = 300, bg = "white"
   )
 
-  p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt, species_sel = prioritysp, date_breaks = "1 month", date_labels = "%Y-%m", geom_type = "bar")
+  # "Protected" excluido deste plot -- pedido do Paulo, 2026-08 (categoria
+  # generica, sem valor de leitura fenologica por especie ao lado das
+  # restantes). Mantido em prioritysp para as restantes secções (ex:
+  # summarise_min_individuals(), tabela 8.1) -- exclusao so' neste plot.
+  p_min_indiv_daily <- plot_daily_max_individuals(min_indiv_daily_dt, species_sel = setdiff(prioritysp, "Protected"), date_breaks = "1 month", date_labels = "%Y-%m", geom_type = "bar")
   p_min_indiv_daily
   ggsave(
     file.path(folder_output, "min_individuals_daily_max.png"),
@@ -1756,6 +1760,22 @@ if (!exists("track_dt_unfilt")) {
   
   run_stat   <- isTRUE(run_sections$turbine_clustering)
   run_manual <- isTRUE(run_sections$risk_clusters)
+  # 3a via de agrupamento -- por unidade IDF partilhada (Primary IDF, da
+  # matriz de cobertura turbine_idf_manual_dt), em vez de setor geografico
+  # (manual) ou distancia (estatistica). Pedido do Paulo, 2026-08: para
+  # farms com cobertura IDF parcial (ex: DGY, so' 4 unidades para 79
+  # turbinas), o setor geografico de uma turbina de incidente pode nao
+  # conter NENHUMA outra turbina com curtailments (ver diagnostico
+  # confirmado nesta data -- Setor_E/B/D das 3 incidentes do DGY, 0
+  # curtailments em qualquer uma), tornando a comparacao por setor
+  # estruturalmente vazia. Agrupar pelas turbinas que partilham a MESMA
+  # unidade IDF e' a comparacao mais relevante, ja' que a atividade de
+  # curtailment esta' ligada a presenca de IDF/SCADA, nao a geografia --
+  # reusa o mesmo run_sections$risk_clusters (nao e' um switch novo,
+  # mesma funcionalidade "risco por agrupamento"). Mesma vantagem para o
+  # Bash (cobertura IDF total): a comparacao fica 1-para-1 com o setor
+  # geografico onde a cobertura for completa, mas nao depende disso.
+  run_idf    <- run_manual && exists("turbine_idf_manual_dt")
   
   
   ### 10.0. Clusters + mapa de referencia (cada via so' corre com o seu switch) ----
@@ -1792,6 +1812,34 @@ if (!exists("track_dt_unfilt")) {
       plot = p_map_manual, width = 10, height = 8, dpi = 300, bg = "white"
     )
   } else {message("10 (via manual/risk_clusters) saltada: run_sections$risk_clusters != TRUE.")}
+
+  if (run_idf) {
+    # cluster_dt_idf: mesmo schema turbine/cluster_id de sempre (ver
+    # manual_turbine_clusters_dt()/cluster_turbines_by_distance(),
+    # R/turbine_spatial_clusters.R) -- aqui cluster_id = unidade IDF
+    # primaria (coluna "Primary IDF" da matriz de cobertura). Turbinas sem
+    # Primary IDF (NA -- fora do alcance de qualquer unidade) ficam DE FORA
+    # deste cluster_dt (nao um cluster "NA") -- mesma logica de "turbina
+    # fora de todos os setores" ja tratada por summarise_turbine_marginal_
+    # contribution()/permutation_test_marginal_contribution() (R/curtailment_
+    # cluster_patterns.R), que devolvem NA_character_ para essas turbinas.
+    cluster_dt_idf <- data.table::as.data.table(turbine_idf_manual_dt)
+    data.table::setnames(cluster_dt_idf, old = c("Turbine ID", "Primary IDF"), new = c("turbine", "cluster_id"))
+    cluster_dt_idf <- cluster_dt_idf[!is.na(cluster_id), .(turbine, cluster_id)]
+
+    highlight_clusters_idf <- unique(cluster_dt_idf[turbine %in% fatality_incidents$turbine, cluster_id])
+
+    p_map_idf <- plot_turbine_clusters_map(
+      wtg, cluster_dt_idf, highlight_turbines = fatality_incidents$turbine,
+      title = "Turbines grouped by shared IDF unit (Primary IDF)"
+    )
+    ggsave(
+      file.path(folder_output, "turbine_clusters_map_idf.png"),
+      plot = p_map_idf, width = 10, height = 8, dpi = 300, bg = "white"
+    )
+  } else if (run_manual) {
+    message("10 (via IDF) saltada: turbine_idf_manual_dt nao existe (matriz de cobertura IDF nao carregada -- ver secção 0).")
+  }
   
   
   ### 10.1. Curtailments por cluster de turbinas ----
@@ -1892,8 +1940,40 @@ if (!exists("track_dt_unfilt")) {
       plot = p_curtl_manual_weekly, width = 9, height = 5, dpi = 300, bg = "white"
     )
   }
-  
-  
+
+  if (run_idf) {
+    curtl_cl_idf_dt <- join_curtailments_to_clusters(
+      curtl_dt_unfilt, cluster_dt_idf, date_from = curtl_cluster_date_from, date_to = curtl_cluster_date_to
+    )
+    cluster_summary_idf   <- summarise_cluster_curtailments(curtl_cl_idf_dt)
+    cluster_weekly_idf_dt <- summarise_cluster_curtailments_weekly(curtl_cl_idf_dt)
+    marginal_idf_dt       <- summarise_turbine_marginal_contribution(curtl_cl_idf_dt, fatality_incidents$turbine, cluster_dt_idf)
+    perm_idf_dt           <- permutation_test_marginal_contribution_all(
+      curtl_cl_idf_dt, fatality_incidents$turbine, cluster_dt_idf, n_perm = cluster_perm_n
+    )
+
+    write_xlsx_local(
+      list(
+        IDF_cluster_by_turbine  = cluster_summary_idf$by_turbine,
+        IDF_cluster_by_cluster  = cluster_summary_idf$by_cluster,
+        IDF_cluster_weekly      = cluster_weekly_idf_dt,
+        IDF_marginal_contrib    = marginal_idf_dt,
+        IDF_permutation_test    = perm_idf_dt
+      ),
+      file.path(folder_output, "curtailment_cluster_patterns_idf.xlsx")
+    )
+
+    p_curtl_idf_total <- plot_cluster_curtailments_total(
+      cluster_summary_idf, highlight_clusters = highlight_clusters_idf,
+      title = "Curtailments by IDF unit (full period)"
+    )
+    ggsave(
+      file.path(folder_output, "cluster_curtailments_idf_total.png"),
+      plot = p_curtl_idf_total, width = 8, height = 5, dpi = 300, bg = "white"
+    )
+  }
+
+
   ### 10.2. Ocorrencia de tracks de especie por cluster de turbinas ----
   ###       (species_tracks_dt/species_weekly_dt/species_by_turbine_dt sao
   ###       partilhados pelas 2 vias -- calculados 1 so' vez)
@@ -2026,6 +2106,30 @@ if (!exists("track_dt_unfilt")) {
       by = "turbine"
     )
     data.table::setorder(fatality_risk_summary_dt, incident_id)
+  }
+
+  if (run_idf) {
+    # Mesma vista de fatality_risk_summary_dt/stat_risk_summary_dt acima,
+    # mas agrupando por unidade IDF partilhada (cluster_dt_idf) em vez de
+    # setor geografico/distancia -- sem o ranking de atividade da especie
+    # (nao ha' um species_cluster_rank_idf_dt equivalente, so' o
+    # contributo marginal de curtailments, que e' o que motivou esta
+    # 3a via -- ver nota em run_idf, acima). Turbinas de incidente sem
+    # Primary IDF (fora do alcance de qualquer unidade -- caso das 3
+    # incidentes do DGY confirmado 2026-08) continuam com cluster_id = NA
+    # aqui tambem, mas essa e' a resposta correta: nao ha' unidade IDF
+    # nenhuma para comparar.
+    idf_risk_summary_dt <- merge(
+      fatality_incidents[, .(incident_id, turbine, species, incident_date)],
+      marginal_idf_dt,
+      by = "turbine"
+    )
+    idf_risk_summary_dt <- merge(
+      idf_risk_summary_dt,
+      perm_idf_dt[, .(turbine, observed_pct, expected_pct_uniform, p_value_gt_uniform)],
+      by = "turbine"
+    )
+    data.table::setorder(idf_risk_summary_dt, incident_id)
   }
   
   
@@ -2202,7 +2306,11 @@ report_params <- list(
   species_activity_stat    = if (exists("species_activity_stat_dt")) species_activity_stat_dt else NULL,
   species_risk_height_stat = if (exists("species_risk_height_stat_dt")) species_risk_height_stat_dt else NULL,
   incident_risk_context_stat = if (exists("incident_risk_context_stat_dt")) incident_risk_context_stat_dt else NULL,
-  
+
+  idf_cluster_map     = if (exists("p_map_idf")) p_map_idf else NULL,
+  idf_cluster_summary = if (exists("cluster_summary_idf")) cluster_summary_idf$by_cluster else NULL,
+  idf_risk_summary    = if (exists("idf_risk_summary_dt")) idf_risk_summary_dt else NULL,
+
   min_indiv_summary  = if (exists("min_indiv_summary_dt")) min_indiv_summary_dt else NULL,
   min_indiv_plot_daily = if (exists("p_min_indiv_daily")) p_min_indiv_daily else NULL,
   
@@ -2227,6 +2335,7 @@ report_params <- list(
   xlsx_stat_critical_zone    = "turbine_critical_zone_summary_statistical.xlsx",
   xlsx_species_risk_manual   = "species_cluster_risk_ranking_manual.xlsx",
   xlsx_species_risk_stat     = "species_cluster_risk_ranking_statistical.xlsx",
+  xlsx_curtailment_cluster_idf = "curtailment_cluster_patterns_idf.xlsx",
   xlsx_curtailment_examples = "curtailment_response_examples.xlsx",
   xlsx_min_indiv           = "min_individuals_per_bin.xlsx",
   
