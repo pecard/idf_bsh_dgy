@@ -388,7 +388,16 @@ stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edge
     excluded <- excluded | (pts$track_id %in% c(a_id, b_id) & pts$timestamp >= t0 & pts$timestamp <= t1)
   }
 
-  kept <- pts[!excluded, .(timestamp, utm_x, utm_y, orig_track_id = as.character(track_id), source = "single")]
+  # utm_x/utm_y forcados a double -- track_dt guarda-os como integer, mas o
+  # ramo "merged_duplicate" acima produz sempre double (media/interpolacao);
+  # sem isto, um grupo sem nenhum par duplicate mantem integer e um grupo
+  # com pelo menos 1 mistura os 2 tipos na mesma coluna, o que a agregacao
+  # por grupo (by=synth_track_id) em stitch_synthetic_tracks() rejeita
+  # ("Column ... is type 'double' but expecting type 'integer'")
+  kept <- pts[!excluded, .(
+    timestamp, utm_x = as.double(utm_x), utm_y = as.double(utm_y),
+    orig_track_id = as.character(track_id), source = "single"
+  )]
   data.table::rbindlist(c(list(kept), merged_list))
 }
 
