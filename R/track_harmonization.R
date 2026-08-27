@@ -325,10 +325,12 @@ inspect_reconciliation_group <- function(track_dt, groups_dt, edges_dt, target_s
 ##    daria um zig-zag entre as 2 unidades). Segmentos "handoff" nao se
 ##    sobrepoem por construcao, por isso so' precisam de concatenacao ----
 ##
-## Simplificacao aceite nesta 1ª versao: sobreposicoes de 3+ unidades no
-## mesmo grupo sao fundidas par a par, sequencialmente (nao como uma fusao
-## conjunta das 3+) -- ok para uma primeira exploracao, a rever se se
-## mostrar relevante nos dados reais.
+## Sobreposicoes de 3+ unidades (ex: uma track ligada por "duplicate" a 2
+## OUTRAS que nao se sobrepoem completamente entre si) sao fundidas em
+## CLUSTER -- media conjunta de todas as tracks ativas em cada instante, nao
+## par a par sequencialmente. A 1ª versao fundia par a par e produzia um
+## zig-zag visivel (caso real Steppe-Eagle, 2026-08: ABE4713A sobreposta a
+## FC67642E E a E4E2BB64 em simultaneo) -- ver .merge_group_points() abaixo.
 ##
 
 stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edges_dt) {
@@ -348,51 +350,105 @@ stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edge
 }
 
 
+## Funde os overlaps de um grupo em CLUSTERS de duplicado, nao par a par
+## sequencialmente ----
+##
+## Bug corrigido (2026-08, caso real Steppe-Eagle): quando uma track (ex:
+## ABE4713A) tem arestas "duplicate" validadas com 2 OUTRAS tracks (ex:
+## FC67642E e E4E2BB64), a versao anterior processava cada par
+## isoladamente -- para o troço em que os 2 pares se sobrepunham no tempo
+## (ABE4713A simultaneamente ativa com AMBAS), produzia 2 medias
+## ligeiramente diferentes para o mesmo instante (media com FC6, media com
+## E4E2), e ordenar tudo por timestamp fazia o caminho final saltar entre
+## as 2 -- o padrao em zig-zag visto no plot.
+##
+## Correcao: as arestas "duplicate" validadas do grupo formam os seus
+## proprios clusters (componentes conexas SO' dessas arestas, nao de todo o
+## grupo -- uma track ligada so' por handoff a outras fica de fora). Dentro
+## de cada cluster, para cada instante da grelha combinada, faz-se a media
+## de TODAS as tracks do cluster que estiverem ativas NESSE INSTANTE (1, 2,
+## 3+, o que for) -- 1 unico calculo conjunto, nao pares sobrepostos.
+## Pontos fora de qualquer janela multi-ativa (incluindo troços solo de um
+## membro do cluster antes/depois de coexistir com outro) passam tal e qual.
+
 .merge_group_points <- function(pts, dup_pairs) {
 
   ids_here <- unique(pts$track_id)
   relevant <- dup_pairs[track_id_a %in% ids_here & track_id_b %in% ids_here]
+  tzone <- attr(pts$timestamp, "tzone")
+
+  if (nrow(relevant) == 0L) {
+    return(pts[, .(
+      timestamp, utm_x = as.double(utm_x), utm_y = as.double(utm_y),
+      orig_track_id = as.character(track_id), source = "single"
+    )])
+  }
+
+  dup_ids   <- sort(unique(c(relevant$track_id_a, relevant$track_id_b)))
+  idx_of    <- stats::setNames(seq_along(dup_ids), dup_ids)
+  edges_idx <- data.table::data.table(i = idx_of[relevant$track_id_a], j = idx_of[relevant$track_id_b])
+  cluster_of <- .uf_components(length(dup_ids), edges_idx)
 
   excluded <- rep(FALSE, nrow(pts))
   merged_list <- list()
-  tzone <- attr(pts$timestamp, "tzone")
 
-  for (k in seq_len(nrow(relevant))) {
-    a_id <- relevant$track_id_a[k]; b_id <- relevant$track_id_b[k]
-    pa <- pts[track_id == a_id]; pb <- pts[track_id == b_id]
-    if (nrow(pa) == 0L || nrow(pb) == 0L) next  # ja excluido por outro par (grupo com 3+ unidades)
+  for (cl in unique(cluster_of)) {
+    members <- dup_ids[cluster_of == cl]
+    if (length(members) < 2L) next
 
-    t0 <- max(min(pa$timestamp), min(pb$timestamp))
-    t1 <- min(max(pa$timestamp), max(pb$timestamp))
-    if (t1 <= t0) next
+    cpts  <- pts[track_id %in% members]
+    spans <- cpts[, .(t0 = as.numeric(min(timestamp)), t1 = as.numeric(max(timestamp))), by = track_id]
+    data.table::setkey(spans, track_id)
 
-    grid <- sort(unique(c(
-      as.numeric(pa[timestamp >= t0 & timestamp <= t1, timestamp]),
-      as.numeric(pb[timestamp >= t0 & timestamp <= t1, timestamp])
-    )))
-    if (length(grid) == 0L) next
+    grid <- sort(unique(as.numeric(cpts$timestamp)))
 
-    ax <- stats::approx(as.numeric(pa$timestamp), pa$utm_x, xout = grid, rule = 2)$y
-    ay <- stats::approx(as.numeric(pa$timestamp), pa$utm_y, xout = grid, rule = 2)$y
-    bx <- stats::approx(as.numeric(pb$timestamp), pb$utm_x, xout = grid, rule = 2)$y
-    by_ <- stats::approx(as.numeric(pb$timestamp), pb$utm_y, xout = grid, rule = 2)$y
+    # posicao interpolada (rule=2) de CADA membro em TODOS os instantes da
+    # grelha do cluster em que estiver ativo (dentro do seu proprio
+    # [t0,t1]) -- fora disso fica NA e nao entra na media desse instante
+    pos <- lapply(members, function(tid) {
+      p  <- cpts[track_id == tid]
+      sp <- spans[.(tid)]
+      active <- grid >= sp$t0 & grid <= sp$t1
+      x <- rep(NA_real_, length(grid)); y <- rep(NA_real_, length(grid))
+      if (any(active)) {
+        x[active] <- stats::approx(as.numeric(p$timestamp), p$utm_x, xout = grid[active], rule = 2)$y
+        y[active] <- stats::approx(as.numeric(p$timestamp), p$utm_y, xout = grid[active], rule = 2)$y
+      }
+      list(x = x, y = y, active = active)
+    })
+
+    x_mat   <- do.call(cbind, lapply(pos, `[[`, "x"))
+    y_mat   <- do.call(cbind, lapply(pos, `[[`, "y"))
+    act_mat <- do.call(cbind, lapply(pos, `[[`, "active"))
+    n_active <- rowSums(act_mat)
+
+    multi <- n_active >= 2L
+    if (!any(multi)) next  # cluster formado mas sem instante realmente simultaneo (defensivo -- nao devia acontecer)
+
+    x_final <- rowMeans(x_mat[multi, , drop = FALSE], na.rm = TRUE)
+    y_final <- rowMeans(y_mat[multi, , drop = FALSE], na.rm = TRUE)
+    act_sub <- act_mat[multi, , drop = FALSE]
+    orig_id_m <- vapply(seq_len(nrow(act_sub)), function(i) paste(members[act_sub[i, ]], collapse = "+"), character(1))
 
     merged_list[[length(merged_list) + 1L]] <- data.table::data.table(
-      timestamp     = as.POSIXct(grid, origin = "1970-01-01", tz = tzone),
-      utm_x         = (ax + bx) / 2,
-      utm_y         = (ay + by_) / 2,
-      orig_track_id = paste(a_id, b_id, sep = "+"),
-      source        = "merged_duplicate"
+      timestamp     = as.POSIXct(grid[multi], origin = "1970-01-01", tz = tzone),
+      utm_x         = x_final, utm_y = y_final,
+      orig_track_id = orig_id_m, source = "merged_duplicate"
     )
 
-    excluded <- excluded | (pts$track_id %in% c(a_id, b_id) & pts$timestamp >= t0 & pts$timestamp <= t1)
+    # exclui, de cada membro, so' os pontos ORIGINAIS cujo timestamp caia
+    # num instante realmente multi-ativo -- nao o [t0,t1] inteiro do
+    # cluster, para nao apagar um troço solo de um membro antes/depois de
+    # coexistir com outro
+    grid_multi_set <- grid[multi]
+    excluded <- excluded | (pts$track_id %in% members & as.numeric(pts$timestamp) %in% grid_multi_set)
   }
 
   # utm_x/utm_y forcados a double -- track_dt guarda-os como integer, mas o
   # ramo "merged_duplicate" acima produz sempre double (media/interpolacao);
-  # sem isto, um grupo sem nenhum par duplicate mantem integer e um grupo
-  # com pelo menos 1 mistura os 2 tipos na mesma coluna, o que a agregacao
-  # por grupo (by=synth_track_id) em stitch_synthetic_tracks() rejeita
+  # sem isto, um grupo sem nenhum cluster mantem integer e um grupo com
+  # pelo menos 1 mistura os 2 tipos na mesma coluna, o que a agregacao por
+  # grupo (by=synth_track_id) em stitch_synthetic_tracks() rejeita
   # ("Column ... is type 'double' but expecting type 'integer'")
   kept <- pts[!excluded, .(
     timestamp, utm_x = as.double(utm_x), utm_y = as.double(utm_y),
