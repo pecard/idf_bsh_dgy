@@ -369,3 +369,116 @@ stitch_synthetic_tracks <- function(track_dt, species, groups_dt, duplicate_edge
   kept <- pts[!excluded, .(timestamp, utm_x, utm_y, orig_track_id = as.character(track_id), source = "single")]
   data.table::rbindlist(c(list(kept), merged_list))
 }
+
+
+##
+## 6. Diagnostico bruto -- TODOS os pares candidatos, SEM aplicar
+##    time_window_sec/max_dist_m (handoff) ou max_duplicate_dist_m/
+##    min_overlap_frac (duplicate) ----
+##
+## Uso (2026-08, depois de Griffon-Vulture/Cinereous-Vulture/Steppe-Eagle
+## nao aparecerem em find_handoff_edges()/find_duplicate_edges() num dia
+## onde o Paulo tinha casos identificados visualmente): antes de mudar
+## limiares as cegas outra vez, ver os numeros reais A' VOLTA dos pares que
+## ele ja sabe que deviam ligar-se, e so' depois decidir o que ajustar (ou
+## descobrir que o problema nem e' de limiar -- ex: nome de especie
+## diferente do esperado, dia/instante errado, etc.)
+##
+## Ambas ordenam pelo campo mais relevante para "scroll ate' encontrares o
+## par que reconheces", nao pelo track_id -- diagnose_handoff_candidates()
+## por |gap_sec| crescente (pares mais proximos no tempo primeiro,
+## independente de estarem dentro do limiar atual), diagnose_overlap_candidates()
+## por dist_median crescente.
+##
+
+## Todos os pares ordenados (A fecha, B abre a seguir) -- gap_sec pode ser
+## NEGATIVO (B comecou ANTES de A terminar, i.e. sobrepostos no tempo -- info
+## util mesmo aqui, pode ser um caso "duplicate" disfarcado). dist_m e' so'
+## a distancia entre o ultimo ponto de A e o 1º de B, sem limiar nenhum.
+diagnose_handoff_candidates <- function(track_dt, species) {
+
+  dt <- track_dt[spec == species, .(track_id, timestamp, utm_x, utm_y, idf)]
+  data.table::setorder(dt, track_id, timestamp)
+
+  ends <- dt[, .(
+    first_ts  = data.table::first(timestamp), first_x = data.table::first(utm_x), first_y = data.table::first(utm_y),
+    last_ts   = data.table::last(timestamp),  last_x  = data.table::last(utm_x),  last_y  = data.table::last(utm_y),
+    idf_units = paste(sort(unique(idf)), collapse = ",")
+  ), by = track_id]
+
+  n <- nrow(ends)
+  if (n < 2L) return(data.table::data.table())
+
+  out <- data.table::rbindlist(lapply(seq_len(n), function(i) {
+    j <- setdiff(seq_len(n), i)
+    data.table::data.table(
+      track_id_a = ends$track_id[i], track_id_b = ends$track_id[j],
+      idf_a = ends$idf_units[i], idf_b = ends$idf_units[j],
+      gap_sec = as.numeric(difftime(ends$first_ts[j], ends$last_ts[i], units = "secs")),
+      dist_m  = sqrt((ends$last_x[i] - ends$first_x[j])^2 + (ends$last_y[i] - ends$first_y[j])^2)
+    )
+  }))
+
+  data.table::setorder(out, abs(gap_sec))
+  out[]
+}
+
+
+## Todos os pares com QUALQUER sobreposicao temporal (>0s), com a
+## distancia interpolada ao longo dessa sobreposicao resumida (min/mediana/
+## max + fraccao dentro de 20m e de 50m) -- para calibrar
+## max_duplicate_dist_m/min_overlap_frac contra casos reais em vez de
+## adivinhar. NAO filtra por idf_a != idf_b (ao contrario de
+## find_duplicate_edges()) -- serve tambem para despistar se a assuncao de
+## "1 unidade por track" aguenta nos dados reais.
+diagnose_overlap_candidates <- function(track_dt, species) {
+
+  dt <- track_dt[spec == species, .(track_id, timestamp, utm_x, utm_y, idf)]
+  data.table::setorder(dt, track_id, timestamp)
+  data.table::setkey(dt, track_id)
+
+  spans <- dt[, .(
+    start = min(timestamp), end = max(timestamp),
+    idf_units = paste(sort(unique(idf)), collapse = ",")
+  ), by = track_id]
+
+  n <- nrow(spans)
+  if (n < 2L) return(data.table::data.table())
+
+  pairs <- utils::combn(n, 2)
+
+  out <- data.table::rbindlist(lapply(seq_len(ncol(pairs)), function(k) {
+    i <- pairs[1, k]; j <- pairs[2, k]
+
+    t0 <- max(spans$start[i], spans$start[j])
+    t1 <- min(spans$end[i], spans$end[j])
+    overlap_sec <- as.numeric(difftime(t1, t0, units = "secs"))
+    if (overlap_sec <= 0) return(NULL)
+
+    pa <- dt[.(spans$track_id[i])]
+    pb <- dt[.(spans$track_id[j])]
+    grid <- sort(unique(c(
+      as.numeric(pa[timestamp >= t0 & timestamp <= t1, timestamp]),
+      as.numeric(pb[timestamp >= t0 & timestamp <= t1, timestamp])
+    )))
+    if (length(grid) == 0L) return(NULL)
+
+    ax <- stats::approx(as.numeric(pa$timestamp), pa$utm_x, xout = grid, rule = 2)$y
+    ay <- stats::approx(as.numeric(pa$timestamp), pa$utm_y, xout = grid, rule = 2)$y
+    bx <- stats::approx(as.numeric(pb$timestamp), pb$utm_x, xout = grid, rule = 2)$y
+    by_ <- stats::approx(as.numeric(pb$timestamp), pb$utm_y, xout = grid, rule = 2)$y
+    d <- sqrt((ax - bx)^2 + (ay - by_)^2)
+
+    data.table::data.table(
+      track_id_a = spans$track_id[i], track_id_b = spans$track_id[j],
+      idf_a = spans$idf_units[i], idf_b = spans$idf_units[j],
+      overlap_sec     = overlap_sec,
+      dist_min        = min(d), dist_median = stats::median(d), dist_max = max(d),
+      frac_within_20m = mean(d <= 20), frac_within_50m = mean(d <= 50)
+    )
+  }))
+
+  if (is.null(out) || nrow(out) == 0L) return(data.table::data.table())
+  data.table::setorder(out, dist_median)
+  out[]
+}

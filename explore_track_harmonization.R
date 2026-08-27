@@ -137,6 +137,31 @@ if (length(reconciliation_by_species) == 0L) {
 
 
 ##
+## Diagnostico -- especies que o Paulo identificou visualmente (2026-08-07)
+## mas que NAO apareceram acima (Griffon-Vulture/Cinereous-Vulture/
+## Steppe-Eagle nao passaram find_handoff_edges()/find_duplicate_edges() com
+## os limiares atuais). Antes de mexer nos limiares as cegas outra vez: (1)
+## confirmar que a especie sequer tem tracks neste dia, com este nome exato;
+## (2) se tiver, ver os numeros REAIS a' volta dos pares que ja se sabe
+## deverem ligar-se, sem filtro nenhum de limiar -- ver R/track_harmonization.R
+## secção 6 (diagnose_handoff_candidates/diagnose_overlap_candidates).
+##
+
+print(track_dt_day[, .N, by = spec][order(-N)])
+
+species_to_debug <- c("Griffon-Vulture", "Cinereous-Vulture", "Steppe-Eagle")
+
+for (sp in species_to_debug) {
+
+  cat(sprintf("\n===== %s -- handoff candidates (todos os pares, sem limiar) =====\n", sp))
+  print(diagnose_handoff_candidates(track_dt_day, sp))
+
+  cat(sprintf("\n===== %s -- overlap candidates (todos os pares com sobreposicao temporal) =====\n", sp))
+  print(diagnose_overlap_candidates(track_dt_day, sp))
+}
+
+
+##
 ## Exemplos -- inspecionar/reconstruir UM grupo especifico, antes de confiar
 ## na fusao automatica:
 ##
