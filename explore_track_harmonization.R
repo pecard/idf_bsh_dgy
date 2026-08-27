@@ -162,6 +162,28 @@ for (sp in species_to_debug) {
 
 
 ##
+## Plot interativo (plotly) -- ver R/track_harmonization.R secção 7,
+## plot_candidate_tracks(). Funciona com QUALQUER tabela de arestas com
+## colunas track_id_a/track_id_b -- as filtradas (find_handoff_edges/
+## find_duplicate_edges) ou as brutas (diagnose_handoff_candidates/
+## diagnose_overlap_candidates). Depois de confirmares o dia/especie certos
+## para Griffon-Vulture/Cinereous-Vulture/Steppe-Eagle, o padrao e':
+##
+##   cand <- diagnose_handoff_candidates(track_dt_day, "Steppe-Eagle")[1:5]  # os 5 pares mais proximos no tempo
+##   plot_candidate_tracks(track_dt_day, unique(c(cand$track_id_a, cand$track_id_b)), edges_dt = cand)
+##
+## Exemplo ja' disponivel com os dados de hoje -- o maior grupo encontrado
+## (Egyptian-Vulture, 7 tracks originais fundidos, ver reconciliation_summary_dt):
+##
+##   groups_ev  <- reconciliation_by_species[["Egyptian-Vulture"]]$groups
+##   edges_ev   <- reconciliation_by_species[["Egyptian-Vulture"]]$edges
+##   merged_ids <- groups_ev[, .N, by = synth_track_id][N == max(N), synth_track_id]
+##   ids_ev     <- groups_ev[synth_track_id == merged_ids, track_id]
+##   plot_candidate_tracks(track_dt_day, ids_ev, edges_dt = edges_ev[track_id_a %in% ids_ev & track_id_b %in% ids_ev])
+##
+
+
+##
 ## Exemplos -- inspecionar/reconstruir UM grupo especifico, antes de confiar
 ## na fusao automatica:
 ##

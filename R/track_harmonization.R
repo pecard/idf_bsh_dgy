@@ -37,8 +37,8 @@
 ## valores validados -- a rever depois de ver casos reais (ver
 ## explore_track_harmonization.R).
 ##
-## Depende de: data.table, R/track_min_individuals.R (.uf_components -- usa
-## a MESMA implementacao de componentes conexas, nao redefinida aqui)
+## Depende de: data.table, plotly, R/track_min_individuals.R (.uf_components
+## -- usa a MESMA implementacao de componentes conexas, nao redefinida aqui)
 ##
 ## Uso:
 ##   source("R/track_min_individuals.R")  # .uf_components()
@@ -481,4 +481,97 @@ diagnose_overlap_candidates <- function(track_dt, species) {
   if (is.null(out) || nrow(out) == 0L) return(data.table::data.table())
   data.table::setorder(out, dist_median)
   out[]
+}
+
+
+##
+## 7. Plot interativo (plotly, estilo plot_forensic_rpm() em
+##    R/curtailment_forensic_trace.R) -- as trajetorias espaciais (utm_x,
+##    utm_y) dos track_ids indicados, uma cor por track_id, com hover
+##    ponto-a-ponto (timestamp/unidade IDF) para julgar a plausibilidade de
+##    uma fusao ao olho, ANTES de confiar em qualquer limiar ----
+##
+## Aceita qualquer tabela de arestas com colunas track_id_a/track_id_b
+## (find_handoff_edges(), find_duplicate_edges(), ou as versoes SEM filtro
+## diagnose_handoff_candidates()/diagnose_overlap_candidates()) -- desenha
+## uma linha tracejada entre o ULTIMO ponto de A e o PRIMEIRO ponto de B,
+## com hover mostrando TODAS as colunas da aresta (gap_sec/dist_m,
+## overlap_sec/frac_within_dist, o que la' estiver). Para arestas
+## "duplicate"/overlap, essa linha e' so' ilustrativa (liga os extremos, nao
+## o segmento de sobreposicao real) -- serve para dizer "estes 2 tracks
+## foram considerados o mesmo par", nao para ler distancias exatas dela
+## (essas ja vem na tabela/hover).
+##
+## track_ids = NULL desenha TODOS os tracks presentes em track_dt (cuidado
+## com dias/especies com muitos tracks -- fica ilegivel); normalmente e'
+## chamado com um subconjunto pequeno, escolhido a partir de
+## reconciliation_by_species/diagnose_*_candidates.
+##
+## Uso:
+##   plot_candidate_tracks(track_dt_day, c("659C681F-...", "397C369F-..."))
+##
+##   # com as arestas candidatas sobrepostas (linha tracejada + hover):
+##   plot_candidate_tracks(track_dt_day, merged_ids_do_grupo, edges_dt = edges1)
+##
+##   # direto de uma tabela de diagnostico, so' as 3 linhas mais promissoras:
+##   cand <- diagnose_handoff_candidates(track_dt_day, "Steppe-Eagle")[1:3]
+##   plot_candidate_tracks(track_dt_day, unique(c(cand$track_id_a, cand$track_id_b)), edges_dt = cand)
+##
+
+plot_candidate_tracks <- function(track_dt, track_ids = NULL, edges_dt = NULL, title = NULL) {
+
+  dt <- if (is.null(track_ids)) {
+    data.table::copy(track_dt)[, .(track_id, timestamp, utm_x, utm_y, idf, spec)]
+  } else {
+    track_dt[track_id %in% track_ids, .(track_id, timestamp, utm_x, utm_y, idf, spec)]
+  }
+  data.table::setorder(dt, track_id, timestamp)
+  if (nrow(dt) == 0L) stop("plot_candidate_tracks(): nenhum ponto encontrado para os track_ids indicados.")
+
+  p <- plotly::plot_ly()
+
+  for (tid in unique(dt$track_id)) {
+    pts <- dt[track_id == tid]
+    p <- p %>% plotly::add_trace(
+      data = pts, x = ~utm_x, y = ~utm_y, type = "scatter", mode = "lines+markers",
+      name = as.character(tid),
+      marker = list(size = 6), line = list(width = 2),
+      text = ~sprintf("track_id: %s<br>spec: %s<br>idf: %s<br>%s", tid, spec, idf, format(timestamp, "%Y-%m-%d %H:%M:%S")),
+      hoverinfo = "text"
+    )
+  }
+
+  if (!is.null(edges_dt) && nrow(edges_dt) > 0L) {
+
+    ends <- dt[, .(
+      x_first = data.table::first(utm_x), y_first = data.table::first(utm_y),
+      x_last  = data.table::last(utm_x),  y_last  = data.table::last(utm_y)
+    ), by = track_id]
+
+    for (i in seq_len(nrow(edges_dt))) {
+      e  <- edges_dt[i]
+      ea <- e$track_id_a; eb <- e$track_id_b
+      if (!(ea %in% ends$track_id) || !(eb %in% ends$track_id)) next
+
+      pa <- ends[track_id == ea]; pb <- ends[track_id == eb]
+      hover_txt <- paste(
+        sprintf("%s: %s", names(e), vapply(e, function(v) format(v, digits = 3, trim = TRUE), character(1))),
+        collapse = "<br>"
+      )
+
+      p <- p %>% plotly::add_trace(
+        x = c(pa$x_last, pb$x_first), y = c(pa$y_last, pb$y_first),
+        type = "scatter", mode = "lines",
+        line = list(color = "grey30", width = 1.5, dash = "dot"),
+        hoverinfo = "text", text = hover_txt, showlegend = FALSE
+      )
+    }
+  }
+
+  p %>% plotly::layout(
+    title = if (is.null(title)) sprintf("Candidate tracks -- %s", paste(sort(unique(dt$spec)), collapse = ", ")) else title,
+    xaxis = list(title = "UTM X", scaleanchor = "y"),  # scaleanchor -- aspeto 1:1, distancias em metros nao ficam distorcidas
+    yaxis = list(title = "UTM Y"),
+    showlegend = TRUE
+  )
 }
