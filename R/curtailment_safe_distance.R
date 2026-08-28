@@ -30,8 +30,9 @@
 ##   "full_speed" caso contrario -- cenario mais gravoso, turbina a
 ##     velocidade normal de operacao no momento do disparo
 ##
-## Depende de: data.table, ggplot2, R/curtailment_response.R,
-## R/curtailment_shutdown_time.R (usa time_to_rpm_thresholds())
+## Depende de: data.table, ggplot2, stats (CI/testes, seccao 5),
+## R/curtailment_response.R, R/curtailment_shutdown_time.R (usa
+## time_to_rpm_thresholds())
 ##
 ## Uso:
 ##   source("R/curtailment_response.R")
@@ -46,6 +47,14 @@
 ##   ## (already_slowing) -- summarise_safe_distance() nao muda, filtra-se antes:
 ##   summary_full_speed      <- summarise_safe_distance(safe_dist_dt[turbine_state == "full_speed"], prioritysp)
 ##   summary_already_slowing <- summarise_safe_distance(safe_dist_dt[turbine_state == "already_slowing"], prioritysp)
+##
+##   ## estatistica formal (CI, tendencia mensal, teste entre especies) -- seccao 5
+##   ci_overall    <- summarise_safe_distance_ci(safe_dist_dt, prioritysp)
+##   ci_by_species <- summarise_safe_distance_ci(safe_dist_dt, prioritysp, by_species = TRUE)
+##   by_month      <- summarise_safe_distance_by_month(safe_dist_dt[species %in% prioritysp])
+##   p_by_month    <- plot_safe_distance_by_month(by_month)
+##   trend         <- test_safe_distance_trend(safe_dist_dt[species %in% prioritysp])
+##   species_test  <- test_safe_distance_by_species(safe_dist_dt[species %in% prioritysp])
 ##
 
 
@@ -195,4 +204,143 @@ plot_trigger_distance_status <- function(safe_dist_dt, species_sel = NULL, ref_l
 
   if (facet) p <- p + facet_wrap(~species, ncol = 3)
   p
+}
+
+
+## 5. Estatistica formal sobre pct_ok -- CI, tendencia mensal, teste entre especies ----
+##
+## Camada adicional sobre o MESMO safe_dist_dt das seccoes 1-4 acima --
+## reforca o conjunto de provas do relatorio anual perante os financiadores
+## (lenders) com incerteza/significancia estatistica, nao so' % pontuais
+## (pedido do Paulo, 2026-08). Nao substitui summarise_safe_distance() --
+## os resumos existentes continuam inalterados.
+##
+## Intervalo de confianca: Wilson score (mais robusto que Normal/Wald para
+## proporcoes perto de 0%/100% ou com n pequeno) -- so' usa stats::qnorm,
+## sem pacotes adicionais.
+##
+## Uso:
+##   ci_overall    <- summarise_safe_distance_ci(safe_dist_dt, prioritysp)
+##   ci_by_species <- summarise_safe_distance_ci(safe_dist_dt, prioritysp, by_species = TRUE)
+##   by_month      <- summarise_safe_distance_by_month(safe_dist_dt)
+##   trend         <- test_safe_distance_trend(safe_dist_dt)
+##   species_test  <- test_safe_distance_by_species(safe_dist_dt)
+
+wilson_ci <- function(n_event, n, conf_level = 0.95) {
+  z      <- stats::qnorm(1 - (1 - conf_level) / 2)
+  phat   <- n_event / n
+  denom  <- 1 + z^2 / n
+  center <- (phat + z^2 / (2 * n)) / denom
+  half   <- (z / denom) * sqrt(phat * (1 - phat) / n + z^2 / (4 * n^2))
+  data.table::data.table(
+    ci_low_pct  = round(100 * pmax(0, center - half), 1),
+    ci_high_pct = round(100 * pmin(1, center + half), 1)
+  )
+}
+
+# n/n_ok/pct_ok + intervalo de confianca de Wilson a conf_level (95% por
+# omissao), farm-wide (by_species = FALSE) ou por especie
+summarise_safe_distance_ci <- function(safe_dist_dt, species_sel = NULL, by_species = FALSE, conf_level = 0.95) {
+
+  dt <- safe_dist_dt[!is.na(status)]
+  if (!is.null(species_sel)) dt <- dt[species %in% species_sel]
+
+  agg <- function(d) d[, .(n = .N, n_ok = sum(status == "OK"))]
+
+  out <- if (isTRUE(by_species)) dt[, agg(.SD), by = species] else agg(dt)
+  out[, pct_ok := round(100 * n_ok / n, 1)]
+  out <- cbind(out, wilson_ci(out$n_ok, out$n, conf_level))
+  if (isTRUE(by_species)) data.table::setorder(out, pct_ok)
+  out[]
+}
+
+# n/n_ok/pct_ok + CI de Wilson por mes de calendario (start do curtailment),
+# farm-wide -- base para o teste de tendencia e o grafico mensal no relatorio
+summarise_safe_distance_by_month <- function(safe_dist_dt, conf_level = 0.95) {
+
+  dt <- safe_dist_dt[!is.na(status) & !is.na(start)]
+  dt[, month := data.table::as.IDate(format(start, "%Y-%m-01"))]
+
+  out <- dt[, .(n = .N, n_ok = sum(status == "OK")), by = month]
+  out[, pct_ok := round(100 * n_ok / n, 1)]
+  out <- cbind(out, wilson_ci(out$n_ok, out$n, conf_level))
+  data.table::setorder(out, month)
+  out[]
+}
+
+# Grafico de linha do % OK por mes (saida de summarise_safe_distance_by_month()),
+# com banda do IC de Wilson -- visualiza a tendencia testada por
+# test_safe_distance_trend(), farm-wide
+plot_safe_distance_by_month <- function(by_month_dt) {
+
+  if (nrow(by_month_dt) == 0L) {
+    message("plot_safe_distance_by_month(): sem meses com dados -- NULL devolvido.")
+    return(NULL)
+  }
+
+  ggplot(by_month_dt, aes(x = month, y = pct_ok)) +
+    geom_ribbon(aes(ymin = ci_low_pct, ymax = ci_high_pct), fill = "grey70", alpha = 0.4) +
+    geom_line(colour = "#17aeb0") +
+    geom_point(colour = "#17aeb0", size = 2) +
+    scale_x_date(date_labels = "%Y-%m") +
+    labs(
+      x = "Month", y = "% OK (95% Wilson CI band)",
+      title = "Monthly trend -- % of curtailments within the KNE safe-distance margin"
+    ) +
+    theme_bw()
+}
+
+# Regressao logistica simples (status ~ mes) -- deteta uma tendencia
+# monotona de melhoria/degradacao ao longo do periodo coberto, alem do
+# grafico mensal (que so' mostra, nao testa, a tendencia). Requer pelo
+# menos min_months meses distintos E ambos os estados (OK e Crit)
+# presentes -- caso contrario devolve direction = "insufficient_data" em
+# vez de um p_value nao fiavel.
+test_safe_distance_trend <- function(safe_dist_dt, min_months = 3) {
+
+  dt <- safe_dist_dt[!is.na(status) & !is.na(start)]
+  dt[, month_num := as.integer(format(start, "%Y")) * 12L + as.integer(format(start, "%m"))]
+  dt[, month_num := month_num - min(month_num)]
+  dt[, ok := as.integer(status == "OK")]
+
+  n_months <- data.table::uniqueN(dt$month_num)
+  if (n_months < min_months || data.table::uniqueN(dt$ok) < 2) {
+    return(list(p_value = NA_real_, direction = "insufficient_data", n_months = n_months))
+  }
+
+  fit <- suppressWarnings(stats::glm(ok ~ month_num, data = dt, family = stats::binomial))
+  co  <- summary(fit)$coefficients["month_num", ]
+
+  list(
+    p_value   = unname(co["Pr(>|z|)"]),
+    estimate  = unname(co["Estimate"]),
+    direction = if (unname(co["Estimate"]) > 0) "improving" else "worsening",
+    n_months  = n_months
+  )
+}
+
+# Teste de independencia especie x status (OK/Crit) -- omnibus, nao
+# pairwise; especies com menos de min_n curtailments ficam de fora (contagem
+# demasiado pequena para o teste ser fiavel). Recorre a simulacao de
+# Monte-Carlo (chisq.test(..., simulate.p.value = TRUE)) quando a
+# aproximacao qui-quadrado classica emite aviso (contagens esperadas
+# baixas), em vez de reportar um p-value pouco fiavel em silencio.
+test_safe_distance_by_species <- function(safe_dist_dt, min_n = 5) {
+
+  dt <- safe_dist_dt[!is.na(status)]
+  counts <- dt[, .N, by = species]
+  keep_species <- counts[N >= min_n, species]
+  dt <- dt[species %in% keep_species]
+
+  if (data.table::uniqueN(dt$species) < 2) {
+    return(list(p_value = NA_real_, method = "insufficient_data", table = NULL))
+  }
+
+  tbl <- table(dt$species, dt$status)
+  test <- tryCatch(
+    stats::chisq.test(tbl),
+    warning = function(w) stats::chisq.test(tbl, simulate.p.value = TRUE, B = 2000)
+  )
+
+  list(p_value = test$p.value, method = test$method, table = tbl)
 }
