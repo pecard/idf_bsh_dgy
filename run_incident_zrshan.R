@@ -176,59 +176,13 @@ heartb_dt_unfilt <- reuse_or_load_cache(
   force_reread = force_reread_cache, tz = proj_timezone
 )
 
-## Normalizacao do instance_name do heartbeat -- CONFIRMADO pelo Paulo
-## (2026-08, a partir do ficheiro real): o formato NAO e' "IDF22" como
-## heartbeat_idf_units assumia, e' "GW<turbina que aloja a unidade>-<numero
-## da unidade IDF>" (ex: "GW35-24", "GW40-26", "GW32-22", "GW37-71") -- a
-## turbina antes do hifen e' so' onde a unidade esta fisicamente montada
-## (pode ser diferente da turbina do incidente; a mesma unidade cobre
-## varias turbinas vizinhas, ver turbine_idf_coverage.xlsx), o numero
-## APOS o hifen e' a unidade IDF propriamente dita -- o mesmo numero (sem
-## prefixo) que ja aparece em track_dt$idf/TowerNumber ("22", "24", ...,
-## ver mensagem "Unidades IDF encontradas em track_dt_unfilt" abaixo).
-## Este mismatch de formato era a causa raiz do calendario/tabela de
-## disponibilidade (secção 2.3) e do Global_availability_by_idf virem
-## sempre vazios (caso real, 2026-08) -- a normalizacao abaixo alinha
-## heartb_dt_unfilt$idf com heartbeat_idf_units ("IDF22", 2 digitos).
-##
-## Alguns valores brutos podem nao ter um numero reconhecivel no fim da
-## string (ex: linhas em branco nao apanhadas pelo exclude_idf de
-## read_heartbeats_data(), que tem por omissao um valor especifico do
-## BSH/DGY e nao deste parque) -- em vez de deixar o aviso cru do
-## as.integer() ("NAs introduced by coercion", sem dizer QUAL valor
-## falhou), identifica e reporta os valores brutos problematicos
-## explicitamente, e marca-os NA (nunca batem com heartbeat_idf_units,
-## inocuo para o resto do pipeline).
-##
-## IMPORTANTE (idempotencia): extrai a sequencia de digitos NO FIM da
-## string (".*([0-9]+)$"), NAO "o que vem depois do ultimo hifen"
-## (sub("^.*-", ...)) -- se este bloco correr 2 vezes sobre o mesmo objeto
-## (ex: sessão R persistente do RStudio, heartb_dt_unfilt ja' existe em
-## memoria de uma corrida anterior e reuse_or_load_cache() devolve-o tal
-## qual, sem reler o ficheiro), "IDF24" (ja' normalizado) NAO tem hifen
-## nenhum, por isso sub("^.*-",...) devolvia a string tal e qual
-## ("IDF24"), e as.integer("IDF24") dava sempre NA -- toda a tabela ficava
-## NA a partir da 2a corrida na mesma sessão. A extracao de digitos no fim
-## e' idempotente: aplicada a "IDF24" continua a dar "24".
-{
-  raw_idf <- heartb_dt_unfilt$idf
-  idf_num <- suppressWarnings(as.integer(sub(".*([0-9]+)$", "\\1", raw_idf)))
-  bad <- is.na(idf_num) & !is.na(raw_idf)
-  if (any(bad)) {
-    bad_examples <- unique(raw_idf[bad])
-    message(sprintf(
-      "AVISO: %d valor(es) de heartb_dt_unfilt$idf sem numero reconhecivel no fim da string (ficam NA, nao entram em heartbeat_idf_units) -- exemplos: %s",
-      sum(bad), paste(utils::head(bad_examples, 5), collapse = ", ")
-    ))
-  }
-  heartb_dt_unfilt$idf <- ifelse(is.na(idf_num), NA_character_, sprintf("IDF%02d", idf_num))
-}
-
 ## Verificacao rapida -- os 3 vocabularios que run_incident_zrshan.R ASSUME
 ## coincidirem (ver notas "A CONFIRMAR" em userSettings_ZRF.R): especie,
 ## turbina, unidade IDF. Corre sempre, mesmo sem force_reread_cache, para
 ## apanhar um mismatch logo no inicio em vez de secções silenciosamente
-## vazias mais a frente.
+## vazias mais a frente. heartbeat_idf_units usa agora o codigo BRUTO do
+## heartbeat (ver userSettings_ZRF.R) -- este check compara like-for-like,
+## sem normalizacao nenhuma.
 message("Especies encontradas em track_dt_unfilt: ", paste(sort(unique(track_dt_unfilt$spec)), collapse = ", "))
 message("Turbinas encontradas em track_dt_unfilt (NearestTurbine3d): ", paste(sort(unique(track_dt_unfilt$turbine)), collapse = ", "))
 message("Unidades IDF encontradas em track_dt_unfilt: ", paste(sort(unique(track_dt_unfilt$idf)), collapse = ", "))
@@ -242,7 +196,7 @@ if (!fatality_incidents$turbine %in% track_dt_unfilt$turbine) {
 }
 if (!all(heartbeat_idf_units %in% heartb_dt_unfilt$idf)) {
   message("AVISO: nem todas as heartbeat_idf_units (", paste(heartbeat_idf_units, collapse = ", "),
-          ") foram encontradas em heartb_dt_unfilt$idf apos normalizacao -- confirmar que o numero apos o ultimo hifen do instance_name e' mesmo o numero da unidade IDF (ver nota acima).")
+          ") foram encontradas em heartb_dt_unfilt$idf -- confirmar o codigo bruto exato no ficheiro (ver userSettings_ZRF.R).")
 }
 
 filter_ini <- ini
@@ -255,9 +209,19 @@ track_dt[, count := .N, by = track_id]
 
 scada_dt <- scada_dt_unfilt # NAO FILTRAR -- mesma convencao de IDF_analysis.R
 
+## Filtra pelo codigo BRUTO (heartbeat_idf_units, values -- ver
+## userSettings_ZRF.R), depois RELABEL para "IDF<NN>" (names) -- assim o
+## resto do pipeline (disponibilidade por janela/baseline, calendario,
+## xlsx de anexo, texto do relatorio) trabalha sempre com o rotulo
+## legivel, sem cada consumidor ter de conhecer o formato bruto do
+## heartbeat. CONFIRMADO pelo Paulo (2026-08): este era o mismatch de
+## formato que fazia a disponibilidade (secção 2.3) e o
+## Global_availability_by_idf virem sempre vazios -- heartbeat_idf_units
+## antes assumia "IDF22" quando o ficheiro real usa "GW32-22".
 heartb_dt <- as.data.table(heartb_dt_unfilt)[
   idf %in% heartbeat_idf_units & timestamp >= filter_ini & timestamp <= filter_end
 ]
+heartb_dt[, idf := names(heartbeat_idf_units)[match(idf, heartbeat_idf_units)]]
 
 
 ##
@@ -297,6 +261,27 @@ idf$imaging_he <- sprintf("IDF%02d", as.integer(sub(".*([0-9]+)$", "\\1", idf[[i
 idf <- sf::st_transform(idf, crs_projection_plannar)
 
 message("Unidades IDF encontradas no shapefile (apos normalizacao): ", paste(sort(unique(idf$imaging_he)), collapse = ", "))
+
+## Verificacao cruzada -- as unidades de interesse (heartbeat_idf_units)
+## devem aparecer, com o codigo certo, em CADA uma das outras fontes que
+## descrevem a MESMA unidade fisica (ver a explicacao completa dos 3
+## codigos em userSettings_ZRF.R): o shapefile (rotulo "IDF<NN>", igual a
+## names(heartbeat_idf_units)) e o TrackReport/TowerNumber (so' o numero,
+## sem prefixo). Corre sempre, para uma futura mudanca de unidades/parque
+## nao voltar a passar despercebida como o mismatch original (2026-08).
+idf_unit_numbers <- as.integer(sub(".*-", "", heartbeat_idf_units)) # ex: 22, 24, 26, 71 -- mesmo formato de track_dt$idf/TowerNumber
+if (!all(names(heartbeat_idf_units) %in% idf$imaging_he)) {
+  message(sprintf(
+    "AVISO: nem todos os rotulos IDF de heartbeat_idf_units (%s) foram encontrados no shapefile identiflight.shp apos normalizacao (%s) -- confirmar o codigo real dessa unidade no shapefile.",
+    paste(names(heartbeat_idf_units), collapse = ", "), paste(sort(unique(idf$imaging_he)), collapse = ", ")
+  ))
+}
+if (!all(idf_unit_numbers %in% suppressWarnings(as.integer(track_dt_unfilt$idf)))) {
+  message(sprintf(
+    "AVISO: nem todos os numeros de unidade IDF de heartbeat_idf_units (%s) foram encontrados em track_dt_unfilt$idf/TowerNumber (%s).",
+    paste(idf_unit_numbers, collapse = ", "), paste(sort(unique(track_dt_unfilt$idf)), collapse = ", ")
+  ))
+}
 
 source("R/turbine_idf_coverage.R")
 
@@ -463,7 +448,7 @@ fatality_windows <- summarise_fatality_windows(
   offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min,
   start_end_gap_sec = curtailment_start_end_gap_sec, decline_pct_threshold = curtailment_latency_decline_pct,
   buffer_after_end_sec = shutdown_time_buffer_sec, cutin_rpm = curtailment_cutin_rpm,
-  fallback_idf_units = heartbeat_idf_units,
+  fallback_idf_units = names(heartbeat_idf_units), # heartb_dt$idf ja' vem relabeled para "IDF<NN>" (ver acima)
   track_dt = track_dt, post_days = fatality_post_incident_days,
   min_indiv_bin_min = min_individuals_bin_min, min_indiv_merge_dist_m = min_individuals_merge_dist_m,
   global_avail_from = ini, global_avail_to = end,
@@ -514,14 +499,16 @@ message(sprintf(
 ## Calendario de disponibilidade (% offline em horas de luz, por dia) das
 ## unidades IDF de interesse, restrito a janela de investigacao -- pedido
 ## do Paulo (2026-08), secção "Investigation Window" do relatorio de
-## incidente. idf_sel = heartbeat_idf_units (nao top_n por omissao) para
-## mostrar SEMPRE todas as unidades de interesse, nao so as com mais tempo
-## offline -- ver R/availability_daylight.R, plot_availability_calendar()
+## incidente. idf_sel = names(heartbeat_idf_units) (rotulo "IDF<NN>", o
+## mesmo formato de fatality_window_daily_dt$idf apos o relabel de
+## heartb_dt acima), nao top_n por omissao, para mostrar SEMPRE todas as
+## unidades de interesse, nao so as com mais tempo offline -- ver
+## R/availability_daylight.R, plot_availability_calendar()
 fatality_window_daily_dt <- fatality_windows[[1]]$availability$daily
 p_fatality_availability_calendar <- if (!is.null(fatality_window_daily_dt) && nrow(fatality_window_daily_dt) > 0) {
   plot_availability_calendar(
     fatality_window_daily_dt, fatality_windows[[1]]$availability$by_idf,
-    idf_sel = heartbeat_idf_units
+    idf_sel = names(heartbeat_idf_units)
   )
 } else NULL
 
@@ -753,7 +740,7 @@ report_params <- list(
   incident_days_before = fatality_incidents$days_before,
   incident_window_start = as.character(as.Date(incident_window_start)),
   incident_window_end   = as.character(as.Date(incident_window_end)),
-  idf_units_of_interest = paste(heartbeat_idf_units, collapse = ", "),
+  idf_units_of_interest = paste(names(heartbeat_idf_units), collapse = ", "), # rotulo "IDF<NN>", nao o codigo bruto do heartbeat
   investigated_turbines = paste(turbinas_scada, collapse = ", "),
   report_start  = as.character(as.Date(ini)),
   report_end    = as.character(as.Date(end)),

@@ -87,15 +87,32 @@ heartbeats_pattern   <- "Heartbeats_.+csv"  # ex: Heartbeats_20260201_....csv
 
 ## So as unidades IDF de interesse para este incidente (nao todo o parque)
 ## -- usadas como fallback_idf_units em summarise_fatality_windows() (R/
-## fatality_window_analysis.R) e para restringir a reconciliacao de tracks
-## candidatos (R/track_harmonization.R) a estas unidades. Formato
-## "IDF22"/"IDF24"/... (2 digitos, sem hifen) -- ver normalizacao do
-## shapefile identiflight.shp ("IDF-1", "IDF-2", ...) em
-## run_incident_zrshan.R; A CONFIRMAR se o heartbeats bruto (instance_name)
-## usa este mesmo formato ou o formato com hifen do shapefile -- o script
-## imprime os valores unicos encontrados em heartb_dt$idf logo apos a
-## leitura, para deteccao rapida de um mismatch.
+## fatality_window_analysis.R), no calendario de disponibilidade e para
+## restringir a reconciliacao de tracks candidatos (R/track_harmonization.R)
+## a estas unidades.
+##
+## CONFIRMADO pelo Paulo (2026-08, a partir do ficheiro real de heartbeats
+## e do shapefile): a MESMA unidade fisica IDF aparece com codigos
+## DIFERENTES em cada fonte de dados --
+##   - heartb_dt$idf (instance_name, Heartbeats_*.csv): "GW<turbina que
+##     aloja a unidade>-<numero da unidade>", ex: "GW32-22" -- a turbina
+##     antes do hifen e' so' onde a unidade esta fisicamente montada (pode
+##     ser diferente da turbina do incidente; a mesma unidade cobre varias
+##     turbinas vizinhas, ver turbine_idf_coverage.xlsx)
+##   - track_dt$idf (TowerNumber, TrackReport_*.csv): so' o numero, sem
+##     prefixo nem turbina, ex: "22"
+##   - idf$imaging_he (shapefile identiflight.shp, coluna Name): "IDF22"
+##     ou "IDF-22" (formato exato do ficheiro por confirmar, mas o numero
+##     e' o mesmo) -- normalizado para "IDF<NN>" em run_incident_zrshan.R
+##
+## heartbeat_idf_units usa o codigo BRUTO do heartbeat (values, para o
+## filtro de heartb_dt$idf funcionar diretamente, sem adivinhar um
+## padrao); names() da' o rotulo "IDF<NN>" equivalente, usado no resto do
+## pipeline (relabel de heartb_dt$idf para o relatorio, texto descritivo,
+## e comparavel com a normalizacao do shapefile) -- 1 unica fonte de
+## verdade, sem 2 listas a poderem divergir.
 heartbeat_idf_units <- c("GW32-22", "GW35-24", "GW40-26", "GW37-71")
+names(heartbeat_idf_units) <- c("IDF22", "IDF24", "IDF26", "IDF71")
 
 
 ##
