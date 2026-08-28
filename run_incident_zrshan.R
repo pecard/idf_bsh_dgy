@@ -44,18 +44,22 @@
 
 ##
 ## PACKAGES ----
-## Lista mais pequena que IDF_analysis.R (esse carrega tambem terra/RANN/
-## geosphere/suncalc/ggTimeSeries/cluster/gt/skimr/vtable, sem consumidor
-## aqui) -- so o que as funcoes reutilizadas neste script precisam.
-## ggplot2/sf/magrittr precisam de estar ANEXADOS (library()), nao so
+## Lista mais pequena que IDF_analysis.R (esse carrega tambem geosphere/
+## ggTimeSeries/cluster/gt/skimr/vtable, sem consumidor aqui) -- so o que
+## as funcoes reutilizadas neste script precisam. ggplot2/sf/magrittr/
+## dplyr/janitor precisam de estar ANEXADOS (library()), nao so
 ## instalados -- varias funcoes em R/ chamam ggplot()/geom_*()/
-## st_transform()/%>% sem qualificar com o nome do pacote.
+## st_transform()/%>%/clean_names()/mutate()/bind_rows() sem qualificar
+## com o nome do pacote (ex: R/read_tracks.R, R/read_curtailments.R,
+## R/read_heartbeats.R -- sem janitor/dplyr anexados, a leitura falha logo
+## no 1º ficheiro com "could not find function 'clean_names'").
 ##
 
 packages <- c(
-  'data.table', 'sf', 'magrittr', 'ggplot2', 'lubridate',
+  'data.table', 'sf', 'magrittr', 'dplyr', 'janitor', 'ggplot2', 'lubridate',
   'readxl', 'writexl', 'plotly', 'htmlwidgets', 'rmarkdown', 'flextable', 'fst', 'scales',
-  'suncalc' # usado (namespaced) por R/availability_daylight.R, chamado de dentro de R/fatality_window_analysis.R
+  'suncalc', # usado (namespaced) por R/availability_daylight.R, chamado de dentro de R/fatality_window_analysis.R
+  'terra', 'RANN' # usados por R/coverage_3d_topography.R (malha 3D)
 )
 for (p in packages) {
   if (!require(p, character.only = TRUE)) install.packages(p)
