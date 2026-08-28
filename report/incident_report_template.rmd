@@ -513,12 +513,17 @@ Minimum number of distinct individuals of `r params$incident_species` detected i
 
 <!-- Source: summarise_min_individuals(min_indiv_bins_dt), R/track_min_individuals.R -->
 ```{r min-indiv-summary-table}
-if (!is.null(params$min_indiv_summary)) {
+if (!is.null(params$min_indiv_summary) && nrow(params$min_indiv_summary) > 0) {
   report_table(rename_display(
     params$min_indiv_summary,
     c(spec = "Species", n_bins = "Bins", peak_individuals = "Peak Individuals",
       peak_bin_start = "Peak Time", mean_individuals_nonzero = "Mean (Non-zero Bins)")
   ))
+}
+```
+```{r min-indiv-summary-empty, results='asis'}
+if (is.null(params$min_indiv_summary) || nrow(params$min_indiv_summary) == 0) {
+  cat(sprintf("No %s detections were found for the investigated turbines' IDF units over the full data coverage period.\n\n", params$incident_species))
 }
 ```
 ```{r min-indiv-summary-annex, results='asis'}
@@ -528,8 +533,12 @@ annex_note(params$xlsx_min_indiv)
 ## Daily Peak
 
 <!-- Source: plot_daily_max_individuals(min_indiv_daily_dt, species_sel = incident_species, geom_type = "bar"), R/track_min_individuals.R -->
-```{r min-indiv-daily-plot, fig.width=6.30, fig.height=4}
-if (!is.null(params$min_indiv_plot_daily)) print(params$min_indiv_plot_daily)
+```{r min-indiv-daily-plot, fig.width=6.30, fig.height=4, results='asis'}
+if (!is.null(params$min_indiv_plot_daily)) {
+  print(params$min_indiv_plot_daily)
+} else {
+  cat("No data available for this plot.\n\n")
+}
 ```
 
 # Candidate Duplicate/Fragmented Tracks Around the Incident
