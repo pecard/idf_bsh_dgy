@@ -176,6 +176,22 @@ heartb_dt_unfilt <- reuse_or_load_cache(
   force_reread = force_reread_cache, tz = proj_timezone
 )
 
+## Normalizacao do instance_name do heartbeat -- CONFIRMADO pelo Paulo
+## (2026-08, a partir do ficheiro real): o formato NAO e' "IDF22" como
+## heartbeat_idf_units assumia, e' "GW<turbina que aloja a unidade>-<numero
+## da unidade IDF>" (ex: "GW35-24", "GW40-26", "GW32-22", "GW37-71") -- a
+## turbina antes do hifen e' so' onde a unidade esta fisicamente montada
+## (pode ser diferente da turbina do incidente; a mesma unidade cobre
+## varias turbinas vizinhas, ver turbine_idf_coverage.xlsx), o numero
+## APOS o hifen e' a unidade IDF propriamente dita -- o mesmo numero (sem
+## prefixo) que ja aparece em track_dt$idf/TowerNumber ("22", "24", ...,
+## ver mensagem "Unidades IDF encontradas em track_dt_unfilt" abaixo).
+## Este mismatch de formato era a causa raiz do calendario/tabela de
+## disponibilidade (secção 2.3) e do Global_availability_by_idf virem
+## sempre vazios (caso real, 2026-08) -- a normalizacao abaixo alinha
+## heartb_dt_unfilt$idf com heartbeat_idf_units ("IDF22", 2 digitos).
+heartb_dt_unfilt$idf <- sprintf("IDF%02d", as.integer(sub("^.*-", "", heartb_dt_unfilt$idf)))
+
 ## Verificacao rapida -- os 3 vocabularios que run_incident_zrshan.R ASSUME
 ## coincidirem (ver notas "A CONFIRMAR" em userSettings_ZRF.R): especie,
 ## turbina, unidade IDF. Corre sempre, mesmo sem force_reread_cache, para
@@ -194,7 +210,7 @@ if (!fatality_incidents$turbine %in% track_dt_unfilt$turbine) {
 }
 if (!all(heartbeat_idf_units %in% heartb_dt_unfilt$idf)) {
   message("AVISO: nem todas as heartbeat_idf_units (", paste(heartbeat_idf_units, collapse = ", "),
-          ") foram encontradas em heartb_dt_unfilt$idf -- ver formato acima (com/sem hifen).")
+          ") foram encontradas em heartb_dt_unfilt$idf apos normalizacao -- confirmar que o numero apos o ultimo hifen do instance_name e' mesmo o numero da unidade IDF (ver nota acima).")
 }
 
 filter_ini <- ini
@@ -233,23 +249,16 @@ wtg$InternalNa <- {
 
 idf <- sf::read_sf(file.path(folder_input, idf_filename))
 
-## Mesma normalizacao, mas com um passo extra: o identiflight.shp deste
-## parque usa "IDF-1", "IDF-2", ... (COM hifen) -- a regex
-## "^([A-Za-z]+)([0-9]+)$" nao aceita hifen a meio, por isso ficaria sem
-## normalizar (devolvia o valor bruto tal e qual). Removido o hifen ANTES
-## de normalizar, para "IDF-22" dar "IDF22" (2 digitos, igual ao formato
-## usado em heartbeat_idf_units acima) em vez de ficar "IDF-1" por
-## normalizar.
+## Normalizacao para "IDF<NN>" (2 digitos) -- toma sempre o TROCO APOS O
+## ULTIMO HIFEN como o numero da unidade IDF, o que cobre tanto "IDF-22"
+## (assumido inicialmente) como "GW35-24" (formato CONFIRMADO pelo Paulo,
+## 2026-08, no instance_name do heartbeat -- "GW<turbina que aloja a
+## unidade>-<numero da unidade IDF>", ver normalizacao de
+## heartb_dt_unfilt$idf acima) e um valor ja' sem hifen (ex: "22"), sem
+## precisar de saber de antemao qual dos formatos o shapefile usa --
+## conferir a mensagem "Unidades IDF encontradas no shapefile" abaixo.
 idf_source_id_col <- if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"
-idf$imaging_he <- {
-  raw_id <- gsub("-", "", idf[[idf_source_id_col]], fixed = TRUE)
-  m <- regmatches(raw_id, regexec("^([A-Za-z]+)([0-9]+)$", raw_id))
-  vapply(seq_along(raw_id), function(i) {
-    g <- m[[i]]
-    if (length(g) < 3) return(raw_id[i])
-    paste0(g[2], sprintf("%02d", as.integer(g[3])))
-  }, character(1))
-}
+idf$imaging_he <- sprintf("IDF%02d", as.integer(sub("^.*-", "", idf[[idf_source_id_col]])))
 idf <- sf::st_transform(idf, crs_projection_plannar)
 
 message("Unidades IDF encontradas no shapefile (apos normalizacao): ", paste(sort(unique(idf$imaging_he)), collapse = ", "))
