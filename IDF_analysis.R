@@ -1236,7 +1236,12 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
     )
   } else {message("Sem x2d/status calculavel para especies prioritarias -- plot nao gerado.")}
   
-} else {message("run_sections$curtailment_response = FALSE ou SCADA nao disponivel -- 3.5-3.7 saltadas nesta ronda.")}
+} else {
+  message(sprintf(
+    "3.5-3.7 saltadas nesta ronda -- run_sections$curtailment_response = %s, scada_dt disponivel = %s.",
+    isTRUE(run_sections$curtailment_response), exists("scada_dt")
+  ))
+}
 
 summary_safe_dist
 p_safe_dist_hist
@@ -1437,7 +1442,12 @@ if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
   # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height)
   # plot_coverage_3d_for_turbine(cov_all, "BSH54", coverage_cylinder_wider_radius, coverage_cylinder_height, not_covered = TRUE)
   
-} else {message("run_sections$coverage_3d = FALSE ou DEM nao disponivel -- 5.2 saltada nesta ronda.")}
+} else {
+  message(sprintf(
+    "5.2 (3D coverage) saltada nesta ronda -- run_sections$coverage_3d = %s, DEM encontrado (%s) = %s.",
+    isTRUE(run_sections$coverage_3d), dem_file, file.exists(dem_file)
+  ))
+}
 
 ## Plots interativos de turbinas especificas, so' quando cov_all foi mesmo
 ## (re)criado nesta ronda -- caso contrario "object 'cov_all' not found"
