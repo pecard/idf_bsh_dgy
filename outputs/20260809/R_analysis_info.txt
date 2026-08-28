@@ -1,3 +1,0 @@
-Analysis technician: Paulo C
-Analysis date: 2026-08-09
-Script version: idf_bsh_dgy
