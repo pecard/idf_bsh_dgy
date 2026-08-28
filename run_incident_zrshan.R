@@ -190,7 +190,28 @@ heartb_dt_unfilt <- reuse_or_load_cache(
 ## disponibilidade (secção 2.3) e do Global_availability_by_idf virem
 ## sempre vazios (caso real, 2026-08) -- a normalizacao abaixo alinha
 ## heartb_dt_unfilt$idf com heartbeat_idf_units ("IDF22", 2 digitos).
-heartb_dt_unfilt$idf <- sprintf("IDF%02d", as.integer(sub("^.*-", "", heartb_dt_unfilt$idf)))
+##
+## Alguns valores brutos podem nao ter um numero reconhecivel apos o
+## ultimo hifen (ex: linhas em branco nao apanhadas pelo exclude_idf de
+## read_heartbeats_data(), que tem por omissao um valor especifico do
+## BSH/DGY e nao deste parque) -- em vez de deixar o aviso cru do
+## as.integer() ("NAs introduced by coercion", sem dizer QUAL valor
+## falhou), identifica e reporta os valores brutos problematicos
+## explicitamente, e marca-os NA (nunca batem com heartbeat_idf_units,
+## inocuo para o resto do pipeline).
+{
+  raw_idf <- heartb_dt_unfilt$idf
+  idf_num <- suppressWarnings(as.integer(sub("^.*-", "", raw_idf)))
+  bad <- is.na(idf_num) & !is.na(raw_idf)
+  if (any(bad)) {
+    bad_examples <- unique(raw_idf[bad])
+    message(sprintf(
+      "AVISO: %d valor(es) de heartb_dt_unfilt$idf sem numero reconhecivel apos o ultimo hifen (ficam NA, nao entram em heartbeat_idf_units) -- exemplos: %s",
+      sum(bad), paste(utils::head(bad_examples, 5), collapse = ", ")
+    ))
+  }
+  heartb_dt_unfilt$idf <- ifelse(is.na(idf_num), NA_character_, sprintf("IDF%02d", idf_num))
+}
 
 ## Verificacao rapida -- os 3 vocabularios que run_incident_zrshan.R ASSUME
 ## coincidirem (ver notas "A CONFIRMAR" em userSettings_ZRF.R): especie,
