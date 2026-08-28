@@ -151,6 +151,14 @@ databases_dirs <- databases_dir
 
 if (!exists("force_reread_cache")) force_reread_cache <- FALSE
 
+## generate_report: TRUE por omissao -- so' definir FALSE (na consola,
+## antes de dar Source a este ficheiro, ex: generate_report <- FALSE) para
+## saltar a geracao do .docx final (secção 7, mais lenta, rmarkdown::render())
+## quando estas so' a testar/depurar uma secção anterior e queres inspecionar
+## as tabelas/objetos (fatality_tracks_dt, summary_cov, etc.) diretamente no
+## ambiente ou nos xlsx de anexo, sem esperar pelo relatorio completo.
+if (!exists("generate_report")) generate_report <- TRUE
+
 track_dt_unfilt <- reuse_or_load_cache(
   if (exists("track_dt_unfilt")) track_dt_unfilt else NULL,
   "track_dt_unfilt", file.path(folder_cache, "track_dt_unfilt.fst"),
@@ -841,10 +849,14 @@ report_params <- list(
   candidate_tracks_html = candidate_tracks_html_name
 )
 
-source("R/report.R")
-build_idf_report(
-  output_file    = file.path(folder_output, paste0("Incident_Report_", fatality_incidents$incident_id, "_", fatality_incidents$incident_date, ".docx")),
-  report_params  = report_params,
-  template       = "report/incident_report_template.rmd",
-  reference_docx = file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")
-)
+if (isTRUE(generate_report)) {
+  source("R/report.R")
+  build_idf_report(
+    output_file    = file.path(folder_output, paste0("Incident_Report_", fatality_incidents$incident_id, "_", fatality_incidents$incident_date, ".docx")),
+    report_params  = report_params,
+    template       = "report/incident_report_template.rmd",
+    reference_docx = file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")
+  )
+} else {
+  message("generate_report = FALSE -- .docx NAO gerado nesta ronda (tabelas/objetos continuam disponiveis no ambiente e nos xlsx de anexo em ", folder_output, ").")
+}

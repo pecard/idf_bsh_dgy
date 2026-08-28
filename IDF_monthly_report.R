@@ -209,6 +209,14 @@ folder_cache <- file.path("cache", farm_code)
 ## IDF_analysis.R, por isso essa releitura tambem beneficia esse script.
 if (!exists("force_reread_cache_monthly")) force_reread_cache_monthly <- FALSE
 
+## generate_report: TRUE por omissao -- mesmo padrao de
+## force_reread_cache_monthly acima (so' definir FALSE na consola, antes de
+## correr este script) para saltar a geracao do .docx final (mais lenta,
+## rmarkdown::render()) quando estas so' a testar/depurar uma secção e
+## queres inspecionar as tabelas/objetos diretamente no ambiente ou nos
+## xlsx de anexo, sem esperar pelo relatorio completo.
+if (!exists("generate_report")) generate_report <- TRUE
+
 ## reuse_or_load_cache() (R/data_cache.R): se estes objetos ja estiverem em
 ## memoria de uma corrida anterior NA MESMA sessao R (ex: gerar o relatorio
 ## para varios meses seguidos sem reiniciar o R), reutiliza-os sem tocar no
@@ -1120,9 +1128,13 @@ monthly_report_params <- list(
 
 ## Reutiliza o template Word da empresa (estilos, cabecalho/rodape com
 ## numeracao de pagina) -- ver comentario em R/report.R (build_idf_report).
-build_idf_report(
-  output_file    = file.path(folder_output, sprintf("IDF_monthly_report_%s.docx", report_month)),
-  report_params  = monthly_report_params,
-  template       = "report/monthly_report_template.rmd",
-  reference_docx = file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")
-)
+if (isTRUE(generate_report)) {
+  build_idf_report(
+    output_file    = file.path(folder_output, sprintf("IDF_monthly_report_%s.docx", report_month)),
+    report_params  = monthly_report_params,
+    template       = "report/monthly_report_template.rmd",
+    reference_docx = file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")
+  )
+} else {
+  message("generate_report = FALSE -- .docx NAO gerado nesta ronda (tabelas/objetos continuam disponiveis no ambiente e nos xlsx de anexo).")
+}

@@ -350,6 +350,14 @@ databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) datab
 ## FALSE sozinho.
 if (!exists("force_reread_cache")) force_reread_cache <- FALSE
 
+## generate_report: TRUE por omissao -- mesmo padrao de force_reread_cache
+## acima (so' definir FALSE na consola, antes de correr este script) para
+## saltar a geracao do .docx final (mais lenta, rmarkdown::render()) quando
+## estas so' a testar/depurar uma secção e queres inspecionar as
+## tabelas/objetos diretamente no ambiente ou nos xlsx de anexo, sem
+## esperar pelo relatorio completo.
+if (!exists("generate_report")) generate_report <- TRUE
+
 ## Subpasta por farm_code -- ver nota acima (folder_output) sobre a mesma
 ## colisao entre BSH/DGY, aqui para a cache dos 4 datasets grandes.
 folder_cache <- file.path("cache", farm_code)
@@ -2387,11 +2395,15 @@ report_params <- list(
 ## Reutiliza o template Word da empresa (estilos, cabecalho/rodape com
 ## numeracao de pagina) -- mesmo template ja aplicado ao relatorio mensal
 ## (ver comentario em R/report.R, build_idf_report()).
-build_idf_report(
-  output_file    = file.path(folder_output, paste0("IDF_report_", report_start, "to", report_end, ".docx")),
-  report_params  = report_params,
-  reference_docx = file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")
-)
+if (isTRUE(generate_report)) {
+  build_idf_report(
+    output_file    = file.path(folder_output, paste0("IDF_report_", report_start, "to", report_end, ".docx")),
+    report_params  = report_params,
+    reference_docx = file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")
+  )
+} else {
+  message("generate_report = FALSE -- .docx NAO gerado nesta ronda (tabelas/objetos continuam disponiveis no ambiente e nos xlsx de anexo).")
+}
 
 
 
