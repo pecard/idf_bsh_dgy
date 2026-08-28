@@ -1,0 +1,447 @@
+---
+title: "`r params$title`"
+output: word_document
+params:
+  title: ""
+  project_ref: ""
+  incident_id: ""
+  incident_turbine: ""
+  incident_species: ""
+  incident_date: ""
+  incident_days_before: !r NULL
+  incident_window_start: ""
+  incident_window_end: ""
+  idf_units_of_interest: ""
+  report_start: ""
+  report_end: ""
+  analysis_date: ""
+  username: ""
+  code_version: ""
+
+  coverage_turbine_of_interest: !r NULL
+  coverage_idf_of_interest: !r NULL
+
+  fatality_signal_counts: !r NULL
+  fatality_top_candidates: !r NULL
+  fatality_window_availability: !r NULL
+  fatality_global_availability: !r NULL
+  fatality_window_response_summary: !r NULL
+  fatality_global_response_summary: !r NULL
+  fatality_abundance_pre_post: !r NULL
+
+  latency_by_turbine: !r NULL
+  latency_bands: !r NULL
+  latency_plot: !r NULL
+  latency_timeline_plot: !r NULL
+  latency_n_no_data: !r NULL
+  latency_pct_no_data: !r NULL
+  latency_n_below_cutin: !r NULL
+  latency_pct_below_cutin: !r NULL
+
+  min_indiv_summary: !r NULL
+  min_indiv_plot_daily: !r NULL
+
+  candidate_tracks_reconciliation_summary: !r NULL
+
+  heartbeat_interval_min: !r NULL
+  heartbeat_offline_gap_min: !r NULL
+  curtailment_start_end_gap_sec: !r NULL
+  curtailment_latency_decline_pct: !r NULL
+  curtailment_cutin_rpm: !r NULL
+  safe_shutdown_rpm: !r NULL
+  shutdown_time_buffer_sec: !r NULL
+  track_proximity_threshold_m: !r NULL
+  fatality_post_incident_days: !r NULL
+  min_individuals_bin_min: !r NULL
+  min_individuals_merge_dist_m: !r NULL
+  harmonization_handoff_time_window_sec: !r NULL
+  harmonization_handoff_max_dist_m: !r NULL
+  harmonization_duplicate_max_median_dist_m: !r NULL
+  harmonization_duplicate_max_spread_m: !r NULL
+
+  xlsx_coverage: !r NULL
+  xlsx_fatality: !r NULL
+  xlsx_latency: !r NULL
+  xlsx_min_indiv: !r NULL
+  xlsx_candidate_tracks: !r NULL
+  candidate_tracks_html: !r NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# Helpers identicos a report/report_template.rmd (mesma convencao visual em
+# todos os relatorios do projeto) -- ver esse ficheiro para o comentario
+# completo de cada um.
+report_table <- function(x, caption = NULL, max_col_width_cm = NULL, col_widths_cm = NULL) {
+  ft <- flextable::flextable(round_display(x)) |>
+    flextable::theme_box() |>
+    flextable::bg(part = "header", bg = "gray85") |>
+    flextable::bold(part = "header") |>
+    flextable::fontsize(size = 9, part = "header") |>
+    flextable::fontsize(size = 9, part = "body") |>
+    flextable::align(align = "center", part = "header") |>
+    flextable::valign(valign = "center", part = "all") |>
+    flextable::autofit()
+  if (!is.null(max_col_width_cm)) ft <- cap_col_width(ft, max_col_width_cm)
+  if (!is.null(col_widths_cm)) ft <- set_col_max_width(ft, col_widths_cm)
+  if (!is.null(caption)) ft <- flextable::set_caption(ft, caption)
+  ft
+}
+
+round_display <- function(x, digits = 2) {
+  x <- as.data.frame(x)
+  for (col in names(x)) {
+    v <- x[[col]]
+    if (!is.numeric(v) || is.integer(v)) next
+    if (all(v == round(v), na.rm = TRUE)) next
+    x[[col]] <- vapply(v, function(val) {
+      if (is.na(val)) return(NA_character_)
+      d <- digits
+      while (round(val, d) == 0 && val != 0 && d < 6) d <- d + 1
+      sprintf(paste0("%.", d, "f"), val)
+    }, character(1))
+  }
+  x
+}
+
+cap_col_width <- function(ft, max_width_cm = 2) {
+  widths_in <- dim(ft)$widths
+  capped_cm <- pmin(widths_in * 2.54, max_width_cm)
+  flextable::width(ft, j = seq_along(capped_cm), width = capped_cm, unit = "cm")
+}
+
+set_col_max_width <- function(ft, widths_cm) {
+  widths_in <- dim(ft)$widths
+  idx <- match(names(widths_cm), ft$col_keys)
+  hit <- !is.na(idx)
+  if (any(hit)) {
+    capped_cm <- pmin(widths_in[idx[hit]] * 2.54, unname(widths_cm[hit]))
+    ft <- flextable::width(ft, j = idx[hit], width = capped_cm, unit = "cm")
+  }
+  ft
+}
+
+rename_display <- function(x, mapping) {
+  x <- as.data.frame(x)
+  idx <- match(names(mapping), names(x))
+  hit <- !is.na(idx)
+  names(x)[idx[hit]] <- unname(mapping)[hit]
+  x
+}
+
+drop_cols <- function(x, cols) {
+  x <- as.data.frame(x)
+  x[, setdiff(names(x), cols), drop = FALSE]
+}
+
+annex_note <- function(xlsx_name) {
+  if (!is.null(xlsx_name)) {
+    cat(sprintf("\n*The full table is available in the accompanying workbook: `%s`.*\n", xlsx_name))
+  }
+}
+```
+
+**`r params$project_ref`** -- Incident Report `r params$incident_id`
+
+Turbine: **`r params$incident_turbine`** | Species: **`r params$incident_species`** | Incident date (carcass found, not date of collision): **`r params$incident_date`**
+
+Investigation window: `r params$incident_window_start` to `r params$incident_window_end` (`r params$incident_days_before` days before, and including, the incident date)
+
+IDF units of interest: `r params$idf_units_of_interest`
+
+Data coverage used for the overall/context figures in this report: `r params$report_start` to `r params$report_end`
+
+Analysis date: `r params$analysis_date` | Responsible Team: `r params$username` | Code version: `r params$code_version`
+
+This report is descriptive and fully automated, generated end-to-end by an R code pipeline, following the same methodology already applied to other projects (BSH/DGY). The recorded incident date is when the carcass was found during a turbine ground survey, not the date of collision -- this is why the investigation covers a window of days before that date, not the single day (see CLAUDE.md/project notes for the rationale on window length).
+
+---
+
+# Turbine / IDF Unit Coverage
+
+Geometric overlap between the incident turbine's detection buffer and each IDF unit's detection buffer (`r params$track_proximity_threshold_m` m is the separate proximity threshold used below for candidate tracks; the coverage buffer radius is `idf_op_detection_range`, see the accompanying workbook for the farm-wide matrix). No manually-curated Primary/Secondary IDF matrix exists yet for this farm, so the table below is the geometric computation directly, not a comparison against one.
+
+<!-- Source: turbine_idf_coverage_wide_dt[turbine == incident_turbine], R/turbine_idf_coverage.R -->
+```{r coverage-turbine-table}
+if (!is.null(params$coverage_turbine_of_interest) && nrow(params$coverage_turbine_of_interest) > 0) {
+  report_table(params$coverage_turbine_of_interest, max_col_width_cm = 2)
+}
+```
+
+## IDF Units of Interest -- All Turbines Covered
+
+Which turbines each of the IDF units of interest geometrically covers (not only the incident turbine) -- useful context for the availability figures below, since an offline unit can affect more than one turbine.
+
+<!-- Source: turbine_idf_coverage_dt[idf %in% heartbeat_idf_units], R/turbine_idf_coverage.R -->
+```{r coverage-idf-table}
+if (!is.null(params$coverage_idf_of_interest) && nrow(params$coverage_idf_of_interest) > 0) {
+  report_table(
+    rename_display(params$coverage_idf_of_interest, c(turbine = "Turbine", idf = "IDF Unit", pct_coverage = "% Coverage")),
+    max_col_width_cm = 2
+  )
+}
+```
+```{r coverage-annex, results='asis'}
+annex_note(params$xlsx_coverage)
+```
+
+# Fatality Investigation
+
+Investigation of the incident (`r params$track_proximity_threshold_m` m proximity threshold to identify candidate tracks; see CLAUDE.md notes on why a curtailment log entry near the incident date does not by itself identify the responsible track -- the track data itself, analysed below, is the stronger indicator).
+
+## Candidate Tracks by Signal
+
+Count of tracks recorded near the incident turbine, by signal type (e.g. curtailment triggered vs. not, near vs. far), during the investigation window.
+
+<!-- Source: fatality_summary$counts_by_signal <- summarise_fatality_tracks(fatality_tracks_dt), R/fatality_track_investigation.R -->
+```{r fatality-signal-counts-table}
+if (!is.null(params$fatality_signal_counts)) {
+  report_table(
+    rename_display(
+      params$fatality_signal_counts,
+      c(incident_id = "Incident", turbine = "Turbine", species = "Species", signal = "Signal",
+        n_tracks = "Tracks", pct_of_incident = "% of Incident")
+    ),
+    max_col_width_cm = 1.5
+  )
+}
+```
+```{r fatality-signal-counts-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
+
+## Top Candidate Tracks
+
+The tracks most likely associated with the incident -- those whose last recorded position ends closest to the turbine, among the candidate signal types. The full table (track ID, point counts, distances, timestamps) is in the accompanying workbook. A fatality can occur with no curtailment ever triggered for the responsible track, particularly when the bird is detected already close to the turbine.
+
+<!-- Source: fatality_summary$top_candidates, R/fatality_track_investigation.R -->
+```{r fatality-top-candidates-table}
+if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candidates) > 0) {
+  dt <- as.data.frame(params$fatality_top_candidates)
+  dt <- dt[, intersect(c("incident_id", "turbine", "species", "triggered_curtailment", "signal"), names(dt)), drop = FALSE]
+  report_table(rename_display(
+    dt,
+    c(incident_id = "Incident", turbine = "Turbine", species = "Species",
+      triggered_curtailment = "Triggered Curtailment", signal = "Signal")
+  ))
+}
+```
+```{r fatality-top-candidates-empty, results='asis'}
+if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candidates) == 0) {
+  cat("No candidate tracks meeting the analysis requirements (signal type and proximity window, see Candidate Tracks by Signal above) were found for this incident.\n\n")
+}
+```
+```{r fatality-top-candidates-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
+
+## IDF Unit Availability -- Investigation Window vs. Overall Baseline
+
+Heartbeat-based offline percentage for the IDF unit(s) covering the incident turbine, during the investigation window, compared against the same unit(s) over the full data coverage period (`r params$report_start` to `r params$report_end`) as a baseline -- a materially worse figure in the window than the baseline may indicate reduced detection capability around the time of the incident.
+
+<!-- Source: fatality_windows[[id]]$availability$by_idf (window) / $availability_global$by_idf (baseline), R/fatality_window_analysis.R -->
+```{r fatality-availability-window-heading, results='asis'}
+cat("### Investigation Window\n\n")
+```
+```{r fatality-availability-window-table}
+if (!is.null(params$fatality_window_availability) && nrow(params$fatality_window_availability) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_window_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
+      c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
+    ),
+    max_col_width_cm = 2
+  )
+}
+```
+```{r fatality-availability-global-heading, results='asis'}
+cat("### Overall Baseline\n\n")
+```
+```{r fatality-availability-global-table}
+if (!is.null(params$fatality_global_availability) && nrow(params$fatality_global_availability) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_global_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
+      c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
+    ),
+    max_col_width_cm = 2
+  )
+}
+```
+```{r fatality-availability-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
+
+## Curtailment Response Around the Incident -- Window vs. Overall Baseline
+
+Response latency and no-response events (same definitions as the Curtailment Response & Latency section below) restricted to the incident turbine, comparing the investigation window against the full-period baseline for the same turbine. This covers every curtailment recorded at that turbine during each period, from any track, not only the candidate track(s) identified above.
+
+```{r fatality-response-window-heading, results='asis'}
+cat("### Investigation Window\n\n")
+```
+<!-- Source: fatality_windows[[id]]$curtailment_response$summary, R/fatality_window_analysis.R -->
+```{r fatality-window-response-table}
+if (!is.null(params$fatality_window_response_summary) && nrow(params$fatality_window_response_summary) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_window_response_summary, c("n_curtailments", "n_known", "n_below_cutin", "pct_below_cutin")),
+      c(incident_id = "Incident", n_no_data = "No Data", pct_no_data = "% No Data",
+        n_eligible = "Curtailments", n_reached = "Reached", pct_reached = "% Reached",
+        n_no_response = "No Response", pct_no_response = "% No Response",
+        mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)")
+    ),
+    max_col_width_cm = 2
+  )
+}
+```
+```{r fatality-response-global-heading, results='asis'}
+cat("### Overall Baseline\n\n")
+```
+<!-- Source: fatality_windows[[id]]$curtailment_response_global$summary, R/fatality_window_analysis.R -->
+```{r fatality-global-response-table}
+if (!is.null(params$fatality_global_response_summary) && nrow(params$fatality_global_response_summary) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_global_response_summary, c("n_curtailments", "n_known", "n_below_cutin", "pct_below_cutin")),
+      c(incident_id = "Incident", n_no_data = "No Data", pct_no_data = "% No Data",
+        n_eligible = "Curtailments", n_reached = "Reached", pct_reached = "% Reached",
+        n_no_response = "No Response", pct_no_response = "% No Response",
+        mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)")
+    ),
+    max_col_width_cm = 2
+  )
+}
+```
+```{r fatality-response-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
+
+## Abundance Before/After the Incident
+
+Minimum-individuals abundance of `r params$incident_species`, comparing the `r params$fatality_post_incident_days`-day window after the incident date against the investigation window used above -- descriptive only, a difference may reflect the incident or simply the natural phenology of the migration passing through, no causality is assumed.
+
+<!-- Source: fatality_windows[[id]]$abundance, R/fatality_window_analysis.R -->
+```{r fatality-abundance-table}
+if (!is.null(params$fatality_abundance_pre_post) && nrow(params$fatality_abundance_pre_post) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_abundance_pre_post, "mean_individuals"),
+      c(incident_id = "Incident", period = "Period", n_days = "Days", n_bins = "Bins",
+        peak_individuals = "Peak Individuals")
+    ),
+    max_col_width_cm = 1.5
+  )
+}
+```
+```{r fatality-abundance-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
+
+# Curtailment Response & Latency -- Overall (`r params$incident_turbine`)
+
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, over the full data coverage period (`r params$report_start` to `r params$report_end`) for the incident turbine -- context for the window-specific figures above, same methodology as the BSH/DGY reports. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. `r params$shutdown_time_buffer_sec` s past the end of the curtailment order are allowed for this to happen. `r params$latency_n_no_data` curtailments (`r params$latency_pct_no_data`%) have no SCADA baseline within `r params$curtailment_start_end_gap_sec` s before the signal and are excluded below; of the remainder, `r params$latency_n_below_cutin` (`r params$latency_pct_below_cutin`%) were already below the cut-in speed (`r params$curtailment_cutin_rpm` rpm) at the start of the order and are also excluded, since there is no meaningful response to measure on a turbine that was not operating.
+
+## Response Latency by Turbine
+
+<!-- Source: summarise_latency_by_turbine(latency_dt), R/curtailment_response_latency.R -->
+```{r latency-turbine-table}
+if (!is.null(params$latency_by_turbine)) {
+  report_table(
+    rename_display(
+      drop_cols(params$latency_by_turbine, c(
+        "n_curtailments", "n_no_data", "pct_no_data", "n_known",
+        "n_below_cutin", "pct_below_cutin", "n_no_response", "pct_no_response"
+      )),
+      c(turbine = "Turbine", n_eligible = "Curtailments", n_reached = "Reached",
+        pct_reached = "% Reached", mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)")
+    ),
+    max_col_width_cm = 2
+  )
+}
+```
+
+## Response Latency Bands
+
+<!-- Source: summarise_latency_bands(latency_dt), R/curtailment_response_latency.R -->
+```{r latency-bands-table}
+if (!is.null(params$latency_bands)) {
+  report_table(params$latency_bands, max_col_width_cm = 2)
+}
+```
+
+## Response Latency Distribution
+
+<!-- Source: plot_latency_histogram(latency_dt), R/curtailment_response_latency.R -->
+```{r latency-hist-plot, fig.width=6.30, fig.height=4}
+if (!is.null(params$latency_plot)) print(params$latency_plot)
+```
+
+## Latency Temporal Pattern
+
+<!-- Source: plot_latency_timeline(latency_timeline_dt), R/curtailment_response_timeline.R -->
+```{r latency-timeline-plot, fig.width=6.30, fig.height=3.5}
+if (!is.null(params$latency_timeline_plot)) print(params$latency_timeline_plot)
+```
+```{r latency-annex, results='asis'}
+annex_note(params$xlsx_latency)
+```
+
+# `r params$incident_species` Activity
+
+Minimum number of distinct individuals of `r params$incident_species` detected in the same `r params$min_individuals_bin_min`-minute time bin, farm-wide, summarised by day over the full data coverage period. Two or more tracks are counted as a single individual when their positions are within `r params$min_individuals_merge_dist_m` m of each other in the same bin (see CLAUDE.md/R/track_min_individuals.R for the method) -- this is a lower-bound estimate of how many individuals were present, not a true count.
+
+## Summary
+
+<!-- Source: summarise_min_individuals(min_indiv_bins_dt), R/track_min_individuals.R -->
+```{r min-indiv-summary-table}
+if (!is.null(params$min_indiv_summary)) {
+  report_table(rename_display(
+    params$min_indiv_summary,
+    c(spec = "Species", n_bins = "Bins", peak_individuals = "Peak Individuals",
+      peak_bin_start = "Peak Time", mean_individuals_nonzero = "Mean (Non-zero Bins)")
+  ))
+}
+```
+```{r min-indiv-summary-annex, results='asis'}
+annex_note(params$xlsx_min_indiv)
+```
+
+## Daily Peak
+
+<!-- Source: plot_daily_max_individuals(min_indiv_daily_dt, species_sel = incident_species, geom_type = "bar"), R/track_min_individuals.R -->
+```{r min-indiv-daily-plot, fig.width=6.30, fig.height=4}
+if (!is.null(params$min_indiv_plot_daily)) print(params$min_indiv_plot_daily)
+```
+
+# Candidate Duplicate/Fragmented Tracks Around the Incident
+
+The IdentiFlight system can register the same individual bird as several different `track_id`s -- either a sequential handoff (one track ends, a new one starts moments later nearby) or a duplicate (two IDF units track the same bird at the same time, offset from each other by a unit-pair-specific calibration bias). Both patterns are reconciled here into candidate single-individual groups, restricted to `r params$incident_species` tracks recorded by the IDF units of interest (`r params$idf_units_of_interest`) during the investigation window -- see R/track_harmonization.R for the method (handoff: gap under `r params$harmonization_handoff_time_window_sec` s and `r params$harmonization_handoff_max_dist_m` m; duplicate: overlapping tracks from different units whose offset stays stable, not necessarily small, over the overlap). This is exploratory: candidate groupings should be checked visually (see the accompanying interactive plot) before being treated as confirmed single-individual tracks.
+
+<!-- Source: summarise_reconciliation(reconciliation_incident$groups), R/track_harmonization.R -->
+```{r candidate-tracks-summary-table}
+if (!is.null(params$candidate_tracks_reconciliation_summary) && nrow(params$candidate_tracks_reconciliation_summary) > 0) {
+  report_table(
+    rename_display(
+      params$candidate_tracks_reconciliation_summary,
+      c(n_synth_tracks = "Synthetic Tracks", n_orig_tracks_total = "Original Tracks",
+        n_merged_synth_tracks = "Merged Groups", max_tracks_in_1_group = "Largest Group")
+    )
+  )
+} else {
+  cat("Fewer than 2 candidate track_ids were found in the investigation window for this species/IDF-unit combination -- no reconciliation to report.\n\n")
+}
+```
+```{r candidate-tracks-annex, results='asis'}
+annex_note(params$xlsx_candidate_tracks)
+if (!is.null(params$candidate_tracks_html)) {
+  cat(sprintf(
+    "\n\n*The largest reconciled group's trajectory is also available as an interactive plot: `%s` (open in a browser -- Word cannot embed interactive plots).*\n",
+    params$candidate_tracks_html
+  ))
+}
+```
+
+# Annexes
+
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: turbine/IDF coverage, fatality investigation (full track/window detail), curtailment response & latency (overall), minimum individuals per bin, and candidate/duplicate track reconciliation (plus its interactive HTML plot).
