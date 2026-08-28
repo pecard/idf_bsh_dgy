@@ -28,12 +28,11 @@ project_ref <- "Zarafshan WPP"
 
 ## Shapefiles fornecidos pelo Paulo -- nomes exatos das colunas de ID
 ## confirmados por ele (ver wtg_source_id_col/idf_source_id_col abaixo).
-## NOTA: o nome dado foi "Masdar_wtg_positions_utm41N.txt.shp" -- ".txt.shp"
-## e' invulgar (parece um artefacto de conversao); assume-se aqui que o
-## ficheiro real e' so' "Masdar_wtg_positions_utm41N.shp" (as 4
-## extensoes .shp/.shx/.dbf/.prj do shapefile) -- AJUSTAR se o nome real
-## for mesmo diferente.
-wtg_filename <- "Masdar_wtg_positions_utm41N.shp"
+## CONFIRMADO (ficheiros reais em inputs/, 2026-08): o nome e' mesmo
+## "Masdar_wtg_positions_utm41N.txt.shp" -- ".txt.shp" nao e' um erro nem
+## um artefacto de conversao, e' o nome literal das 7 extensoes do
+## shapefile (.shp/.shx/.dbf/.prj/.cpg/.qix/.qmd).
+wtg_filename <- "Masdar_wtg_positions_utm41N.txt.shp"
 idf_filename <- "identiflight.shp"
 
 ## Nome da coluna de ID no shapefile de origem -- ver normalizacao em
