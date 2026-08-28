@@ -21,6 +21,7 @@ params:
 
   coverage_turbine_of_interest: !r NULL
   coverage3d_by_turbine: !r NULL
+  coverage3d_by_risk_dist_band: !r NULL
   coverage3d_covered_png: !r NULL
   coverage3d_not_covered_png: !r NULL
 
@@ -66,6 +67,7 @@ params:
   shutdown_time_buffer_sec: !r NULL
   track_proximity_threshold_m: !r NULL
   curtailment_trigger_height_m: !r NULL
+  coverage_cylinder_inner_radius: !r NULL
   fatality_post_incident_days: !r NULL
   min_individuals_bin_min: !r NULL
   min_individuals_merge_dist_m: !r NULL
@@ -218,6 +220,18 @@ if (!is.null(params$coverage3d_by_turbine) && nrow(params$coverage3d_by_turbine)
   ))
 } else {
   cat("DEM not available or 3D coverage not computed for this run.\n\n")
+}
+```
+
+The overall figure above blends cells at every height and distance from the turbine. The breakdown below splits it by height (below vs. at/above `r params$curtailment_trigger_height_m` m AGL, the height under which a curtailment is triggered) and by horizontal distance (within vs. beyond `r params$coverage_cylinder_inner_radius` m, the radius under which the system triggers an immediate response) -- coverage of the "at risk" / "inner" combination, the highest-priority quadrant, is the most relevant figure for assessing detection capability around a collision.
+
+```{r coverage3d-risk-dist-table}
+if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_risk_dist_band) > 0) {
+  report_table(rename_display(
+    drop_cols(params$coverage3d_by_risk_dist_band, "wtg_id"),
+    c(risk_band = "Height Band", dist_band = "Distance Band", n_mesh = "Air Mesh Cells",
+      n_covered = "Covered Cells", pct_covered = "% Covered")
+  ))
 }
 ```
 ```{r coverage3d-covered-image, results='asis'}

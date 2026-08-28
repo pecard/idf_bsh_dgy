@@ -32,6 +32,15 @@
 ## o % de coverage dessas turbinas deve ser interpretado com cautela (amostra
 ## pode ser demasiado pequena para uma estimativa fiavel).
 ##
+## dist_band_breaks (por omissao NULL, desliga esta classificacao -- ainda
+## nao usada por BSH/DGY/IDF_analysis.R): banda de distancia HORIZONTAL a
+## turbina, ex: c(600) para "inner"/"outer" a 600m -- pedido do Paulo,
+## 2026-08 (Zarafshan), a partir de scripts_IDF/coverage_analysis_WTG.R
+## (que corria a analise 2x, uma por raio, para uma "inner cylinder
+## coverage" separada) -- aqui cruzado com risk_band NA MESMA malha/corrida
+## (by_risk_dist_band, compute_mesh_coverage()/summarise_mesh_coverage()),
+## sem repetir o calculo caro da malha/KD-tree para cada distancia.
+##
 ## Depende de: data.table, sf, terra, RANN, plotly, htmlwidgets;
 ## webshot2 so' se save_coverage_3d_plots(..., screenshot = TRUE) for usado
 ## (precisa tambem de um Chrome/Edge instalado no sistema)
@@ -45,9 +54,11 @@
 ##     step_xy = coverage_mesh_step_xy, step_z = coverage_mesh_step_z,
 ##     prox_thresh_m = coverage_prox_thresh_m,
 ##     risk_band_breaks = c(200), risk_band_labels = c("at risk", "above"),
+##     dist_band_breaks = coverage_cylinder_inner_radius, dist_band_labels = c("inner", "outer"), # opcional
 ##     wtg_sel = wtg_3d_coverage # vetor de nomes (coluna InternalNa), ou "all"/NULL para todas
 ##   )
 ##   summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))
+##   summary_cov$by_turbine_risk_dist_band # so' nao-vazio se dist_band_breaks foi usado
 ##   plot_mesh_coverage_3d(cov_all$BSH54$terrain_mesh, cov_all$BSH54$coverage,
 ##                        radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height)
 ##
@@ -63,9 +74,22 @@
 ## a cota mais baixa do terreno em mesh_xy, arredondada para baixo ao
 ## multiplo de step_z mais proximo -- nunca sobe acima de 0 (min(0, ...)),
 ## turbinas em zonas planas/elevadas mantêm o comportamento antigo (zs comeca em 0).
+##
+## dist_band_breaks (por omissao NULL -- desliga esta classificacao, mantendo
+## o comportamento antigo/farm-wide de BSH/DGY inalterado): banda de
+## distancia HORIZONTAL a turbina (raio no plano x/y, nao 3D), ex: c(600)
+## para separar "inner"/"outer" a 600m -- pedido do Paulo, 2026-08 (Zarafshan):
+## alem da altura de risco (curtailment so' dispara abaixo de
+## curtailment_trigger_height_m), a IDF tambem usa um raio horizontal de
+## 600m para despoletar uma resposta IMEDIATA -- por isso a cobertura
+## interessa cruzada nas 2 dimensoes (altura x distancia), nao so' cada uma
+## em separado. Reutiliza coverage_cylinder_inner_radius (userSettings) como
+## valor tipico de dist_band_breaks -- ver run_coverage_3d_all_turbines().
 .build_mesh_from_terrain <- function(mesh_xy, wtg_elev, cyl_height, step_z,
                                      risk_band_breaks = c(200),
-                                     risk_band_labels = c("at risk", "above")) {
+                                     risk_band_labels = c("at risk", "above"),
+                                     dist_band_breaks = NULL,
+                                     dist_band_labels = c("inner", "outer")) {
 
   z_floor <- min(0, floor((min(mesh_xy$terrain_elev, na.rm = TRUE) - wtg_elev) / step_z) * step_z)
   zs <- seq(z_floor, cyl_height, by = step_z)
@@ -87,13 +111,24 @@
     include.lowest = TRUE, right = FALSE
   )]
 
+  if (!is.null(dist_band_breaks)) {
+    mesh[, dist_band := cut(
+      sqrt(x^2 + y^2),
+      breaks = c(0, dist_band_breaks, Inf),
+      labels = dist_band_labels,
+      include.lowest = TRUE, right = FALSE
+    )]
+  }
+
   list(z_floor = z_floor, mesh = mesh)
 }
 
 build_terrain_mesh <- function(wtg_id, wtg_lat, wtg_lon, dem_file,
                                radius, cyl_height, step_xy, step_z,
                                risk_band_breaks = c(200),
-                               risk_band_labels = c("at risk", "above")) {
+                               risk_band_labels = c("at risk", "above"),
+                               dist_band_breaks = NULL,
+                               dist_band_labels = c("inner", "outer")) {
 
   crs_local <- sprintf(
     "+proj=aeqd +lat_0=%f +lon_0=%f +x_0=0 +y_0=0 +ellps=WGS84 +units=m +no_defs",
@@ -130,7 +165,10 @@ build_terrain_mesh <- function(wtg_id, wtg_lat, wtg_lon, dem_file,
   terrain_vals <- terra::extract(dem_local, terra::vect(mesh_xy_sf))
   mesh_xy[, terrain_elev := as.numeric(terrain_vals[[2]])]
 
-  built <- .build_mesh_from_terrain(mesh_xy, wtg_elev, cyl_height, step_z, risk_band_breaks, risk_band_labels)
+  built <- .build_mesh_from_terrain(
+    mesh_xy, wtg_elev, cyl_height, step_z, risk_band_breaks, risk_band_labels,
+    dist_band_breaks, dist_band_labels
+  )
   mesh <- built$mesh
 
   list(
@@ -159,6 +197,8 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
   dem_local <- terrain_mesh$dem_local
   z_floor   <- terrain_mesh$z_floor
 
+  has_dist_band <- "dist_band" %in% names(mesh_air)
+
   empty_result <- function(n_records, track_wtg_valid) {
     mesh_air[, `:=`(hits = 0L, covered = FALSE)]
     list(
@@ -168,7 +208,10 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
         n_air_mesh = nrow(mesh_air), n_covered = 0L, pct_covered = NA_real_,
         low_sample = n_records < min_sample_records
       ),
-      by_risk_band = mesh_air[, .(n_mesh = .N, n_covered = 0L, pct_covered = 0), by = risk_band][, wtg_id := wtg_id][]
+      by_risk_band = mesh_air[, .(n_mesh = .N, n_covered = 0L, pct_covered = 0), by = risk_band][, wtg_id := wtg_id][],
+      by_risk_dist_band = if (has_dist_band) {
+        mesh_air[, .(n_mesh = .N, n_covered = 0L, pct_covered = 0), by = .(risk_band, dist_band)][, wtg_id := wtg_id][]
+      } else NULL
     )
   }
 
@@ -215,6 +258,19 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
   by_risk_band[, pct_covered := round(100 * n_covered / n_mesh, 1)]
   by_risk_band[, wtg_id := wtg_id]
 
+  ## Cruzamento altura x distancia -- so' calculado se dist_band existir
+  ## (dist_band_breaks foi dado a build_terrain_mesh()/.build_mesh_from_terrain());
+  ## NULL mantem o comportamento antigo para quem nao pediu esta classificacao
+  ## (ex: IDF_analysis.R/BSH/DGY, que ainda nao usa esta regra).
+  by_risk_dist_band <- if (has_dist_band) {
+    tmp <- mesh_air[, .(n_mesh = .N, n_covered = sum(covered)), by = .(risk_band, dist_band)]
+    tmp[, pct_covered := round(100 * n_covered / n_mesh, 1)]
+    tmp[, wtg_id := wtg_id]
+    tmp[]
+  } else {
+    NULL
+  }
+
   metrics <- data.table::data.table(
     wtg_id      = wtg_id,
     n_records   = nrow(track_wtg),
@@ -226,7 +282,7 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
   )
 
   list(wtg_id = wtg_id, mesh_air = mesh_air, track_wtg = track_wtg_valid,
-       metrics = metrics, by_risk_band = by_risk_band[])
+       metrics = metrics, by_risk_band = by_risk_band[], by_risk_dist_band = by_risk_dist_band)
 }
 
 
@@ -240,6 +296,8 @@ run_coverage_3d_all_turbines <- function(wtg_sf, track_dt, dem_file,
                                          prox_thresh_m,
                                          risk_band_breaks = c(200),
                                          risk_band_labels = c("at risk", "above"),
+                                         dist_band_breaks = NULL,
+                                         dist_band_labels = c("inner", "outer"),
                                          wtg_id_col = "InternalNa",
                                          track_dist_buffer_m = 200,
                                          wtg_sel = NULL,
@@ -294,7 +352,8 @@ run_coverage_3d_all_turbines <- function(wtg_sf, track_dt, dem_file,
 
     terrain_mesh <- build_terrain_mesh(
       wtg_id, wtg_list$wtg_lat[i], wtg_list$wtg_lon[i], dem_file,
-      radius, cyl_height, step_xy, step_z, risk_band_breaks, risk_band_labels
+      radius, cyl_height, step_xy, step_z, risk_band_breaks, risk_band_labels,
+      dist_band_breaks, dist_band_labels
     )
     coverage <- compute_mesh_coverage(terrain_mesh, track_wtg, radius, cyl_height, prox_thresh_m, min_sample_records)
 
@@ -315,7 +374,16 @@ summarise_mesh_coverage <- function(coverage_list) {
 
   by_turbine_risk_band <- data.table::rbindlist(lapply(coverage_list, `[[`, "by_risk_band"))
 
-  list(by_turbine = by_turbine[], by_turbine_risk_band = by_turbine_risk_band[])
+  ## Cruzamento altura x distancia -- so' presente se dist_band_breaks foi
+  ## usado (ver run_coverage_3d_all_turbines()); rbindlist(list(NULL, NULL))
+  ## devolve um data.table vazio, nao erro, quando nenhuma turbina tem esta
+  ## classificacao.
+  by_turbine_risk_dist_band <- data.table::rbindlist(lapply(coverage_list, `[[`, "by_risk_dist_band"))
+
+  list(
+    by_turbine = by_turbine[], by_turbine_risk_band = by_turbine_risk_band[],
+    by_turbine_risk_dist_band = by_turbine_risk_dist_band[]
+  )
 }
 
 

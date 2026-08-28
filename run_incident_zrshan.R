@@ -343,11 +343,25 @@ if (file.exists(dem_file)) {
   ## estimar cobertura beneficia do historico completo, nao so do periodo
   ## do relatorio (aqui coincidem de qualquer forma, ja que ini/end cobre
   ## toda a serie disponivel para este parque)
+  ## risk_band_breaks reutiliza curtailment_trigger_height_m (a mesma altura
+  ## AGL que despoleta um curtailment, ja usada na investigacao de
+  ## fatalidade) e dist_band_breaks reutiliza coverage_cylinder_inner_radius
+  ## (raio abaixo do qual a IDF despoleta uma resposta IMEDIATA) -- pedido
+  ## do Paulo, 2026-08: cruzar as 2 dimensoes (altura x distancia) na
+  ## cobertura 3D, nao so' a altura sozinha, para identificar especificamente
+  ## a cobertura na zona de MAIOR risco (baixo E perto). Ambos os parametros
+  ## sao opcionais em run_coverage_3d_all_turbines() (NULL/200m por omissao,
+  ## ainda o comportamento antigo para BSH/DGY) -- so' este relatorio passa
+  ## valores explicitos.
   cov_all <- run_coverage_3d_all_turbines(
     wtg, track_dt_unfilt, dem_file,
     radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
     step_xy = coverage_mesh_step_xy, step_z = coverage_mesh_step_z,
     prox_thresh_m = coverage_prox_thresh_m,
+    risk_band_breaks = if (exists("curtailment_trigger_height_m")) curtailment_trigger_height_m else 200,
+    risk_band_labels = c("at risk", "above risk"),
+    dist_band_breaks = coverage_cylinder_inner_radius,
+    dist_band_labels = c("inner", "outer"),
     wtg_sel = wtg_3d_coverage,
     min_sample_records = coverage_min_sample_records
   )
@@ -355,7 +369,10 @@ if (file.exists(dem_file)) {
   summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))
 
   write_xlsx_local(
-    list(By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band),
+    list(
+      By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band,
+      By_turbine_risk_dist_band = summary_cov$by_turbine_risk_dist_band
+    ),
     file.path(folder_output, "coverage_3d_summary.xlsx")
   )
 
@@ -760,6 +777,7 @@ report_params <- list(
 
   coverage_turbine_of_interest = coverage_turbine_of_interest_dt,
   coverage3d_by_turbine        = if (!is.null(summary_cov)) summary_cov$by_turbine else NULL,
+  coverage3d_by_risk_dist_band = if (!is.null(summary_cov) && !is.null(summary_cov$by_turbine_risk_dist_band) && nrow(summary_cov$by_turbine_risk_dist_band) > 0) summary_cov$by_turbine_risk_dist_band else NULL,
   coverage3d_covered_png       = if (!is.null(coverage3d_covered_png)) normalizePath(coverage3d_covered_png) else NULL,
   coverage3d_not_covered_png   = if (!is.null(coverage3d_not_covered_png)) normalizePath(coverage3d_not_covered_png) else NULL,
 
@@ -805,6 +823,7 @@ report_params <- list(
   shutdown_time_buffer_sec        = shutdown_time_buffer_sec,
   track_proximity_threshold_m     = track_proximity_threshold_m,
   curtailment_trigger_height_m    = if (exists("curtailment_trigger_height_m")) curtailment_trigger_height_m else NULL,
+  coverage_cylinder_inner_radius  = coverage_cylinder_inner_radius,
   fatality_post_incident_days     = fatality_post_incident_days,
   min_individuals_bin_min         = min_individuals_bin_min,
   min_individuals_merge_dist_m    = min_individuals_merge_dist_m,
