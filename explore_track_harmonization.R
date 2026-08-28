@@ -202,7 +202,12 @@ synth_se     <- stitch_synthetic_tracks(track_dt_day, "Steppe-Eagle", groups_se,
 big_group_se <- groups_se[, .N, by = synth_track_id][N == max(N), synth_track_id]
 plot_synthetic_track(track_dt_day, synth_se, big_group_se)
 
+source("R/track_harmonization.R")   # picks up the fix
 
+groups_se    <- reconciliation_by_species[["Steppe-Eagle"]]$groups
+duplicate_se <- reconciliation_by_species[["Steppe-Eagle"]]$duplicate_edges
+synth_se     <- stitch_synthetic_tracks(track_dt_day, "Steppe-Eagle", groups_se, duplicate_se)
+plot_synthetic_track(track_dt_day, synth_se, "SYN_Steppe-Eagle_004")
 
 ##
 ## Exemplos -- inspecionar/reconstruir UM grupo especifico, antes de confiar
@@ -216,6 +221,6 @@ plot_synthetic_track(track_dt_day, synth_se, big_group_se)
 ##   merged_ids <- groups1[, .N, by = synth_track_id][N > 1, synth_track_id]
 ##   inspect_reconciliation_group(track_dt_day, groups1, edges1, merged_ids[1])
 ##
-##   synth_dt1 <- stitch_synthetic_tracks(track_dt_day, sp1, groups1, dup_edges1)
-##   synth_dt1[synth_track_id == merged_ids[1]]  # pontos ja reconciliados, prontos a plottar
+## synth_dt1 <- stitch_synthetic_tracks(track_dt_day, sp1, groups1, dup_edges1)
+## synth_dt1[synth_track_id == merged_ids[1]]  # pontos ja reconciliados, prontos a plottar
 ##
