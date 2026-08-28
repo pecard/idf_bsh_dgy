@@ -6,7 +6,10 @@
 ## alimenta APENAS run_incident_zrshan.R -- um relatorio de incidente
 ## unico (turbina/especie/data/janela), nao o relatorio anual/mensal
 ## completo. Por isso nao define coisas como manual_turbine_clusters,
-## dem_filename, tier_start_scheme_filename, etc. -- sem consumidor aqui.
+## tier_start_scheme_filename, etc. -- sem consumidor aqui. dem_filename
+## (3D coverage, ver abaixo) e' a excecao -- pedido explicitamente pelo
+## Paulo (2026-08), so' para a turbina do incidente (mais lento que a
+## cobertura geometrica 2D, por isso nao corre farm-wide aqui).
 ##
 ## Dados obtidos diretamente do Paulo (2026-08) para este parque, ainda
 ## por confirmar no 1º corrida real (ver comentarios "A CONFIRMAR" abaixo):
@@ -181,6 +184,27 @@ othersp <- c(
 ##
 
 idf_op_detection_range <- 1000 # em metros; raio de deteção operacional do IDF, usado no buffer geometrico turbina<->IDF
+
+## -- 3D Coverage (topography-corrected, DEM) --
+##
+## GeoTIFF fornecido pelo Paulo (2026-08) -- vive em databases_dir (pasta
+## dos dados brutos), NAO em inputs/, mesma convencao do BSH/DGY (ver
+## IDF_analysis.R, secção 5.2: dem_file <- file.path(databases_dir, dem_filename)).
+## So' corre para a turbina do incidente (wtg_3d_coverage abaixo) -- e' a
+## analise mais lenta do pipeline (malha 3D por turbina); "all" (farm-wide)
+## nao se justifica para um relatorio de 1 incidente.
+dem_filename <- "dem_copernicus_30m_zrfshan.tif"
+wtg_3d_coverage <- c("T35")
+
+## Restantes parametros do cilindro/malha -- copiados VERBATIM de
+## userSettings_BSH.R (metodologia farm-independente)
+coverage_cylinder_height       <- 1000 # em metros
+coverage_cylinder_wider_radius <- 1100 # em metros
+coverage_cylinder_inner_radius <- 600  # em metros
+coverage_mesh_step_xy          <- 50   # em metros; resolucao horizontal da malha 3D
+coverage_mesh_step_z           <- 50   # em metros; resolucao vertical da malha 3D
+coverage_prox_thresh_m         <- 50   # em metros; distancia 3D maxima ave-no da malha para considerar "covered"
+coverage_min_sample_records    <- 500000
 
 heartbeat_interval_min    <- 30
 heartbeat_offline_gap_min <- 60

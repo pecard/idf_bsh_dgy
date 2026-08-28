@@ -260,6 +260,60 @@ coverage_idf_of_interest_dt     <- turbine_idf_coverage_dt[idf %in% heartbeat_id
 
 
 ##
+## 2b. 3D Coverage (topography-corrected, DEM) -- so a turbina do incidente
+##     (pedido do Paulo, 2026-08 -- ver nota em userSettings_ZRF.R sobre
+##     porque nao corre farm-wide aqui) ----
+##
+
+dem_file <- file.path(databases_dir, dem_filename)
+
+if (identical(wtg_3d_coverage, "all")) {
+  message(sprintf("wtg_3d_coverage = \"all\" -- vao ser analisadas todas as %d turbinas do shapefile wtg.", nrow(wtg)))
+} else if (length(setdiff(wtg_3d_coverage, wtg$InternalNa)) > 0L) {
+  message("AVISO: turbinas em wtg_3d_coverage nao encontradas no shapefile wtg (apos normalizacao): ",
+          paste(setdiff(wtg_3d_coverage, wtg$InternalNa), collapse = ", "))
+}
+
+if (file.exists(dem_file)) {
+
+  source("R/coverage_3d_topography.R")
+
+  ## usa track_dt_unfilt (nao o track_dt filtrado por ini/end) -- mesma
+  ## convencao de IDF_analysis.R secção 5.2: a amostra de deteções para
+  ## estimar cobertura beneficia do historico completo, nao so do periodo
+  ## do relatorio (aqui coincidem de qualquer forma, ja que ini/end cobre
+  ## toda a serie disponivel para este parque)
+  cov_all <- run_coverage_3d_all_turbines(
+    wtg, track_dt_unfilt, dem_file,
+    radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
+    step_xy = coverage_mesh_step_xy, step_z = coverage_mesh_step_z,
+    prox_thresh_m = coverage_prox_thresh_m,
+    wtg_sel = wtg_3d_coverage,
+    min_sample_records = coverage_min_sample_records
+  )
+
+  summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))
+
+  write_xlsx_local(
+    list(By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band),
+    file.path(folder_output, "coverage_3d_summary.xlsx")
+  )
+
+  ## Plots interativos (plotly, html) -- cobertura + o inverso (nos da
+  ## malha "air" SEM deteções dentro de prox_thresh_m) -- gravados a parte,
+  ## nao entram no .docx (nao suporta plotly interativo)
+  save_coverage_3d_plots(
+    cov_all, file.path(folder_output, "coverage_3d"),
+    radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height
+  )
+
+} else {
+  message("DEM nao encontrado (", dem_file, ") -- secção 3D Coverage saltada.")
+  summary_cov <- NULL
+}
+
+
+##
 ## 3+2. Fatality investigation (tracks + disponibilidade + resposta na
 ##      janela + abundancia pre/pos) -- reutiliza R/fatality_track_investigation.R
 ##      e R/fatality_window_analysis.R tal como IDF_analysis.R secção 4 ----
@@ -498,6 +552,7 @@ report_params <- list(
 
   coverage_turbine_of_interest = coverage_turbine_of_interest_dt,
   coverage_idf_of_interest     = coverage_idf_of_interest_dt,
+  coverage3d_by_turbine        = if (!is.null(summary_cov)) summary_cov$by_turbine else NULL,
 
   fatality_signal_counts           = fatality_summary$counts_by_signal,
   fatality_top_candidates          = fatality_summary$top_candidates,
@@ -538,6 +593,7 @@ report_params <- list(
   harmonization_duplicate_max_spread_m      = harmonization_duplicate_max_spread_m,
 
   xlsx_coverage      = "turbine_idf_coverage.xlsx",
+  xlsx_coverage3d    = if (!is.null(summary_cov)) "coverage_3d_summary.xlsx" else NULL,
   xlsx_fatality      = "fatality_track_investigation.xlsx",
   xlsx_latency       = paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end), ".xlsx"),
   xlsx_min_indiv     = "min_individuals_egyptian_vulture.xlsx",

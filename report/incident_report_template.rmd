@@ -20,6 +20,7 @@ params:
 
   coverage_turbine_of_interest: !r NULL
   coverage_idf_of_interest: !r NULL
+  coverage3d_by_turbine: !r NULL
 
   fatality_signal_counts: !r NULL
   fatality_top_candidates: !r NULL
@@ -60,6 +61,7 @@ params:
   harmonization_duplicate_max_spread_m: !r NULL
 
   xlsx_coverage: !r NULL
+  xlsx_coverage3d: !r NULL
   xlsx_fatality: !r NULL
   xlsx_latency: !r NULL
   xlsx_min_indiv: !r NULL
@@ -184,6 +186,28 @@ if (!is.null(params$coverage_idf_of_interest) && nrow(params$coverage_idf_of_int
 ```
 ```{r coverage-annex, results='asis'}
 annex_note(params$xlsx_coverage)
+```
+
+## 3D Coverage (Topography-corrected)
+
+Coverage of the risk airspace around the incident turbine, corrected for terrain, based on IDF bird track detections -- same methodology as the BSH/DGY reports (R/coverage_3d_topography.R), run here only for `r params$incident_turbine` rather than farm-wide, since it is the most computationally expensive analysis in the pipeline and only the incident turbine is in scope for this report.
+
+<!-- Source: summary_cov <- summarise_mesh_coverage(...), R/coverage_3d_topography.R -->
+```{r coverage3d-table}
+if (!is.null(params$coverage3d_by_turbine) && nrow(params$coverage3d_by_turbine) > 0) {
+  report_table(rename_display(
+    drop_cols(params$coverage3d_by_turbine, c("n_records", "n_valid", "low_sample")),
+    c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered")
+  ))
+} else {
+  cat("DEM not available or 3D coverage not computed for this run -- see console messages from run_incident_zrshan.R.\n\n")
+}
+```
+```{r coverage3d-annex, results='asis'}
+annex_note(params$xlsx_coverage3d)
+if (!is.null(params$xlsx_coverage3d)) {
+  cat("\n\n*Interactive 3D plots are saved separately as HTML files (folder `coverage_3d/`) and are not embedded in this document.*\n")
+}
 ```
 
 # Fatality Investigation
