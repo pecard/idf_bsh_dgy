@@ -1414,19 +1414,33 @@ if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
   
   source("R/coverage_3d_topography.R")
   # usa a totalidade dos dados de track sem filtros
+  #
+  # dist_band_breaks = coverage_cylinder_inner_radius (600m, ja' definido em
+  # userSettings_BSH.R/DGY.R mas nunca antes usado) cruza a banda de altura
+  # (risk_band, 200m por omissao -- inalterado) com uma banda de distancia
+  # horizontal (inner/outer a 600m), dando a tabela By_turbine_risk_dist_band
+  # no xlsx abaixo -- pedido do Paulo, 2026-08 (o mesmo cruzamento ja' usado
+  # no relatorio de incidente Zarafshan, R/coverage_3d_topography.R). Nao
+  # muda risk_band_breaks (continua 200m, o valor ja' estabelecido para
+  # BSH/DGY) -- so' adiciona a dimensao da distancia.
   cov_all <- run_coverage_3d_all_turbines(
     wtg, track_dt_unfilt, dem_file,
     radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
     step_xy = coverage_mesh_step_xy, step_z = coverage_mesh_step_z,
     prox_thresh_m = coverage_prox_thresh_m,
+    dist_band_breaks = coverage_cylinder_inner_radius,
+    dist_band_labels = c("inner", "outer"),
     wtg_sel = wtg_3d_coverage,
     min_sample_records = coverage_min_sample_records
   )
-  
+
   summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))
-  
+
   write_xlsx_local(
-    list(By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band),
+    list(
+      By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band,
+      By_turbine_risk_dist_band = summary_cov$by_turbine_risk_dist_band
+    ),
     file.path(folder_output, "coverage_3d_summary.xlsx")
   )
   
@@ -2294,6 +2308,8 @@ report_params <- list(
   shutdown_plot       = if (exists("p_shutdown_time")) p_shutdown_time else NULL,
   
   coverage3d_by_turbine = if (exists("summary_cov")) summary_cov$by_turbine else NULL,
+  coverage3d_by_risk_dist_band = if (exists("summary_cov") && !is.null(summary_cov$by_turbine_risk_dist_band) && nrow(summary_cov$by_turbine_risk_dist_band) > 0) summary_cov$by_turbine_risk_dist_band else NULL,
+  coverage_cylinder_inner_radius = coverage_cylinder_inner_radius,
   
   safe_dist_overall    = if (exists("summary_safe_dist")) summary_safe_dist$overall else NULL,
   safe_dist_by_species = if (exists("summary_safe_dist")) summary_safe_dist$by_species else NULL,

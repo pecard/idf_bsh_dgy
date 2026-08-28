@@ -34,6 +34,8 @@ params:
   shutdown_plot: !r NULL
 
   coverage3d_by_turbine: !r NULL
+  coverage3d_by_risk_dist_band: !r NULL
+  coverage_cylinder_inner_radius: !r NULL
 
   safe_dist_overall: !r NULL
   safe_dist_by_species: !r NULL
@@ -655,6 +657,18 @@ if (!is.null(params$coverage3d_by_turbine)) {
   report_table(rename_display(
     drop_cols(params$coverage3d_by_turbine, c("n_records", "n_valid", "low_sample")),
     c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered")
+  ))
+}
+```
+
+The overall figure above blends cells at every height and distance from each turbine. The breakdown below splits it by height (below vs. at/above 200m AGL) and by horizontal distance (within vs. beyond `r params$coverage_cylinder_inner_radius` m, the radius the system uses to trigger an immediate response) -- coverage of the "at risk" / "inner" combination, the highest-priority quadrant, is the most relevant figure for assessing detection capability around a collision.
+
+```{r coverage3d-risk-dist-table}
+if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_risk_dist_band) > 0) {
+  report_table(rename_display(
+    params$coverage3d_by_risk_dist_band,
+    c(wtg_id = "Turbine", risk_band = "Height Band", dist_band = "Distance Band",
+      n_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered")
   ))
 }
 ```
