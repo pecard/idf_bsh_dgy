@@ -35,4 +35,10 @@ report_month <- "2026-06"
 ## brutos, mais lento sem necessidade.
 force_reread_cache_monthly <- T
 
+## TRUE por omissao (gera o .docx final). Mudar para FALSE quando estas so'
+## a testar/depurar uma secção e queres inspecionar as tabelas/objetos
+## diretamente no ambiente ou nos xlsx de anexo, sem esperar pelo
+## rmarkdown::render() (o passo mais lento).
+generate_report <- TRUE
+
 source("IDF_monthly_report.R")
