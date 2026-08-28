@@ -196,6 +196,13 @@ plot_min_individuals_per_bin <- function(bins_dt, species_sel = c("Egyptian-Vult
   dt <- data.table::copy(bins_dt)
   if (!is.null(species_sel)) dt <- dt[spec %in% species_sel]
 
+  ## facet_wrap(~ spec) falha com "Faceting variables must have at least
+  ## one value" se dt ficar sem linhas (ex: species_sel sem nenhuma
+  ## deteção no periodo/subconjunto analisado) -- devolve NULL em vez de
+  ## rebentar, mesmo padrao de NULL-on-empty-data ja usado noutras funcoes
+  ## de plot do projeto (ex: R/curtailment_safe_distance.R)
+  if (nrow(dt) == 0L) return(NULL)
+
   ggplot(dt, aes(x = bin_start, y = n_individuals_min)) +
     geom_line(colour = "steelblue") +
     geom_point(colour = "steelblue", size = 1.2) +
@@ -253,6 +260,10 @@ plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vultu
   geom_type <- match.arg(geom_type)
   dt <- data.table::copy(daily_dt)
   if (!is.null(species_sel)) dt <- dt[spec %in% species_sel]
+
+  ## ver nota em plot_min_individuals_per_bin() acima -- mesmo guard contra
+  ## "Faceting variables must have at least one value" com dt vazio
+  if (nrow(dt) == 0L) return(NULL)
 
   p <- ggplot(dt, aes(x = day, y = max_individuals))
   p <- if (geom_type == "bar") {

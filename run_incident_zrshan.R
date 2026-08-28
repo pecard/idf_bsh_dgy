@@ -558,6 +558,25 @@ write_xlsx_local(
 ##
 
 min_indiv_bins_dt  <- count_min_individuals_per_bin(track_dt[idf %in% heartbeat_idf_units], species = "Egyptian-Vulture", bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m)
+
+## Diagnostico -- track_dt$idf vem de TowerNumber (R/read_tracks.R), uma
+## coluna DIFERENTE da usada para heartb_dt$idf (instance_name,
+## R/read_heartbeats.R) -- ao contrario dessa, o formato de TowerNumber
+## nunca foi confirmado como coincidindo com heartbeat_idf_units
+## ("IDF22"/"IDF24"/...). Se a contagem restrita a heartbeat_idf_units vier
+## a 0 mas a contagem farm-wide (todas as unidades) nao, e' sinal de que
+## TowerNumber usa outro formato/vocabulario -- confirmar contra a mensagem
+## "Unidades IDF encontradas em track_dt_unfilt" impressa no inicio deste
+## script antes de assumir que nao ha mesmo deteções de
+## Egyptian-Vulture por estas unidades.
+if (nrow(min_indiv_bins_dt) == 0L) {
+  n_farm_wide <- nrow(count_min_individuals_per_bin(track_dt, species = "Egyptian-Vulture", bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m))
+  message(sprintf(
+    "AVISO: 0 bins de Egyptian-Vulture para as unidades IDF de interesse (%s); farm-wide (todas as unidades) da' %d bin(s) -- ver nota acima sobre TowerNumber vs. instance_name se farm-wide for > 0.",
+    paste(heartbeat_idf_units, collapse = ", "), n_farm_wide
+  ))
+}
+
 min_indiv_summary_dt <- summarise_min_individuals(min_indiv_bins_dt)
 min_indiv_daily_dt <- summarise_daily_max_individuals(min_indiv_bins_dt)
 p_min_indiv_daily  <- plot_daily_max_individuals(min_indiv_daily_dt, species_sel = "Egyptian-Vulture", date_breaks = "1 month", geom_type = "bar")
