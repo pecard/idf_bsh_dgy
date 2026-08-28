@@ -225,6 +225,21 @@ curtailment_latency_decline_pct <- 0.10
 curtailment_cutin_rpm           <- 3
 response_timeline_unit          <- "week"
 
+## curtailment_example_n eventos sao escolhidos e desenhados (RPM +
+## inicio/fim do curtailment) para cada categoria (no-response/slowest),
+## secção "Curtailment Response & Latency" do relatorio -- copiado VERBATIM
+## de userSettings_BSH.R (metodologia farm-independente)
+curtailment_example_n                 <- 3
+curtailment_example_window_before_min <- 1
+curtailment_example_window_after_min  <- 3
+
+## Janela (antes/depois da ULTIMA posicao registada do track) para os 2
+## exemplos de RPM da secção "Top Candidate Tracks" do relatorio de
+## incidente (1º track sem curtailment, 1º track com curtailment) --
+## R/fatality_track_investigation.R, plot_fatality_track_rpm()
+fatality_example_window_before_min <- 3
+fatality_example_window_after_min  <- 3
+
 ## em metros; limiar de proximidade a turbina para identificar candidatos a
 ## colisao (rotor-swept zone, distancia horizontal/2D) -- mesmo criterio
 ## fisico/biologico do BSH/DGY, nao especifico do parque
