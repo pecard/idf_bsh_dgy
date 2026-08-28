@@ -34,7 +34,8 @@ params:
   shutdown_plot: !r NULL
 
   coverage3d_by_turbine: !r NULL
-  coverage3d_by_risk_dist_band: !r NULL
+  coverage3d_priority_by_turbine: !r NULL
+  coverage3d_priority_class_summary: !r NULL
   coverage_cylinder_inner_radius: !r NULL
 
   safe_dist_overall: !r NULL
@@ -661,17 +662,28 @@ if (!is.null(params$coverage3d_by_turbine)) {
 }
 ```
 
-The overall figure above blends cells at every height and distance from each turbine. The breakdown below splits it by height (below vs. at/above 200m AGL) and by horizontal distance (within vs. beyond `r params$coverage_cylinder_inner_radius` m, the radius the system uses to trigger an immediate response) -- coverage of the "at risk" / "inner" combination, the highest-priority quadrant, is the most relevant figure for assessing detection capability around a collision.
+The overall figure above blends cells at every height and distance from each turbine. The table below narrows this down to the highest-priority quadrant: cells below `r params$coverage_cylinder_inner_radius` m of horizontal distance from the turbine ("inner" band) that also sit within the risk height threshold ("at risk" band) -- the combination most relevant for assessing detection capability around a collision.
 
-```{r coverage3d-risk-dist-table}
-if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_risk_dist_band) > 0) {
+```{r coverage3d-priority-table}
+if (!is.null(params$coverage3d_priority_by_turbine) && nrow(params$coverage3d_priority_by_turbine) > 0) {
   report_table(rename_display(
-    params$coverage3d_by_risk_dist_band,
-    c(wtg_id = "Turbine", risk_band = "Height Band", dist_band = "Distance Band",
-      n_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered")
+    drop_cols(params$coverage3d_priority_by_turbine, c("risk_band", "dist_band", "coverage_class")),
+    c(wtg_id = "Turbine", n_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered")
   ))
 }
 ```
+
+Turbines are further grouped into two coverage classes based on that same priority-quadrant figure, to give a quick count of how many turbines fall below the 90% coverage mark.
+
+```{r coverage3d-class-summary-table}
+if (!is.null(params$coverage3d_priority_class_summary) && nrow(params$coverage3d_priority_class_summary) > 0) {
+  report_table(rename_display(
+    params$coverage3d_priority_class_summary,
+    c(coverage_class = "Coverage", n_units = "Num. Units", pct_units = "% of Units")
+  ))
+}
+```
+
 ```{r coverage3d-annex, results='asis'}
 annex_note(params$xlsx_coverage3d)
 ```

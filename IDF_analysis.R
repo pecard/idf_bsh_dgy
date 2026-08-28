@@ -1436,10 +1436,17 @@ if (file.exists(dem_file) && isTRUE(run_sections$coverage_3d)) {
 
   summary_cov <- summarise_mesh_coverage(lapply(cov_all, `[[`, "coverage"))
 
+  # Quadrante prioritario -- altura "at risk" x banda "inner" -- e' o mais
+  # relevante para avaliar capacidade de deteção junto ao rotor; pedido do
+  # Paulo, 2026-08 (secção "3D Coverage" do relatorio, ver report_template.rmd)
+  priority_cov <- summarise_priority_quadrant_coverage(summary_cov$by_turbine_risk_dist_band)
+
   write_xlsx_local(
     list(
       By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band,
-      By_turbine_risk_dist_band = summary_cov$by_turbine_risk_dist_band
+      By_turbine_risk_dist_band = summary_cov$by_turbine_risk_dist_band,
+      By_turbine_priority_quadrant = priority_cov$by_turbine,
+      Priority_quadrant_class_summary = priority_cov$class_summary
     ),
     file.path(folder_output, "coverage_3d_summary.xlsx")
   )
@@ -2308,7 +2315,8 @@ report_params <- list(
   shutdown_plot       = if (exists("p_shutdown_time")) p_shutdown_time else NULL,
   
   coverage3d_by_turbine = if (exists("summary_cov")) summary_cov$by_turbine else NULL,
-  coverage3d_by_risk_dist_band = if (exists("summary_cov") && !is.null(summary_cov$by_turbine_risk_dist_band) && nrow(summary_cov$by_turbine_risk_dist_band) > 0) summary_cov$by_turbine_risk_dist_band else NULL,
+  coverage3d_priority_by_turbine = if (exists("priority_cov")) priority_cov$by_turbine else NULL,
+  coverage3d_priority_class_summary = if (exists("priority_cov")) priority_cov$class_summary else NULL,
   coverage_cylinder_inner_radius = coverage_cylinder_inner_radius,
   
   safe_dist_overall    = if (exists("summary_safe_dist")) summary_safe_dist$overall else NULL,

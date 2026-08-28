@@ -387,6 +387,50 @@ summarise_mesh_coverage <- function(coverage_list) {
 }
 
 
+## 4b. Resumo do quadrante prioritario (altura de risco x banda interior) ----
+
+## Filtra by_turbine_risk_dist_band (ver summarise_mesh_coverage()) para a
+## combinacao de maior prioridade -- banda de altura de risco x banda de
+## distancia interior -- e classifica cada turbina em 2 classes de cobertura
+## (< coverage_cutoff% / >= coverage_cutoff%). risk_label/dist_label tem de
+## corresponder aos labels usados em risk_band_labels/dist_band_labels na
+## chamada a run_coverage_3d_all_turbines() (omissao: os labels usados em
+## IDF_analysis.R para BSH/DGY).
+summarise_priority_quadrant_coverage <- function(by_turbine_risk_dist_band,
+                                                  risk_label = "at risk", dist_label = "inner",
+                                                  coverage_cutoff = 90) {
+
+  if (is.null(by_turbine_risk_dist_band) || nrow(by_turbine_risk_dist_band) == 0L) {
+    return(list(by_turbine = NULL, class_summary = NULL))
+  }
+
+  by_turbine <- by_turbine_risk_dist_band[risk_band == risk_label & dist_band == dist_label]
+  if (nrow(by_turbine) == 0L) {
+    return(list(by_turbine = NULL, class_summary = NULL))
+  }
+
+  levels_lab <- c(sprintf("<%d%%", coverage_cutoff), sprintf(">=%d%%", coverage_cutoff))
+  by_turbine[, coverage_class := factor(
+    data.table::fifelse(pct_covered < coverage_cutoff, levels_lab[1], levels_lab[2]),
+    levels = levels_lab
+  )]
+
+  class_summary <- by_turbine[, .(n_units = .N), by = coverage_class]
+  missing <- setdiff(levels_lab, as.character(class_summary$coverage_class))
+  if (length(missing) > 0) {
+    class_summary <- data.table::rbindlist(list(
+      class_summary,
+      data.table::data.table(coverage_class = missing, n_units = 0L)
+    ))
+  }
+  class_summary[, coverage_class := factor(coverage_class, levels = levels_lab)]
+  data.table::setorder(class_summary, coverage_class)
+  class_summary[, pct_units := round(100 * n_units / sum(n_units), 1)]
+
+  list(by_turbine = by_turbine[], class_summary = class_summary[])
+}
+
+
 ## -- Helpers internos para os plots 3D (Plotly) ----
 
 ## Camara orientada por um azimute (bearing), em graus
