@@ -672,9 +672,25 @@ if (data.table::uniqueN(track_dt_incident_window$track_id) >= 2L) {
     selfcontained = TRUE
   )
 
+  ## Versao estatica (ggplot2) do mesmo grupo, para embeber diretamente no
+  ## .docx -- pedido do Paulo, 2026-08 ("is there any print screen... a
+  ## plot or a table with syntetic tracks merged?") -- mais a tabela de
+  ## detalhe dos tracks originais que compoem o grupo (mesma que
+  ## inspect_reconciliation_group() ja calcula para inspecao manual)
+  p_candidate_tracks_static <- plot_synthetic_track_static(
+    track_dt_incident_window, synth_incident_dt, biggest_group_incident,
+    title = sprintf("Largest Reconciled Group -- %s", biggest_group_incident)
+  )
+  candidate_tracks_group_detail_dt <- inspect_reconciliation_group(
+    track_dt_incident_window, reconciliation_incident$groups, reconciliation_incident$edges, biggest_group_incident
+  )$tracks
+
 } else {
   message("Menos de 2 track_ids de ", fatality_incidents$species, " na janela do incidente -- harmonizacao de tracks saltada.")
   reconciliation_summary_incident_dt <- data.table::data.table()
+  p_candidate_tracks_static <- NULL
+  candidate_tracks_group_detail_dt <- data.table::data.table()
+  biggest_group_incident <- NA_character_
 }
 
 
@@ -734,6 +750,9 @@ report_params <- list(
   min_indiv_plot_daily = p_min_indiv_daily,
 
   candidate_tracks_reconciliation_summary = reconciliation_summary_incident_dt,
+  candidate_tracks_plot          = p_candidate_tracks_static,
+  candidate_tracks_group_detail  = candidate_tracks_group_detail_dt,
+  candidate_tracks_biggest_group = biggest_group_incident,
 
   heartbeat_interval_min    = heartbeat_interval_min,
   heartbeat_offline_gap_min = heartbeat_offline_gap_min,

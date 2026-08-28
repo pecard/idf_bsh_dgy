@@ -51,8 +51,9 @@
 ## validados -- a rever depois de ver mais casos reais (ver
 ## explore_track_harmonization.R).
 ##
-## Depende de: data.table, plotly, R/track_min_individuals.R (.uf_components
-## -- usa a MESMA implementacao de componentes conexas, nao redefinida aqui)
+## Depende de: data.table, plotly, ggplot2 (so' plot_synthetic_track_static()),
+## R/track_min_individuals.R (.uf_components -- usa a MESMA implementacao de
+## componentes conexas, nao redefinida aqui)
 ##
 ## Uso:
 ##   source("R/track_min_individuals.R")  # .uf_components()
@@ -818,4 +819,49 @@ plot_synthetic_track <- function(track_dt, synth_dt, target_synth_id, title = NU
     yaxis = list(title = "UTM Y"),
     showlegend = TRUE
   )
+}
+
+
+## 8. Versao estatica (ggplot2) de plot_synthetic_track(), para embeber no
+##    .docx do relatorio -- Word nao suporta o plotly interativo acima
+##    (fica so' como anexo HTML). Mesma linguagem visual: fragmentos
+##    originais em cinzento, trajetoria sintetica em linha preta, pontos
+##    coloridos por "source" (single/merged_duplicate) -- pedido do Paulo,
+##    2026-08 (relatorio de incidente, secção "Candidate Duplicate/
+##    Fragmented Tracks").
+
+plot_synthetic_track_static <- function(track_dt, synth_dt, target_synth_id, title = NULL, show_raw = TRUE) {
+
+  synth_pts <- synth_dt[synth_track_id == target_synth_id]
+  if (nrow(synth_pts) == 0L) return(NULL)
+  data.table::setorder(synth_pts, timestamp)
+
+  p <- ggplot2::ggplot()
+
+  if (show_raw) {
+    orig_ids <- unique(unlist(strsplit(synth_pts$orig_track_id, "+", fixed = TRUE)))
+    raw_pts <- track_dt[track_id %in% orig_ids, .(track_id, timestamp, utm_x, utm_y)]
+    data.table::setorder(raw_pts, track_id, timestamp)
+    p <- p +
+      ggplot2::geom_path(data = raw_pts, ggplot2::aes(x = utm_x, y = utm_y, group = track_id), colour = "grey70", linewidth = 0.4) +
+      ggplot2::geom_point(data = raw_pts, ggplot2::aes(x = utm_x, y = utm_y, group = track_id), colour = "grey70", size = 0.8, alpha = 0.6)
+  }
+
+  default_title <- if (show_raw) {
+    sprintf("Synthetic track %s (raw fragments in grey)", target_synth_id)
+  } else {
+    sprintf("Synthetic track %s (synthetic path only)", target_synth_id)
+  }
+
+  p +
+    ggplot2::geom_path(data = synth_pts, ggplot2::aes(x = utm_x, y = utm_y), colour = "black", linewidth = 0.9) +
+    ggplot2::geom_point(data = synth_pts, ggplot2::aes(x = utm_x, y = utm_y, colour = source), size = 2.2) +
+    ggplot2::scale_colour_manual(
+      values = c(single = "steelblue", merged_duplicate = "firebrick"),
+      name = "Synthetic point source"
+    ) +
+    ggplot2::coord_equal() +
+    ggplot2::labs(x = "UTM X (m)", y = "UTM Y (m)", title = if (is.null(title)) default_title else title) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(legend.position = "bottom")
 }

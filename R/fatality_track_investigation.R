@@ -101,9 +101,12 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
   ## despoletaria resposta alguma. height_threshold_m = NULL (omissao)
   ## mantem o comportamento antigo (so' distancia horizontal) -- usado por
   ## BSH/DGY, onde esta regra nao foi (ainda) confirmada.
+  ## "abaixo de" height_threshold_m -- comparacao ESTRITA (<), nao <=, para
+  ## bater certo com a definicao operacional ("flying BELOW 400m") --
+  ## pedido do Paulo, 2026-08.
   if (!is.null(height_threshold_m)) {
     pts[, in_risk_zone := dist_m <= proximity_threshold_m &
-          !is.na(height) & height <= height_threshold_m]
+          !is.na(height) & height < height_threshold_m]
   } else {
     pts[, in_risk_zone := dist_m <= proximity_threshold_m]
   }

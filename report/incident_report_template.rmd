@@ -53,6 +53,9 @@ params:
   min_indiv_plot_daily: !r NULL
 
   candidate_tracks_reconciliation_summary: !r NULL
+  candidate_tracks_plot: !r NULL
+  candidate_tracks_group_detail: !r NULL
+  candidate_tracks_biggest_group: ""
 
   heartbeat_interval_min: !r NULL
   heartbeat_offline_gap_min: !r NULL
@@ -242,7 +245,7 @@ Investigation of the incident over the window `r params$incident_window_start` t
 
 ## Candidate Tracks by Signal
 
-Count of tracks recorded near the incident turbine during the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), by signal category. "Near the turbine" here means both within the `r params$track_proximity_threshold_m` m horizontal proximity threshold and, where a height reading is available, at or below `r params$curtailment_trigger_height_m` m above ground -- the height at which a curtailment order would actually be triggered; a track that stayed well above that height, even if horizontally close, was never in the risk envelope regardless of distance. Each track is classified into one of four categories, from the strongest to the weakest indicator of a possible collision:
+Count of tracks recorded near the incident turbine during the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), by signal category. "Near the turbine" here means both within the `r params$track_proximity_threshold_m` m horizontal proximity threshold and, where a height reading is available, below `r params$curtailment_trigger_height_m` m above ground -- the height at which a curtailment order would actually be triggered; a track that stayed at or above that height, even if horizontally close, was never in the risk envelope regardless of distance. Each track is classified into one of four categories, from the strongest to the weakest indicator of a possible collision:
 
 - **No curtailment - lost near turbine**: no curtailment was triggered for this track, and its last recorded position meets the proximity/height condition above -- the strongest indicator, since the track simply stops being recorded while the bird is already close to the turbine, at collision-risk height.
 - **Curtailment triggered - lost near turbine**: a curtailment was triggered, but the track's last recorded position still meets the proximity/height condition -- the response may not have arrived in time.
@@ -550,6 +553,28 @@ if (!is.null(params$candidate_tracks_html)) {
     "\n\n*The largest reconciled group's trajectory is also available as an interactive plot: `%s` (open in a browser -- Word cannot embed interactive plots).*\n",
     params$candidate_tracks_html
   ))
+}
+```
+
+```{r candidate-tracks-plot-heading, results='asis'}
+if (!is.null(params$candidate_tracks_plot)) {
+  cat(sprintf("## Largest Reconciled Group -- %s\n\n", params$candidate_tracks_biggest_group))
+  cat("Trajectory of the largest reconciled group -- the candidate most likely to be the same individual fragmented across several `track_id`s. Grey lines/points are the original raw fragments; the black line is the reconciled synthetic path; coloured points mark whether that stretch of the path came from a single original track (`single`) or from averaging two overlapping tracks from different IDF units (`merged_duplicate`).\n\n")
+}
+```
+```{r candidate-tracks-plot, fig.width=6.30, fig.height=6}
+if (!is.null(params$candidate_tracks_plot)) print(params$candidate_tracks_plot)
+```
+```{r candidate-tracks-group-detail-table}
+if (!is.null(params$candidate_tracks_group_detail) && nrow(params$candidate_tracks_group_detail) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$candidate_tracks_group_detail, c("utm_x_range", "utm_y_range")),
+      c(track_id = "Original Track ID", n_points = "Points", idf_units = "IDF Unit(s)",
+        first_time = "First Time", last_time = "Last Time")
+    ),
+    max_col_width_cm = 3
+  )
 }
 ```
 
