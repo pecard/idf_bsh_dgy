@@ -52,6 +52,7 @@
 investigate_fatality_tracks <- function(turbine_id, species, incident_date, days_before,
                                         track_dt, curtl_dt, wtg_sf,
                                         proximity_threshold_m = 100,
+                                        height_threshold_m = NULL,
                                         wtg_id_col = "InternalNa", tz = NULL) {
 
   incident_date <- as.Date(incident_date)
@@ -73,6 +74,7 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
       track_id = character(), n_points = integer(),
       first_time = as.POSIXct(character()), last_time = as.POSIXct(character()),
       first_dist_m = numeric(), last_dist_m = numeric(), min_dist_m = numeric(),
+      last_height_m = numeric(), min_height_m = numeric(),
       within_threshold = logical(), last_within_threshold = logical(),
       triggered_curtailment = logical(), signal = character()
     )
@@ -80,7 +82,7 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
 
   pts <- track_dt[
     spec == species & timestamp >= date_from & timestamp <= date_to,
-    .(track_id, timestamp, utm_x, utm_y)
+    .(track_id, timestamp, utm_x, utm_y, height)
   ]
 
   if (nrow(pts) == 0L) return(empty_result())
@@ -88,17 +90,37 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
   pts[, dist_m := sqrt((utm_x - wtg_x)^2 + (utm_y - wtg_y)^2)]
   data.table::setorder(pts, track_id, timestamp)
 
-  out <- pts[, .(
-    n_points     = .N,
-    first_time   = data.table::first(timestamp),
-    last_time    = data.table::last(timestamp),
-    first_dist_m = data.table::first(dist_m),
-    last_dist_m  = data.table::last(dist_m),
-    min_dist_m   = min(dist_m)
-  ), by = track_id]
+  ## in_risk_zone -- ponto dentro do limiar de proximidade horizontal E (se
+  ## height_threshold_m for dado) a uma altura AGL onde um curtailment seria
+  ## mesmo disparado -- pedido do Paulo (2026-08, Zarafshan): o sistema so
+  ## despoleta curtailment para aves a voar abaixo de height_threshold_m
+  ## (ex: 400m AGL), por isso "perto da turbina" para efeitos de
+  ## identificacao de candidatos a colisao deve exigir tambem essa altura,
+  ## nao so' a distancia horizontal -- um ponto horizontalmente perto mas
+  ## muito acima dessa cota nunca estaria em risco real de colisao nem
+  ## despoletaria resposta alguma. height_threshold_m = NULL (omissao)
+  ## mantem o comportamento antigo (so' distancia horizontal) -- usado por
+  ## BSH/DGY, onde esta regra nao foi (ainda) confirmada.
+  if (!is.null(height_threshold_m)) {
+    pts[, in_risk_zone := dist_m <= proximity_threshold_m &
+          !is.na(height) & height <= height_threshold_m]
+  } else {
+    pts[, in_risk_zone := dist_m <= proximity_threshold_m]
+  }
 
-  out[, within_threshold := min_dist_m <= proximity_threshold_m]
-  out[, last_within_threshold := last_dist_m <= proximity_threshold_m]
+  out <- pts[, .(
+    n_points       = .N,
+    first_time     = data.table::first(timestamp),
+    last_time      = data.table::last(timestamp),
+    first_dist_m   = data.table::first(dist_m),
+    last_dist_m    = data.table::last(dist_m),
+    min_dist_m     = min(dist_m),
+    last_height_m  = data.table::last(height),
+    min_height_m   = suppressWarnings(min(height, na.rm = TRUE)),
+    within_threshold      = any(in_risk_zone),
+    last_within_threshold = data.table::last(in_risk_zone)
+  ), by = track_id]
+  out[is.infinite(min_height_m), min_height_m := NA_real_]
 
   curtailed_ids <- curtl_dt[turbine == turbine_id, unique(track_id)]
   out[, triggered_curtailment := track_id %in% curtailed_ids]
@@ -110,6 +132,8 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
   ##     ainda assim termina perto da turbina -- resposta pode nao ter chegado a tempo
   ##   near_turbine_not_last -- chegou perto mas o track continua/afasta-se depois
   ##   far_from_turbine -- nunca esteve dentro do limiar de proximidade
+  ##     (e, quando height_threshold_m e' dado, da cota que despoletaria
+  ##     curtailment)
   out[, signal := data.table::fcase(
     last_within_threshold & !triggered_curtailment, "no_curtailment_lost_near_turbine",
     last_within_threshold & triggered_curtailment,  "curtailment_lost_near_turbine",
@@ -127,6 +151,7 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
 
 investigate_fatality_incidents <- function(fatality_incidents, track_dt, curtl_dt, wtg_sf,
                                            proximity_threshold_m = 100,
+                                           height_threshold_m = NULL,
                                            wtg_id_col = "InternalNa", tz = NULL) {
 
   res <- lapply(seq_len(nrow(fatality_incidents)), function(i) {
@@ -135,7 +160,8 @@ investigate_fatality_incidents <- function(fatality_incidents, track_dt, curtl_d
       turbine_id = inc$turbine, species = inc$species,
       incident_date = inc$incident_date, days_before = inc$days_before,
       track_dt = track_dt, curtl_dt = curtl_dt, wtg_sf = wtg_sf,
-      proximity_threshold_m = proximity_threshold_m, wtg_id_col = wtg_id_col, tz = tz
+      proximity_threshold_m = proximity_threshold_m, height_threshold_m = height_threshold_m,
+      wtg_id_col = wtg_id_col, tz = tz
     )
     dt[, `:=`(incident_id = inc$incident_id, turbine = inc$turbine, species = inc$species)]
     dt
@@ -202,17 +228,19 @@ summarise_fatality_tracks <- function(fatality_tracks_dt, top_n = 10) {
 }
 
 
-## 4. Perfil de RPM a volta da ultima posicao registada de UM track
-##    candidato ao incidente -- mesma linguagem visual de
-##    plot_curtailment_events_rpm() (R/curtailment_forensic_trace.R), mas
-##    ancorado no last_time do track (nao no start/end de um curtailment
-##    escolhido a priori), com o(s) curtailment(s) REAL(is) desse
-##    track_id/turbina sobrepostos quando existirem -- pedido do Paulo,
-##    2026-08 (relatorio de incidente, secção "Top Candidate Tracks"): um
-##    exemplo do 1º track SEM curtailment e um do 1º track COM curtailment.
-##    Quando o track nao despoletou nenhum curtailment (candidate_signals
-##    "no_curtailment_lost_near_turbine"), so a linha "Track last position"
-##    e' desenhada -- nao ha inicio/fim de curtailment para marcar.
+## 4. Perfil de RPM a volta da janela do track candidato ao incidente --
+##    mesma linguagem visual de plot_curtailment_events_rpm()
+##    (R/curtailment_forensic_trace.R), mas ancorado no last_time do track
+##    (nao no start/end de um curtailment escolhido a priori), com
+##    marcadores para first_time ("Track first position") e last_time
+##    ("Track last position") do proprio track, mais o(s) curtailment(s)
+##    REAL(is) desse track_id/turbina sobrepostos quando existirem --
+##    pedido do Paulo, 2026-08 (relatorio de incidente, secção "Top
+##    Candidate Tracks"): um exemplo do 1º track SEM curtailment e um do 1º
+##    track COM curtailment, com a posicao inicial do track tambem
+##    marcada "para completude". Quando o track nao despoletou nenhum
+##    curtailment, so as 2 linhas do track (first/last position) sao
+##    desenhadas -- nao ha inicio/fim de curtailment para marcar.
 ##
 ## track_row: 1 linha de fatality_tracks_dt/top_candidates (precisa de
 ## track_id, turbine, last_time). Devolve NULL se nao houver leituras de
@@ -234,6 +262,7 @@ plot_fatality_track_rpm <- function(track_row, scada_dt, curtl_dt,
   events_curtl <- curtl_dt[track_id == track_row$track_id & turbine == track_row$turbine]
 
   events_long <- data.table::rbindlist(list(
+    data.table::data.table(event_time = track_row$first_time, event_type = "Track first position"),
     data.table::data.table(event_time = t_ref, event_type = "Track last position"),
     if (nrow(events_curtl) > 0L) events_curtl[, .(event_time = start, event_type = "Curtailment start")] else NULL,
     if (nrow(events_curtl) > 0L) events_curtl[, .(event_time = end, event_type = "Curtailment stop")] else NULL
@@ -250,12 +279,12 @@ plot_fatality_track_rpm <- function(track_row, scada_dt, curtl_dt,
       linewidth = 0.7
     ) +
     ggplot2::scale_colour_manual(
-      values = c("RPM" = "#e8792f", "Track last position" = "purple",
+      values = c("RPM" = "#e8792f", "Track first position" = "darkgreen", "Track last position" = "purple",
                 "Curtailment start" = "steelblue", "Curtailment stop" = "darkred"),
       name = NULL
     ) +
     ggplot2::scale_linetype_manual(
-      values = c("RPM" = "solid", "Track last position" = "dotted",
+      values = c("RPM" = "solid", "Track first position" = "dotted", "Track last position" = "dotted",
                 "Curtailment start" = "solid", "Curtailment stop" = "dashed"),
       name = NULL
     ) +

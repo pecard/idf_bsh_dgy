@@ -363,7 +363,8 @@ source("R/fatality_track_investigation.R")
 
 fatality_tracks_dt <- investigate_fatality_incidents(
   fatality_incidents, track_dt, curtl_dt, wtg,
-  proximity_threshold_m = track_proximity_threshold_m
+  proximity_threshold_m = track_proximity_threshold_m,
+  height_threshold_m = if (exists("curtailment_trigger_height_m")) curtailment_trigger_height_m else NULL
 )
 fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
 
@@ -551,31 +552,23 @@ write_xlsx_local(
 
 ##
 ## 5. Egyptian-Vulture activity -- min. individuos por bin de 2min,
-##    restrito as unidades IDF de interesse (nao farm-wide -- este
-##    relatorio investiga so' a turbina do incidente, T35, pedido do Paulo
-##    2026-08), todo o periodo (abundancia pre/pos-incidente ja' vem do
-##    ponto 2 acima, fatality_abundance_pre_post_dt) ----
+##    restrito as turbinas investigadas (nao farm-wide -- este relatorio
+##    investiga so' a turbina do incidente, T35, pedido do Paulo 2026-08),
+##    todo o periodo (abundancia pre/pos-incidente ja' vem do ponto 2
+##    acima, fatality_abundance_pre_post_dt) ----
 ##
-
-min_indiv_bins_dt  <- count_min_individuals_per_bin(track_dt[idf %in% heartbeat_idf_units], species = "Egyptian-Vulture", bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m)
-
-## Diagnostico -- track_dt$idf vem de TowerNumber (R/read_tracks.R), uma
-## coluna DIFERENTE da usada para heartb_dt$idf (instance_name,
-## R/read_heartbeats.R) -- ao contrario dessa, o formato de TowerNumber
-## nunca foi confirmado como coincidindo com heartbeat_idf_units
-## ("IDF22"/"IDF24"/...). Se a contagem restrita a heartbeat_idf_units vier
-## a 0 mas a contagem farm-wide (todas as unidades) nao, e' sinal de que
-## TowerNumber usa outro formato/vocabulario -- confirmar contra a mensagem
-## "Unidades IDF encontradas em track_dt_unfilt" impressa no inicio deste
-## script antes de assumir que nao ha mesmo deteções de
-## Egyptian-Vulture por estas unidades.
-if (nrow(min_indiv_bins_dt) == 0L) {
-  n_farm_wide <- nrow(count_min_individuals_per_bin(track_dt, species = "Egyptian-Vulture", bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m))
-  message(sprintf(
-    "AVISO: 0 bins de Egyptian-Vulture para as unidades IDF de interesse (%s); farm-wide (todas as unidades) da' %d bin(s) -- ver nota acima sobre TowerNumber vs. instance_name se farm-wide for > 0.",
-    paste(heartbeat_idf_units, collapse = ", "), n_farm_wide
-  ))
-}
+## Restringe por track_dt$turbine (NearestTurbine3d, a classificacao do
+## proprio IdentiFlight, ja' confirmada consistente com o shapefile wtg em
+## todo o resto do pipeline -- coverage, candidatos a fatalidade, etc.),
+## NAO por track_dt$idf (TowerNumber, R/read_tracks.R) -- essa coluna vem
+## de uma fonte DIFERENTE de heartb_dt$idf (instance_name,
+## R/read_heartbeats.R) e o seu formato nunca foi confirmado como
+## coincidindo com heartbeat_idf_units ("IDF22"/"IDF24"/...); usada aqui
+## originalmente, dava sempre 0 bins (caso real, 2026-08 -- via Paulo:
+## "candidate tracks for collision" existiam, logo "No detections" nao
+## podia estar certo). turbinas_scada e' o mesmo vetor ja' usado para
+## restringir o "overall" da secção 4 a T35.
+min_indiv_bins_dt  <- count_min_individuals_per_bin(track_dt[turbine %in% turbinas_scada], species = "Egyptian-Vulture", bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m)
 
 min_indiv_summary_dt <- summarise_min_individuals(min_indiv_bins_dt)
 min_indiv_daily_dt <- summarise_daily_max_individuals(min_indiv_bins_dt)
@@ -589,8 +582,8 @@ write_xlsx_local(
 
 ##
 ## 6. Candidate/duplicate tracks for the incident -- R/track_harmonization.R,
-##    restrito a especie Egyptian-Vulture, janela do incidente, unidades
-##    IDF de interesse ----
+##    restrito a especie Egyptian-Vulture, janela do incidente, turbina(s)
+##    investigada(s) ----
 ##
 
 source("R/track_min_individuals.R") # .uf_components()
@@ -599,17 +592,24 @@ source("R/track_harmonization.R")
 incident_window_start <- as.POSIXct(paste(fatality_incidents$incident_date - fatality_incidents$days_before, "00:00:00"), tz = proj_timezone)
 incident_window_end   <- as.POSIXct(paste(fatality_incidents$incident_date, "23:59:59"), tz = proj_timezone)
 
+## Restringe por turbine (NearestTurbine3d), nao por idf (TowerNumber) --
+## ver nota na secção 5 acima sobre track_dt$idf nunca ter sido confirmado
+## como coincidindo com heartbeat_idf_units. A logica interna de
+## handoff/duplicado (find_handoff_edges()/find_duplicate_edges(),
+## R/track_harmonization.R) continua a usar os valores brutos de idf para
+## diferenciar unidades -- so' o filtro EXTERNO de "que tracks entram nesta
+## analise" mudou.
 track_dt_incident_window <- track_dt[
   spec == fatality_incidents$species &
-    idf %in% heartbeat_idf_units &
+    turbine %in% turbinas_scada &
     timestamp >= incident_window_start & timestamp <= incident_window_end
 ]
 
 message(sprintf(
-  "Janela do incidente (%s a %s): %d pontos de %s em %d track_ids, unidades IDF %s.",
+  "Janela do incidente (%s a %s): %d pontos de %s em %d track_ids, turbina(s) %s.",
   format(incident_window_start), format(incident_window_end), nrow(track_dt_incident_window),
   fatality_incidents$species, data.table::uniqueN(track_dt_incident_window$track_id),
-  paste(heartbeat_idf_units, collapse = ", ")
+  paste(turbinas_scada, collapse = ", ")
 ))
 
 ## Nomes de ficheiro condicionais -- so ficam definidos (nao-NULL) se o
@@ -706,7 +706,6 @@ report_params <- list(
   fatality_global_availability     = fatality_global_availability_dt,
   fatality_availability_calendar_plot = p_fatality_availability_calendar,
   fatality_window_response_summary = fatality_window_response_summary_dt,
-  fatality_global_response_summary = fatality_global_response_summary_dt,
   fatality_abundance_pre_post      = fatality_abundance_pre_post_dt,
 
   latency_by_turbine    = summary_latency_by_turbine,
@@ -735,6 +734,7 @@ report_params <- list(
   safe_shutdown_rpm               = safe_shutdown_rpm,
   shutdown_time_buffer_sec        = shutdown_time_buffer_sec,
   track_proximity_threshold_m     = track_proximity_threshold_m,
+  curtailment_trigger_height_m    = if (exists("curtailment_trigger_height_m")) curtailment_trigger_height_m else NULL,
   fatality_post_incident_days     = fatality_post_incident_days,
   min_individuals_bin_min         = min_individuals_bin_min,
   min_individuals_merge_dist_m    = min_individuals_merge_dist_m,

@@ -244,6 +244,17 @@ fatality_example_window_after_min  <- 3
 ## fisico/biologico do BSH/DGY, nao especifico do parque
 track_proximity_threshold_m <- 100
 
+## em metros AGL (Approx Height Above Ground); altura abaixo da qual o
+## sistema despoleta curtailment -- pedido do Paulo (2026-08, a partir do
+## exemplo de um track de Egyptian-Vulture no portal, com "Approx AGL
+## Elevation" a rondar os 400m). Usado em R/fatality_track_investigation.R
+## para exigir tambem esta altura (nao so' a distancia horizontal) na
+## identificacao de candidatos a colisao -- um track horizontalmente perto
+## mas sempre muito acima desta cota nunca esteve em risco real de colisao
+## nem despoletaria curtailment. NULL desliga esta regra (comportamento
+## antigo, so' distancia) -- ainda nao confirmada para BSH/DGY.
+curtailment_trigger_height_m <- 400
+
 ## dias APOS o incidente a comparar com a janela pre-incidente, na
 ## abundancia (min individuals) da especie -- ver CLAUDE.md
 fatality_post_incident_days <- 3
