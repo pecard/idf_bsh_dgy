@@ -95,7 +95,7 @@ heartbeats_pattern   <- "Heartbeats_.+csv"  # ex: Heartbeats_20260201_....csv
 ## usa este mesmo formato ou o formato com hifen do shapefile -- o script
 ## imprime os valores unicos encontrados em heartb_dt$idf logo apos a
 ## leitura, para deteccao rapida de um mismatch.
-heartbeat_idf_units <- c("IDF22", "IDF24", "IDF26", "IDF71")
+heartbeat_idf_units <- c("GW32-22", "GW35-24", "GW40-26", "GW37-71")
 
 
 ##
