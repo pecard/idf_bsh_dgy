@@ -17,12 +17,12 @@
 ##
 
 run_sections <- list(
-  curtailment_response   = TRUE,  # 3.5-3.7 (resposta a curtailments, shutdown time, safe distance) -- so corre se scada_dt tambem existir
-  fatality_investigation = TRUE,  # 4 (tracks + disponibilidade + resposta na janela de cada incidente)
-  coverage_3d             = FALSE,  # 5.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
-  min_individuals          = TRUE,  # 6.4 (contagem minima de individuos por bin, farm-wide)
-  turbine_clustering       = FALSE, # 10 (clusters ESTATISTICOS de turbinas, por distancia: curtailments e tracks de especie) -- corre sobre o historico completo (_unfilt), pode ser mais lento. Desligada (2026-08, pedido do Paulo): a via estatistica nao acrescentava clareza ao lado da via manual/risk_clusters no relatorio -- reativar aqui e' o unico passo necessario para a secção voltar a aparecer (o Rmd ja trata a ausencia dela)
-  risk_clusters            = TRUE   # 10 (clusters MANUAIS/setores, a mesma analise mas para manual_turbine_clusters -- independente do estatistico acima, liga/desliga a sua vontade)
+  curtailment_response   = F,  # 3.5-3.7 (resposta a curtailments, shutdown time, safe distance) -- so corre se scada_dt tambem existir
+  fatality_investigation = F,  # 4 (tracks + disponibilidade + resposta na janela de cada incidente)
+  coverage_3d             = T,  # 5.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
+  min_individuals          = F,  # 6.4 (contagem minima de individuos por bin, farm-wide)
+  turbine_clustering       = F, # 10 (clusters ESTATISTICOS de turbinas, por distancia: curtailments e tracks de especie) -- corre sobre o historico completo (_unfilt), pode ser mais lento. Desligada (2026-08, pedido do Paulo): a via estatistica nao acrescentava clareza ao lado da via manual/risk_clusters no relatorio -- reativar aqui e' o unico passo necessario para a secção voltar a aparecer (o Rmd ja trata a ausencia dela)
+  risk_clusters            = F   # 10 (clusters MANUAIS/setores, a mesma analise mas para manual_turbine_clusters -- independente do estatistico acima, liga/desliga a sua vontade)
 )
 
 
