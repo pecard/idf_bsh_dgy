@@ -83,7 +83,30 @@ tryCatch({
   ))
 })
 
+## Falha cedo e com uma mensagem clara se a working directory nao ficou na
+## raiz do projeto -- rstudioapi::getActiveDocumentContext()$path so'
+## resolve de forma fiavel quando o script corre via "Source" (ou um
+## source("run_incident_zrshan.R") escrito na consola); selecionar TUDO e
+## correr como bloco (Ctrl+A + Run) envia o texto direto para a consola sem
+## passar por source(), o path vem vazio, o setwd() acima e' saltado, e
+## qualquer caminho relativo (inputs/..., R/..., cache/...) passa a
+## resolver contra a working directory ANTERIOR, nao a pasta do projeto --
+## sem este check, isso so' aparece muito mais tarde como um erro confuso
+## tipo "Cannot open <shapefile>; The file doesn't seem to exist", mesmo
+## com o ficheiro genuinamente presente em inputs/ (caso real, 2026-08).
 folder_input <- "inputs"
+if (!dir.exists(folder_input) || !dir.exists("R")) {
+  stop(sprintf(
+    paste(
+      "Working directory nao esta na raiz do projeto (esperava encontrar",
+      "'%s' e 'R' aqui): %s\nCorre setwd() explicitamente para a pasta do",
+      "projeto (ex: setwd(\"C:/Users/pcardoso/R/idf_bsh_dgy\")) antes de",
+      "dar source a este ficheiro, ou usa Source (Ctrl+Shift+S) em vez de",
+      "selecionar tudo e correr como bloco."
+    ),
+    folder_input, getwd()
+  ))
+}
 source(file.path(folder_input, "userSettings_ZRF.R"))
 
 folder_output <- file.path("outputs", paste0(format(Sys.time(), "%Y%m%d"), "_", farm_code))
