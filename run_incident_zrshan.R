@@ -59,7 +59,8 @@ packages <- c(
   'data.table', 'sf', 'magrittr', 'dplyr', 'janitor', 'ggplot2', 'lubridate',
   'readxl', 'writexl', 'plotly', 'htmlwidgets', 'rmarkdown', 'flextable', 'fst', 'scales',
   'suncalc', # usado (namespaced) por R/availability_daylight.R, chamado de dentro de R/fatality_window_analysis.R
-  'terra', 'RANN' # usados por R/coverage_3d_topography.R (malha 3D)
+  'terra', 'RANN', # usados por R/coverage_3d_topography.R (malha 3D)
+  'webshot2' # screenshot estatico (.png) dos plots 3D interativos, para o .docx -- precisa de Chrome/Edge instalado
 )
 for (p in packages) {
   if (!require(p, character.only = TRUE)) install.packages(p)
@@ -280,10 +281,13 @@ if (file.exists(turbine_idf_matrix_file)) {
   )
 }
 
-## Resumos so' para a turbina/unidades de interesse deste incidente (para o
-## Rmd) -- a tabela wide completa fica no xlsx de anexo acima
-coverage_turbine_of_interest_dt <- turbine_idf_coverage_wide_dt[turbine == fatality_incidents$turbine]
-coverage_idf_of_interest_dt     <- turbine_idf_coverage_dt[idf %in% heartbeat_idf_units]
+## Resumo so' para a turbina do incidente (para o Rmd, secção "Turbine /
+## IDF Unit Coverage") -- formato LONGO (1 linha por unidade IDF que
+## geometricamente cobre esta turbina, com a respetiva % de sobreposicao),
+## nao o formato wide (esse so' fazia sentido a comparar varias turbinas
+## lado a lado, sem interesse aqui com uma unica turbina de incidente).
+## A tabela wide completa (todas as turbinas) continua no xlsx de anexo acima.
+coverage_turbine_of_interest_dt <- turbine_idf_coverage_dt[turbine == fatality_incidents$turbine]
 
 
 ##
@@ -327,16 +331,25 @@ if (file.exists(dem_file)) {
   )
 
   ## Plots interativos (plotly, html) -- cobertura + o inverso (nos da
-  ## malha "air" SEM deteções dentro de prox_thresh_m) -- gravados a parte,
-  ## nao entram no .docx (nao suporta plotly interativo)
-  save_coverage_3d_plots(
+  ## malha "air" SEM deteções dentro de prox_thresh_m) -- gravados a parte
+  ## (Word nao suporta plotly interativo), MAIS uma versao screenshot (.png,
+  ## via webshot2/Chrome headless) da turbina do incidente, para poder ser
+  ## embebida diretamente no .docx (pedido do Paulo, 2026-08, secção "3D
+  ## Coverage" do relatorio)
+  coverage3d_png_paths <- save_coverage_3d_plots(
     cov_all, file.path(folder_output, "coverage_3d"),
-    radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height
+    radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
+    screenshot = TRUE
   )
+
+  coverage3d_covered_png     <- coverage3d_png_paths[[fatality_incidents$turbine]]$covered
+  coverage3d_not_covered_png <- coverage3d_png_paths[[fatality_incidents$turbine]]$not_covered
 
 } else {
   message("DEM nao encontrado (", dem_file, ") -- secção 3D Coverage saltada.")
   summary_cov <- NULL
+  coverage3d_covered_png     <- NULL
+  coverage3d_not_covered_png <- NULL
 }
 
 
@@ -354,9 +367,35 @@ fatality_tracks_dt <- investigate_fatality_incidents(
 )
 fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
 
+## Exemplos de RPM para a secção "Top Candidate Tracks" do relatorio -- o 1º
+## track (mais perto da turbina, fatality_tracks_dt ja vem ordenado por
+## min_dist_m) sem curtailment despoletado e o 1º com curtailment
+## despoletado, pedido do Paulo (2026-08) para ilustrar visualmente os 2
+## sinais mais criticos da tabela "Candidate Tracks by Signal" (secção 2.1)
+## -- ver plot_fatality_track_rpm(), R/fatality_track_investigation.R
+fatality_example_no_curtailment_dt <- fatality_tracks_dt[triggered_curtailment == FALSE][1]
+fatality_example_curtailment_dt    <- fatality_tracks_dt[triggered_curtailment == TRUE][1]
+
+p_fatality_example_no_curtailment <- if (nrow(fatality_example_no_curtailment_dt) > 0 && !is.na(fatality_example_no_curtailment_dt$track_id)) {
+  plot_fatality_track_rpm(
+    fatality_example_no_curtailment_dt, scada_dt, curtl_dt,
+    window_before_min = fatality_example_window_before_min, window_after_min = fatality_example_window_after_min,
+    title = sprintf("Example -- No Curtailment Triggered (track %s)", fatality_example_no_curtailment_dt$track_id)
+  )
+} else NULL
+
+p_fatality_example_curtailment <- if (nrow(fatality_example_curtailment_dt) > 0 && !is.na(fatality_example_curtailment_dt$track_id)) {
+  plot_fatality_track_rpm(
+    fatality_example_curtailment_dt, scada_dt, curtl_dt,
+    window_before_min = fatality_example_window_before_min, window_after_min = fatality_example_window_after_min,
+    title = sprintf("Example -- Curtailment Triggered (track %s)", fatality_example_curtailment_dt$track_id)
+  )
+} else NULL
+
 source("R/availability_daylight.R")
 source("R/curtailment_response.R")
 source("R/curtailment_response_latency.R")
+source("R/curtailment_forensic_trace.R") # plot_curtailment_events_rpm() -- reutilizado na secção "Curtailment Response & Latency -- Overall" abaixo
 source("R/track_min_individuals.R")
 source("R/fatality_window_analysis.R")
 
@@ -399,6 +438,37 @@ fatality_global_availability_dt <- data.table::rbindlist(lapply(names(fatality_w
   if (is.null(dt) || nrow(dt) == 0L) return(NULL)
   dt[, incident_id := id]; dt[]
 }), fill = TRUE)
+
+## Diagnostico -- janela vs. baseline global usam exatamente as mesmas
+## unidades IDF (idf_units) e o mesmo heartb_dt, com o periodo global a ser
+## um SUPERCONJUNTO estrito do periodo da janela (ver R/fatality_window_analysis.R)
+## -- por construcao, se a janela tem linhas, o baseline global tem de ter
+## pelo menos as mesmas. Se este aviso disparar (0 linhas de um lado so'),
+## e' sinal de um problema a montante (ex: heartb_dt vazio para estas
+## unidades no intervalo esperado) -- confirmar o formato de
+## heartbeat_idf_units vs. heartb_dt_unfilt$idf (ver mensagens no inicio
+## deste script) antes de assumir que e' um bug de calculo.
+message(sprintf(
+  "Disponibilidade IDF -- janela: %d linha(s) (unidades: %s); baseline global: %d linha(s) (unidades: %s).",
+  nrow(fatality_window_availability_dt),
+  paste(unique(fatality_window_availability_dt$idf), collapse = ", "),
+  nrow(fatality_global_availability_dt),
+  paste(unique(fatality_global_availability_dt$idf), collapse = ", ")
+))
+
+## Calendario de disponibilidade (% offline em horas de luz, por dia) das
+## unidades IDF de interesse, restrito a janela de investigacao -- pedido
+## do Paulo (2026-08), secção "Investigation Window" do relatorio de
+## incidente. idf_sel = heartbeat_idf_units (nao top_n por omissao) para
+## mostrar SEMPRE todas as unidades de interesse, nao so as com mais tempo
+## offline -- ver R/availability_daylight.R, plot_availability_calendar()
+fatality_window_daily_dt <- fatality_windows[[1]]$availability$daily
+p_fatality_availability_calendar <- if (!is.null(fatality_window_daily_dt) && nrow(fatality_window_daily_dt) > 0) {
+  plot_availability_calendar(
+    fatality_window_daily_dt, fatality_windows[[1]]$availability$by_idf,
+    idf_sel = heartbeat_idf_units
+  )
+} else NULL
 
 fatality_global_response_summary_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
   dt <- fatality_windows[[id]]$curtailment_response_global$summary
@@ -450,20 +520,44 @@ source("R/curtailment_response_timeline.R")
 latency_timeline_dt <- summarise_latency_timeline(latency_dt, unit = response_timeline_unit)
 p_latency_timeline  <- plot_latency_timeline(latency_timeline_dt)
 
+## Exemplos tipicos de no-response / resposta lenta (RPM + inicio/fim do
+## curtailment) -- mesmo mecanismo do relatorio anual BSH/DGY
+## (IDF_analysis.R, select_latency_examples() + plot_curtailment_events_rpm(),
+## R/curtailment_forensic_trace.R), pedido do Paulo (2026-08) para este
+## relatorio tambem
+no_response_examples_dt      <- select_latency_examples(latency_dt, "no_response", n = curtailment_example_n)
+slowest_response_examples_dt <- select_latency_examples(latency_dt, "slowest", n = curtailment_example_n)
+
+p_no_response_examples <- plot_curtailment_events_rpm(
+  no_response_examples_dt, scada_dt,
+  window_before_min = curtailment_example_window_before_min,
+  window_after_min = curtailment_example_window_after_min,
+  title = "No-Response Events -- RPM Profile (Examples)"
+)
+p_slowest_response_examples <- plot_curtailment_events_rpm(
+  slowest_response_examples_dt, scada_dt,
+  window_before_min = curtailment_example_window_before_min,
+  window_after_min = curtailment_example_window_after_min,
+  title = "Slowest Responses -- RPM Profile (Examples)"
+)
+
 write_xlsx_local(
   list(Latency = latency_dt, Overall = summary_latency, By_turbine = summary_latency_by_turbine,
-       Bands = summary_latency_bands, Latency_timeline = latency_timeline_dt),
+       Bands = summary_latency_bands, Latency_timeline = latency_timeline_dt,
+       No_response_examples = no_response_examples_dt, Slowest_response_examples = slowest_response_examples_dt),
   file.path(folder_output, paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end), ".xlsx"))
 )
 
 
 ##
 ## 5. Egyptian-Vulture activity -- min. individuos por bin de 2min,
-##    farm-wide, todo o periodo (abundancia pre/pos-incidente ja' vem do
+##    restrito as unidades IDF de interesse (nao farm-wide -- este
+##    relatorio investiga so' a turbina do incidente, T35, pedido do Paulo
+##    2026-08), todo o periodo (abundancia pre/pos-incidente ja' vem do
 ##    ponto 2 acima, fatality_abundance_pre_post_dt) ----
 ##
 
-min_indiv_bins_dt  <- count_min_individuals_per_bin(track_dt, species = "Egyptian-Vulture", bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m)
+min_indiv_bins_dt  <- count_min_individuals_per_bin(track_dt[idf %in% heartbeat_idf_units], species = "Egyptian-Vulture", bin_min = min_individuals_bin_min, merge_dist_m = min_individuals_merge_dist_m)
 min_indiv_summary_dt <- summarise_min_individuals(min_indiv_bins_dt)
 min_indiv_daily_dt <- summarise_daily_max_individuals(min_indiv_bins_dt)
 p_min_indiv_daily  <- plot_daily_max_individuals(min_indiv_daily_dt, species_sel = "Egyptian-Vulture", date_breaks = "1 month", geom_type = "bar")
@@ -571,6 +665,7 @@ report_params <- list(
   incident_window_start = as.character(as.Date(incident_window_start)),
   incident_window_end   = as.character(as.Date(incident_window_end)),
   idf_units_of_interest = paste(heartbeat_idf_units, collapse = ", "),
+  investigated_turbines = paste(turbinas_scada, collapse = ", "),
   report_start  = as.character(as.Date(ini)),
   report_end    = as.character(as.Date(end)),
   analysis_date = format(Sys.time(), "%Y-%m-%d"),
@@ -578,13 +673,19 @@ report_params <- list(
   code_version  = code_version,
 
   coverage_turbine_of_interest = coverage_turbine_of_interest_dt,
-  coverage_idf_of_interest     = coverage_idf_of_interest_dt,
   coverage3d_by_turbine        = if (!is.null(summary_cov)) summary_cov$by_turbine else NULL,
+  coverage3d_covered_png       = if (!is.null(coverage3d_covered_png)) normalizePath(coverage3d_covered_png) else NULL,
+  coverage3d_not_covered_png   = if (!is.null(coverage3d_not_covered_png)) normalizePath(coverage3d_not_covered_png) else NULL,
 
   fatality_signal_counts           = fatality_summary$counts_by_signal,
   fatality_top_candidates          = fatality_summary$top_candidates,
+  fatality_example_no_curtailment_plot     = p_fatality_example_no_curtailment,
+  fatality_example_curtailment_plot        = p_fatality_example_curtailment,
+  fatality_example_no_curtailment_track_id = if (nrow(fatality_example_no_curtailment_dt) > 0) fatality_example_no_curtailment_dt$track_id else NULL,
+  fatality_example_curtailment_track_id    = if (nrow(fatality_example_curtailment_dt) > 0) fatality_example_curtailment_dt$track_id else NULL,
   fatality_window_availability     = fatality_window_availability_dt,
   fatality_global_availability     = fatality_global_availability_dt,
+  fatality_availability_calendar_plot = p_fatality_availability_calendar,
   fatality_window_response_summary = fatality_window_response_summary_dt,
   fatality_global_response_summary = fatality_global_response_summary_dt,
   fatality_abundance_pre_post      = fatality_abundance_pre_post_dt,
@@ -597,6 +698,10 @@ report_params <- list(
   latency_pct_no_data   = summary_latency$pct_no_data,
   latency_n_below_cutin = summary_latency$n_below_cutin,
   latency_pct_below_cutin = summary_latency$pct_below_cutin,
+  latency_no_response_examples_plot = p_no_response_examples,
+  latency_slowest_examples_plot     = p_slowest_response_examples,
+  latency_n_no_response_examples    = nrow(no_response_examples_dt),
+  latency_n_slowest_examples        = nrow(slowest_response_examples_dt),
 
   min_indiv_summary    = min_indiv_summary_dt,
   min_indiv_plot_daily = p_min_indiv_daily,

@@ -22,7 +22,7 @@
 ## ser maior consoante o caso) E o proprio dia do registo, como um unico
 ## periodo continuo (nao se trata o dia do registo à parte).
 ##
-## Depende de: data.table, sf
+## Depende de: data.table, sf, ggplot2 (so' plot_fatality_track_rpm())
 ##
 ## Uso:
 ##   source("R/fatality_track_investigation.R")
@@ -163,6 +163,16 @@ fatality_signal_priority <- c(
   far_from_turbine                 = 4L   # nunca esteve dentro do limiar de proximidade
 )
 
+## Rotulos em linguagem natural para o "signal" -- usados so' na
+## APRESENTACAO do relatorio (tabelas do Rmd); os valores internos com "_"
+## continuam a ser os usados no codigo e no xlsx de anexo.
+fatality_signal_labels <- c(
+  no_curtailment_lost_near_turbine = "No curtailment - lost near turbine",
+  curtailment_lost_near_turbine    = "Curtailment triggered - lost near turbine",
+  near_turbine_not_last            = "Near turbine, not last position",
+  far_from_turbine                 = "Far from turbine"
+)
+
 summarise_fatality_tracks <- function(fatality_tracks_dt, top_n = 10) {
 
   empty_counts <- data.table::data.table(
@@ -189,4 +199,69 @@ summarise_fatality_tracks <- function(fatality_tracks_dt, top_n = 10) {
   top_candidates <- candidates[, .SD[seq_len(min(.N, top_n))], by = incident_id]
 
   list(counts_by_signal = counts_by_signal[], top_candidates = top_candidates[])
+}
+
+
+## 4. Perfil de RPM a volta da ultima posicao registada de UM track
+##    candidato ao incidente -- mesma linguagem visual de
+##    plot_curtailment_events_rpm() (R/curtailment_forensic_trace.R), mas
+##    ancorado no last_time do track (nao no start/end de um curtailment
+##    escolhido a priori), com o(s) curtailment(s) REAL(is) desse
+##    track_id/turbina sobrepostos quando existirem -- pedido do Paulo,
+##    2026-08 (relatorio de incidente, secção "Top Candidate Tracks"): um
+##    exemplo do 1º track SEM curtailment e um do 1º track COM curtailment.
+##    Quando o track nao despoletou nenhum curtailment (candidate_signals
+##    "no_curtailment_lost_near_turbine"), so a linha "Track last position"
+##    e' desenhada -- nao ha inicio/fim de curtailment para marcar.
+##
+## track_row: 1 linha de fatality_tracks_dt/top_candidates (precisa de
+## track_id, turbine, last_time). Devolve NULL se nao houver leituras de
+## SCADA (RPM) dessa turbina na janela a volta de last_time.
+
+plot_fatality_track_rpm <- function(track_row, scada_dt, curtl_dt,
+                                    window_before_min = 3, window_after_min = 3, title = NULL) {
+
+  t_ref <- track_row$last_time
+  t_ini <- t_ref - window_before_min * 60
+  t_end <- t_ref + window_after_min * 60
+
+  rpm_dt <- scada_dt[
+    turbinelabel == track_row$turbine & readingname == "RPM" & datetime >= t_ini & datetime <= t_end,
+    .(datetime, value)
+  ]
+  if (nrow(rpm_dt) == 0L) return(NULL)
+
+  events_curtl <- curtl_dt[track_id == track_row$track_id & turbine == track_row$turbine]
+
+  events_long <- data.table::rbindlist(list(
+    data.table::data.table(event_time = t_ref, event_type = "Track last position"),
+    if (nrow(events_curtl) > 0L) events_curtl[, .(event_time = start, event_type = "Curtailment start")] else NULL,
+    if (nrow(events_curtl) > 0L) events_curtl[, .(event_time = end, event_type = "Curtailment stop")] else NULL
+  ))
+
+  y_max <- max(rpm_dt$value, na.rm = TRUE) + 1
+
+  ggplot2::ggplot() +
+    ggplot2::geom_line(data = rpm_dt, ggplot2::aes(x = datetime, y = value, colour = "RPM", linetype = "RPM")) +
+    ggplot2::geom_point(data = rpm_dt, ggplot2::aes(x = datetime, y = value, colour = "RPM"), size = 1.2) +
+    ggplot2::geom_vline(
+      data = events_long,
+      ggplot2::aes(xintercept = event_time, colour = event_type, linetype = event_type),
+      linewidth = 0.7
+    ) +
+    ggplot2::scale_colour_manual(
+      values = c("RPM" = "#e8792f", "Track last position" = "purple",
+                "Curtailment start" = "steelblue", "Curtailment stop" = "darkred"),
+      name = NULL
+    ) +
+    ggplot2::scale_linetype_manual(
+      values = c("RPM" = "solid", "Track last position" = "dotted",
+                "Curtailment start" = "solid", "Curtailment stop" = "dashed"),
+      name = NULL
+    ) +
+    ggplot2::scale_y_continuous(limits = c(0, y_max), expand = c(0, 0)) +
+    ggplot2::scale_x_datetime(date_breaks = "30 sec", date_labels = "%H:%M:%S") +
+    ggplot2::labs(x = NULL, y = "RPM", title = title) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(legend.position = "bottom", axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1))
 }

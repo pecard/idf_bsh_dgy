@@ -32,7 +32,9 @@
 ## o % de coverage dessas turbinas deve ser interpretado com cautela (amostra
 ## pode ser demasiado pequena para uma estimativa fiavel).
 ##
-## Depende de: data.table, sf, terra, RANN, plotly
+## Depende de: data.table, sf, terra, RANN, plotly, htmlwidgets;
+## webshot2 so' se save_coverage_3d_plots(..., screenshot = TRUE) for usado
+## (precisa tambem de um Chrome/Edge instalado no sistema)
 ##
 ## Uso:
 ##   source("R/coverage_3d_topography.R")
@@ -575,28 +577,64 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
 
 ## 7. Guarda os plots 3D (cobertura + inverso) de cada turbina, em HTML autonomo ----
 ##    cov_all: resultado de run_coverage_3d_all_turbines()
+##
+## screenshot = TRUE (por omissao FALSE, para nao alterar o comportamento
+## dos relatorios existentes que ja chamam esta funcao): usa webshot2
+## (Chrome/Edge headless) para gravar tambem uma versao .png estatica de
+## cada plot, ao lado do .html interativo -- pedido do Paulo, 2026-08, para
+## poder embeber uma imagem da cobertura 3D no .docx do relatorio de
+## incidente (Word nao suporta plotly interativo). Se webshot2 nao
+## estiver instalado, ou nao encontrar um Chrome/Edge no sistema, avisa e
+## continua sem PNG (o HTML interativo fica sempre disponivel de qualquer forma).
+## Devolve, para cada turbina, os caminhos dos PNG gravados (NULL se a
+## captura falhou/nao foi pedida).
 
-save_coverage_3d_plots <- function(cov_all, folder_out, radius, cyl_height) {
+save_coverage_3d_plots <- function(cov_all, folder_out, radius, cyl_height,
+                                   screenshot = FALSE, screenshot_width = 1200,
+                                   screenshot_height = 900, screenshot_delay = 2) {
 
   dir.create(folder_out, showWarnings = FALSE, recursive = TRUE)
+
+  take_screenshot <- function(html_path, png_path) {
+    tryCatch({
+      webshot2::webshot(
+        html_path, png_path,
+        vwidth = screenshot_width, vheight = screenshot_height, delay = screenshot_delay
+      )
+      png_path
+    }, error = function(e) {
+      message(sprintf(
+        "Aviso: nao foi possivel gerar screenshot de %s (%s) -- precisa do pacote webshot2 e de um Chrome/Edge instalado. So o HTML interativo fica disponivel.",
+        html_path, conditionMessage(e)
+      ))
+      NULL
+    })
+  }
+
+  png_paths <- list()
 
   for (wtg_id in names(cov_all)) {
 
     terrain_mesh_i <- cov_all[[wtg_id]]$terrain_mesh
     coverage_i     <- cov_all[[wtg_id]]$coverage
 
+    html_cov <- file.path(folder_out, paste0("coverage_3d_", wtg_id, ".html"))
     p_cov <- plot_mesh_coverage_3d(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height)
-    htmlwidgets::saveWidget(
-      p_cov, file.path(folder_out, paste0("coverage_3d_", wtg_id, ".html")), selfcontained = TRUE
-    )
+    htmlwidgets::saveWidget(p_cov, html_cov, selfcontained = TRUE)
 
+    html_notcov <- file.path(folder_out, paste0("coverage_3d_not_covered_", wtg_id, ".html"))
     p_notcov <- plot_mesh_coverage_debug(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height)
-    htmlwidgets::saveWidget(
-      p_notcov, file.path(folder_out, paste0("coverage_3d_not_covered_", wtg_id, ".html")), selfcontained = TRUE
-    )
+    htmlwidgets::saveWidget(p_notcov, html_notcov, selfcontained = TRUE)
+
+    if (isTRUE(screenshot)) {
+      png_paths[[wtg_id]] <- list(
+        covered     = take_screenshot(html_cov, file.path(folder_out, paste0("coverage_3d_", wtg_id, ".png"))),
+        not_covered = take_screenshot(html_notcov, file.path(folder_out, paste0("coverage_3d_not_covered_", wtg_id, ".png")))
+      )
+    }
   }
 
-  invisible(NULL)
+  invisible(png_paths)
 }
 
 
