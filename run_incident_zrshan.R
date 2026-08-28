@@ -191,22 +191,33 @@ heartb_dt_unfilt <- reuse_or_load_cache(
 ## sempre vazios (caso real, 2026-08) -- a normalizacao abaixo alinha
 ## heartb_dt_unfilt$idf com heartbeat_idf_units ("IDF22", 2 digitos).
 ##
-## Alguns valores brutos podem nao ter um numero reconhecivel apos o
-## ultimo hifen (ex: linhas em branco nao apanhadas pelo exclude_idf de
+## Alguns valores brutos podem nao ter um numero reconhecivel no fim da
+## string (ex: linhas em branco nao apanhadas pelo exclude_idf de
 ## read_heartbeats_data(), que tem por omissao um valor especifico do
 ## BSH/DGY e nao deste parque) -- em vez de deixar o aviso cru do
 ## as.integer() ("NAs introduced by coercion", sem dizer QUAL valor
 ## falhou), identifica e reporta os valores brutos problematicos
 ## explicitamente, e marca-os NA (nunca batem com heartbeat_idf_units,
 ## inocuo para o resto do pipeline).
+##
+## IMPORTANTE (idempotencia): extrai a sequencia de digitos NO FIM da
+## string (".*([0-9]+)$"), NAO "o que vem depois do ultimo hifen"
+## (sub("^.*-", ...)) -- se este bloco correr 2 vezes sobre o mesmo objeto
+## (ex: sessão R persistente do RStudio, heartb_dt_unfilt ja' existe em
+## memoria de uma corrida anterior e reuse_or_load_cache() devolve-o tal
+## qual, sem reler o ficheiro), "IDF24" (ja' normalizado) NAO tem hifen
+## nenhum, por isso sub("^.*-",...) devolvia a string tal e qual
+## ("IDF24"), e as.integer("IDF24") dava sempre NA -- toda a tabela ficava
+## NA a partir da 2a corrida na mesma sessão. A extracao de digitos no fim
+## e' idempotente: aplicada a "IDF24" continua a dar "24".
 {
   raw_idf <- heartb_dt_unfilt$idf
-  idf_num <- suppressWarnings(as.integer(sub("^.*-", "", raw_idf)))
+  idf_num <- suppressWarnings(as.integer(sub(".*([0-9]+)$", "\\1", raw_idf)))
   bad <- is.na(idf_num) & !is.na(raw_idf)
   if (any(bad)) {
     bad_examples <- unique(raw_idf[bad])
     message(sprintf(
-      "AVISO: %d valor(es) de heartb_dt_unfilt$idf sem numero reconhecivel apos o ultimo hifen (ficam NA, nao entram em heartbeat_idf_units) -- exemplos: %s",
+      "AVISO: %d valor(es) de heartb_dt_unfilt$idf sem numero reconhecivel no fim da string (ficam NA, nao entram em heartbeat_idf_units) -- exemplos: %s",
       sum(bad), paste(utils::head(bad_examples, 5), collapse = ", ")
     ))
   }
@@ -270,16 +281,19 @@ wtg$InternalNa <- {
 
 idf <- sf::read_sf(file.path(folder_input, idf_filename))
 
-## Normalizacao para "IDF<NN>" (2 digitos) -- toma sempre o TROCO APOS O
-## ULTIMO HIFEN como o numero da unidade IDF, o que cobre tanto "IDF-22"
-## (assumido inicialmente) como "GW35-24" (formato CONFIRMADO pelo Paulo,
-## 2026-08, no instance_name do heartbeat -- "GW<turbina que aloja a
-## unidade>-<numero da unidade IDF>", ver normalizacao de
-## heartb_dt_unfilt$idf acima) e um valor ja' sem hifen (ex: "22"), sem
-## precisar de saber de antemao qual dos formatos o shapefile usa --
-## conferir a mensagem "Unidades IDF encontradas no shapefile" abaixo.
+## Normalizacao para "IDF<NN>" (2 digitos) -- toma sempre a sequencia de
+## DIGITOS NO FIM da string como o numero da unidade IDF, o que cobre
+## tanto "IDF-22" (assumido inicialmente) como "GW35-24" (formato
+## CONFIRMADO pelo Paulo, 2026-08, no instance_name do heartbeat --
+## "GW<turbina que aloja a unidade>-<numero da unidade IDF>", ver
+## normalizacao de heartb_dt_unfilt$idf acima) e um valor ja' sem hifen
+## (ex: "22"), sem precisar de saber de antemao qual dos formatos o
+## shapefile usa -- conferir a mensagem "Unidades IDF encontradas no
+## shapefile" abaixo. Digitos-no-fim (nao "apos o ultimo hifen") por ser
+## idempotente -- ver nota sobre sessão R persistente na normalizacao de
+## heartb_dt_unfilt$idf acima.
 idf_source_id_col <- if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"
-idf$imaging_he <- sprintf("IDF%02d", as.integer(sub("^.*-", "", idf[[idf_source_id_col]])))
+idf$imaging_he <- sprintf("IDF%02d", as.integer(sub(".*([0-9]+)$", "\\1", idf[[idf_source_id_col]])))
 idf <- sf::st_transform(idf, crs_projection_plannar)
 
 message("Unidades IDF encontradas no shapefile (apos normalizacao): ", paste(sort(unique(idf$imaging_he)), collapse = ", "))
@@ -400,12 +414,22 @@ fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
 
 ## Exemplos de RPM para a secção "Top Candidate Tracks" do relatorio -- o 1º
 ## track (mais perto da turbina, fatality_tracks_dt ja vem ordenado por
-## min_dist_m) sem curtailment despoletado e o 1º com curtailment
-## despoletado, pedido do Paulo (2026-08) para ilustrar visualmente os 2
-## sinais mais criticos da tabela "Candidate Tracks by Signal" (secção 2.1)
-## -- ver plot_fatality_track_rpm(), R/fatality_track_investigation.R
-fatality_example_no_curtailment_dt <- fatality_tracks_dt[triggered_curtailment == FALSE][1]
-fatality_example_curtailment_dt    <- fatality_tracks_dt[triggered_curtailment == TRUE][1]
+## min_dist_m) com signal "no_curtailment_lost_near_turbine" e o 1º com
+## "curtailment_lost_near_turbine", pedido do Paulo (2026-08) para ilustrar
+## visualmente os 2 sinais mais criticos da tabela "Candidate Tracks by
+## Signal" (secção 2.1) -- ver plot_fatality_track_rpm(),
+## R/fatality_track_investigation.R
+##
+## IMPORTANTE: filtra por "signal" (que ja' incorpora o limiar de altura
+## height_threshold_m, quando definido), NAO por "triggered_curtailment"
+## sozinho -- um track sem curtailment mas SEMPRE acima da altura de risco
+## (ex: 400m AGL) e' corretamente "far_from_turbine", nao um candidato
+## real, e nao deve ser escolhido como "exemplo de no curtailment" so'
+## porque e' o mais proximo HORIZONTALMENTE entre TODOS os sem curtailment
+## (caso real, 2026-08 -- via Paulo: track 690799BA-..., sempre acima de
+## 400m, estava a ser escolhido apesar de "far_from_turbine").
+fatality_example_no_curtailment_dt <- fatality_tracks_dt[signal == "no_curtailment_lost_near_turbine"][1]
+fatality_example_curtailment_dt    <- fatality_tracks_dt[signal == "curtailment_lost_near_turbine"][1]
 
 p_fatality_example_no_curtailment <- if (nrow(fatality_example_no_curtailment_dt) > 0 && !is.na(fatality_example_no_curtailment_dt$track_id)) {
   plot_fatality_track_rpm(

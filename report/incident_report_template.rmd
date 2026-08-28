@@ -305,6 +305,8 @@ Two examples below illustrate the RPM behaviour of the turbine around a candidat
 ```{r fatality-example-no-curtailment-heading, results='asis'}
 if (!is.null(params$fatality_example_no_curtailment_plot)) {
   cat(sprintf("### Example -- No Curtailment Triggered (Track %s)\n\n", params$fatality_example_no_curtailment_track_id))
+} else {
+  cat("### Example -- No Curtailment Triggered\n\nNo example of No response found -- no track met the risk criteria above (proximity and height) without a curtailment being triggered.\n\n")
 }
 ```
 ```{r fatality-example-no-curtailment-plot, fig.width=6.30, fig.height=4}
@@ -314,6 +316,8 @@ if (!is.null(params$fatality_example_no_curtailment_plot)) print(params$fatality
 ```{r fatality-example-curtailment-heading, results='asis'}
 if (!is.null(params$fatality_example_curtailment_plot)) {
   cat(sprintf("### Example -- Curtailment Triggered (Track %s)\n\n", params$fatality_example_curtailment_track_id))
+} else {
+  cat("### Example -- Curtailment Triggered\n\nNo example found -- no track meeting the risk criteria above also had a curtailment triggered.\n\n")
 }
 ```
 ```{r fatality-example-curtailment-plot, fig.width=6.30, fig.height=4}

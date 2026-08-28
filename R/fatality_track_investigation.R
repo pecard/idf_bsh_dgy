@@ -295,5 +295,12 @@ plot_fatality_track_rpm <- function(track_row, scada_dt, curtl_dt,
     ggplot2::scale_x_datetime(date_breaks = "30 sec", date_labels = "%H:%M:%S") +
     ggplot2::labs(x = NULL, y = "RPM", title = title) +
     ggplot2::theme_minimal() +
-    ggplot2::theme(legend.position = "bottom", axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1))
+    ggplot2::theme(
+      legend.position = "bottom",
+      axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1),
+      # titulo pode incluir o track_id completo (um UUID, ~36 caracteres) --
+      # tamanho por omissao do ggplot2 nao cabe na largura do plot (caso
+      # real, 2026-08 -- titulo cortado no .docx); reduzido para caber
+      plot.title = ggplot2::element_text(size = 8)
+    )
 }
