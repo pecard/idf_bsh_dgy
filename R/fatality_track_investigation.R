@@ -304,3 +304,44 @@ plot_fatality_track_rpm <- function(track_row, scada_dt, curtl_dt,
       plot.title = ggplot2::element_text(size = 8)
     )
 }
+
+
+## 5. Escolhe o exemplo de "no_curtailment_lost_near_turbine" para
+##    ilustrar a secção "Top Candidate Tracks", EXCLUINDO candidatos cuja
+##    turbina ja' estava sob um curtailment ATIVO (disparado por OUTRO
+##    track_id) durante a janela do plot -- pedido do Paulo, 2026-08. Caso
+##    real: track 5D1151F4-..., Egyptian-Vulture, sem curtailment
+##    disparado por ELE proprio em T35 (despoletou antes um curtailment
+##    diferente em T39), mas o RPM de T35 no plot mostrava uma queda clara
+##    perto da posicao do track -- T35 estava de facto ja curtailed nesse
+##    momento, so' que por causa de outro track_id. Mostrar esse caso como
+##    "exemplo de nao-resposta" e' enganador -- a turbina ja' estava numa
+##    situacao segura (RPM baixo), so' nao por causa desta deteção
+##    especifica.
+##
+## Percorre os candidatos por ordem (fatality_tracks_dt ja' vem ordenado
+## por min_dist_m -- o mais perto primeiro) e devolve o PRIMEIRO cuja
+## turbina NAO tinha nenhum curtailment de outro track_id a sobrepor-se a
+## janela [last_time - window_before_min, last_time + window_after_min]
+## (a mesma janela que plot_fatality_track_rpm() vai desenhar). Devolve 0
+## linhas se nenhum candidato qualificar.
+
+select_clean_no_curtailment_example <- function(fatality_tracks_dt, curtl_dt, turbine_id,
+                                                window_before_min = 3, window_after_min = 3) {
+
+  candidates <- fatality_tracks_dt[signal == "no_curtailment_lost_near_turbine"]
+  if (nrow(candidates) == 0L) return(candidates)
+
+  turbine_curtl <- curtl_dt[turbine == turbine_id]
+
+  for (i in seq_len(nrow(candidates))) {
+    cand  <- candidates[i]
+    t_ini <- cand$last_time - window_before_min * 60
+    t_end <- cand$last_time + window_after_min * 60
+
+    overlapping <- turbine_curtl[track_id != cand$track_id & start <= t_end & end >= t_ini]
+    if (nrow(overlapping) == 0L) return(cand)
+  }
+
+  candidates[0]
+}

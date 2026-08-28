@@ -413,7 +413,17 @@ fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
 ## porque e' o mais proximo HORIZONTALMENTE entre TODOS os sem curtailment
 ## (caso real, 2026-08 -- via Paulo: track 690799BA-..., sempre acima de
 ## 400m, estava a ser escolhido apesar de "far_from_turbine").
-fatality_example_no_curtailment_dt <- fatality_tracks_dt[signal == "no_curtailment_lost_near_turbine"][1]
+##
+## select_clean_no_curtailment_example() (nao so' "[1]") -- exclui
+## candidatos cuja turbina ja' estava sob curtailment de OUTRO track_id
+## durante a janela do plot (caso real, 2026-08 -- via Paulo: track
+## 5D1151F4-..., sem curtailment proprio em T35 (despoletou um diferente
+## em T39), mas o RPM de T35 no plot caia mesmo assim -- T35 ja' estava
+## curtailed por outra deteção, nao e' um exemplo real de nao-resposta).
+fatality_example_no_curtailment_dt <- select_clean_no_curtailment_example(
+  fatality_tracks_dt, curtl_dt, fatality_incidents$turbine,
+  window_before_min = fatality_example_window_before_min, window_after_min = fatality_example_window_after_min
+)
 fatality_example_curtailment_dt    <- fatality_tracks_dt[signal == "curtailment_lost_near_turbine"][1]
 
 p_fatality_example_no_curtailment <- if (nrow(fatality_example_no_curtailment_dt) > 0 && !is.na(fatality_example_no_curtailment_dt$track_id)) {

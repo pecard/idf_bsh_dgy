@@ -300,7 +300,7 @@ if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candida
 annex_note(params$xlsx_fatality)
 ```
 
-Two examples below illustrate the RPM behaviour of the turbine around a candidate track: the first track found with no curtailment triggered, and the first track found with a curtailment triggered (both from the table above, ordered by distance to the turbine). "Track first position"/"Track last position" mark the timestamps of the first and last recorded points of the track; "Curtailment start"/"Curtailment stop" (when present) mark the actual curtailment order recorded for that track at this turbine.
+Two examples below illustrate the RPM behaviour of the turbine around a candidate track: the first track found with no curtailment triggered, and the first track found with a curtailment triggered (both from the table above, ordered by distance to the turbine). For the no-curtailment example, a candidate is skipped if the turbine was already under a curtailment order triggered by a *different* track during the plotted window -- otherwise an unrelated RPM drop could look like a missed response, when the turbine was in fact already safely curtailed for another detection. "Track first position"/"Track last position" mark the timestamps of the first and last recorded points of the track; "Curtailment start"/"Curtailment stop" (when present) mark the actual curtailment order recorded for that track at this turbine.
 
 ```{r fatality-example-no-curtailment-heading, results='asis'}
 if (!is.null(params$fatality_example_no_curtailment_plot)) {
