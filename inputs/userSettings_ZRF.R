@@ -253,7 +253,7 @@ track_proximity_threshold_m <- 100
 ## mas sempre muito acima desta cota nunca esteve em risco real de colisao
 ## nem despoletaria curtailment. NULL desliga esta regra (comportamento
 ## antigo, so' distancia) -- ainda nao confirmada para BSH/DGY.
-curtailment_trigger_height_m <- 400
+curtailment_trigger_height_m <- 300
 
 ## dias APOS o incidente a comparar com a janela pre-incidente, na
 ## abundancia (min individuals) da especie -- ver CLAUDE.md
@@ -284,7 +284,7 @@ harmonization_duplicate_min_overlap_sec   <- 10
 ##
 
 fatality_incidents <- data.table::data.table(
-  incident_id   = "ZRF_0001",
+  incident_id   = "ZRF_May2026",
   turbine       = "T35",
   species       = "Egyptian-Vulture",
   incident_date = as.Date("2026-05-11"),
