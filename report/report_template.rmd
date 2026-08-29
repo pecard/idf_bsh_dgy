@@ -41,13 +41,6 @@ params:
   safe_dist_overall: !r NULL
   safe_dist_by_species: !r NULL
   safe_dist_plot: !r NULL
-  safe_dist_ci_overall: !r NULL
-  safe_dist_ci_by_species: !r NULL
-  safe_dist_by_month_plot: !r NULL
-  safe_dist_trend_p_value: !r NULL
-  safe_dist_trend_direction: !r NULL
-  safe_dist_species_test_p_value: !r NULL
-  safe_dist_species_test_method: !r NULL
 
   no_response_examples_plot: !r NULL
   slowest_response_examples_plot: !r NULL
@@ -653,44 +646,6 @@ annex_note(params$xlsx_safe_dist)
 <!-- Source: plot_safe_distance_hist(), R/curtailment_safe_distance.R -->
 ```{r safe-dist-plot, fig.width=6.30, fig.height=6}
 if (!is.null(params$safe_dist_plot)) print(params$safe_dist_plot)
-```
-
-## Statistical Confidence
-
-The tables and figure above report point percentages only. This section adds formal statistical treatment to the same underlying data: 95% confidence intervals on the % OK figures (Wilson score method, which stays reliable at small sample sizes and percentages near 0%/100%), a test for a monotonic trend in % OK over the reporting period, and a test for whether % OK differs between species by more than sampling variation would explain.
-
-<!-- Source: summarise_safe_distance_ci(safe_dist_dt, prioritysp), R/curtailment_safe_distance.R -->
-```{r safe-dist-ci-overall-table}
-if (!is.null(params$safe_dist_ci_overall)) {
-  report_table(rename_display(
-    params$safe_dist_ci_overall,
-    c(n = "N", n_ok = "OK", pct_ok = "% OK", ci_low_pct = "95% CI Low", ci_high_pct = "95% CI High")
-  ))
-}
-```
-
-```{r safe-dist-ci-species-table}
-if (!is.null(params$safe_dist_ci_by_species) && nrow(params$safe_dist_ci_by_species) > 0) {
-  report_table(rename_display(
-    params$safe_dist_ci_by_species,
-    c(species = "Species", n = "N", n_ok = "OK", pct_ok = "% OK", ci_low_pct = "95% CI Low", ci_high_pct = "95% CI High")
-  ))
-}
-```
-
-Non-overlapping confidence intervals between two species indicate a difference unlikely to be due to chance alone; overlapping intervals -- common for species with fewer curtailments, which widens the interval -- mean the data cannot distinguish them. `r if (!is.null(params$safe_dist_species_test_method) && params$safe_dist_species_test_method == "insufficient_data") "Too few species have enough curtailments this period to run a formal cross-species test." else if (!is.null(params$safe_dist_species_test_p_value)) sprintf("A formal %s test across all species with enough curtailments returned p = %.3f, i.e. a %s difference in %% OK between species at the 5%% level.", params$safe_dist_species_test_method, params$safe_dist_species_test_p_value, if (params$safe_dist_species_test_p_value < 0.05) "statistically significant" else "not statistically significant") else ""`
-
-The figure below tracks the same % OK figure by calendar month, with its 95% confidence band, to show the trajectory over the reporting period rather than a single blended number.
-
-<!-- Source: plot_safe_distance_by_month(summarise_safe_distance_by_month(...)), R/curtailment_safe_distance.R -->
-```{r safe-dist-by-month-plot, fig.width=6.30, fig.height=4}
-if (!is.null(params$safe_dist_by_month_plot)) print(params$safe_dist_by_month_plot)
-```
-
-A logistic regression of monthly outcome (OK/Crit) against calendar month tests whether this trend is `r if (!is.null(params$safe_dist_trend_direction) && params$safe_dist_trend_direction == "insufficient_data") "assessable" else "statistically significant"`. `r if (!is.null(params$safe_dist_trend_direction) && params$safe_dist_trend_direction == "insufficient_data") "The reporting period covered so far does not yet include enough distinct months with both outcomes present to fit this test reliably." else if (!is.null(params$safe_dist_trend_p_value)) sprintf("Result: %s trend, p = %.3f (%s at the 5%% level).", params$safe_dist_trend_direction, params$safe_dist_trend_p_value, if (params$safe_dist_trend_p_value < 0.05) "statistically significant" else "not statistically significant") else ""`
-
-```{r safe-dist-stats-annex, results='asis'}
-annex_note(params$xlsx_safe_dist)
 ```
 
 # 3D Coverage (Topography-corrected)

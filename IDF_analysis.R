@@ -1202,29 +1202,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
   summary_safe_dist_already_slowing <- summarise_safe_distance(
     safe_dist_dt[turbine_state == "already_slowing"], prioritysp
   )
-
-  # Estatistica formal sobre a MESMA safe_dist_dt -- CI de Wilson (overall e
-  # por especie), tendencia mensal e teste entre especies -- reforca o
-  # conjunto de provas do relatorio anual para os financiadores (lenders)
-  # com incerteza/significancia, nao so' % pontuais (pedido do Paulo, 2026-08)
-  safe_dist_ci_overall    <- summarise_safe_distance_ci(safe_dist_dt, prioritysp)
-  safe_dist_ci_by_species <- summarise_safe_distance_ci(safe_dist_dt, prioritysp, by_species = TRUE)
-  safe_dist_by_month      <- summarise_safe_distance_by_month(safe_dist_dt[species %in% prioritysp])
-  safe_dist_trend         <- test_safe_distance_trend(safe_dist_dt[species %in% prioritysp])
-  safe_dist_species_test  <- test_safe_distance_by_species(safe_dist_dt[species %in% prioritysp])
-
-  safe_dist_trend_dt <- data.table::data.table(
-    metric    = "pct_ok_monthly_trend",
-    p_value   = safe_dist_trend$p_value,
-    direction = safe_dist_trend$direction,
-    n_months  = safe_dist_trend$n_months
-  )
-  safe_dist_species_test_dt <- data.table::data.table(
-    metric  = "pct_ok_by_species",
-    p_value = safe_dist_species_test$p_value,
-    method  = safe_dist_species_test$method
-  )
-
+  
   write_xlsx_local(
     list(
       Safe_distance                = safe_dist_dt,
@@ -1233,12 +1211,7 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
       Overall_full_speed           = summary_safe_dist_full_speed$overall,
       By_species_full_speed        = summary_safe_dist_full_speed$by_species,
       Overall_already_slowing      = summary_safe_dist_already_slowing$overall,
-      By_species_already_slowing   = summary_safe_dist_already_slowing$by_species,
-      Overall_CI                   = safe_dist_ci_overall,
-      By_species_CI                = safe_dist_ci_by_species,
-      By_month                     = safe_dist_by_month,
-      Trend_test                   = safe_dist_trend_dt,
-      Species_test                 = safe_dist_species_test_dt
+      By_species_already_slowing   = summary_safe_dist_already_slowing$by_species
     ),
     file.path(folder_output, paste0("curtailment_safe_distance_", date(scada_ini), "to", date(scada_end), ".xlsx"))
   )
@@ -1262,14 +1235,6 @@ if (exists("scada_dt") && isTRUE(run_sections$curtailment_response)) { #Apenas c
       plot = p_trigger_dist_status, width = 8, height = 8, dpi = 300, bg = "white"
     )
   } else {message("Sem x2d/status calculavel para especies prioritarias -- plot nao gerado.")}
-
-  p_safe_dist_by_month <- plot_safe_distance_by_month(safe_dist_by_month)
-  if (!is.null(p_safe_dist_by_month)) {
-    ggsave(
-      file.path(folder_output, paste0("curtailment_safe_distance_by_month_", date(scada_ini), "to", date(scada_end), ".png")),
-      plot = p_safe_dist_by_month, width = 8, height = 5, dpi = 300, bg = "white"
-    )
-  } else {message("Sem meses com safe-distance calculavel -- plot de tendencia nao gerado.")}
   
 } else {
   message(sprintf(
@@ -2357,14 +2322,6 @@ report_params <- list(
   safe_dist_overall    = if (exists("summary_safe_dist")) summary_safe_dist$overall else NULL,
   safe_dist_by_species = if (exists("summary_safe_dist")) summary_safe_dist$by_species else NULL,
   safe_dist_plot       = if (exists("p_safe_dist_hist")) p_safe_dist_hist else NULL,
-
-  safe_dist_ci_overall     = if (exists("safe_dist_ci_overall")) safe_dist_ci_overall else NULL,
-  safe_dist_ci_by_species  = if (exists("safe_dist_ci_by_species")) safe_dist_ci_by_species else NULL,
-  safe_dist_by_month_plot  = if (exists("p_safe_dist_by_month")) p_safe_dist_by_month else NULL,
-  safe_dist_trend_p_value  = if (exists("safe_dist_trend")) safe_dist_trend$p_value else NULL,
-  safe_dist_trend_direction = if (exists("safe_dist_trend")) safe_dist_trend$direction else NULL,
-  safe_dist_species_test_p_value = if (exists("safe_dist_species_test")) safe_dist_species_test$p_value else NULL,
-  safe_dist_species_test_method  = if (exists("safe_dist_species_test")) safe_dist_species_test$method else NULL,
   
   no_response_examples_plot  = if (exists("p_no_response_examples")) p_no_response_examples else NULL,
   slowest_response_examples_plot = if (exists("p_slowest_response_examples")) p_slowest_response_examples else NULL,
