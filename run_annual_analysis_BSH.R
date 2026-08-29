@@ -35,6 +35,6 @@ force_reread_cache <- F
 ## a testar/depurar uma secção e queres inspecionar as tabelas/objetos
 ## diretamente no ambiente ou nos xlsx de anexo, sem esperar pelo
 ## rmarkdown::render() (o passo mais lento).
-generate_report <- F
+generate_report <- T
 
 source("IDF_analysis.R")
