@@ -49,3 +49,62 @@ cat(sprintf(
 
 cat("\nNiveis do factor terrain_class (esperado: flat, complex, ridge, nesta ordem):\n")
 print(levels(classified_test$terrain_class))
+
+
+## 2. Limiares por omissao (quantil, calibrados ao proprio conjunto de
+## turbinas) -- 10 turbinas sinteticas com relative_elev_m e mean_slope_deg
+## espacados uniformemente, para poder calcular os quantis a mao (quantile()
+## tipo 7, omissao do R) --------------------------------------------------
+##
+## relative_elev_m = 0,2,4,...,20 (10 valores) -> quantile(0.90): h=9.1 ->
+##   x[9]=16 + 0.4*(20-16) = 16.4 -> so' a turbina com 20 fica "ridge" (1/10)
+## mean_slope_deg (so' entre as 9 nao-ridge) = 1,2,...,9 -> quantile(0.75):
+##   h=7.0 -> x[7]=7 -> turbinas com slope 7,8,9 ficam "complex" (3/9)
+turrain_test2 <- data.table::data.table(
+  wtg_id          = paste0("TTQ", 1:10),
+  elev_m          = 100 + c(0, 2, 4, 6, 8, 10, 12, 14, 16, 20),
+  mean_elev_m     = 100,
+  relative_elev_m = c(0, 2, 4, 6, 8, 10, 12, 14, 16, 20),
+  mean_slope_deg  = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 20),
+  mean_tri_m      = 1
+)
+
+cat("\n===== classify_terrain(turrain_test2) -- limiares por omissao (quantil) =====\n")
+classified_test2 <- classify_terrain(turrain_test2)
+print(classified_test2[, .(wtg_id, relative_elev_m, mean_slope_deg, terrain_class)])
+
+thresholds2 <- attr(classified_test2, "thresholds")
+cat(sprintf(
+  "\nLimiares calculados: ridge_relelev_m=%.2f (esperado 16.40), complex_slope_deg=%.2f (esperado 7.00)\n",
+  thresholds2$ridge_relelev_m, thresholds2$complex_slope_deg
+))
+
+expected_class2 <- stats::setNames(
+  c(rep("flat", 6), "complex", "complex", "complex", "ridge"),
+  paste0("TTQ", 1:10)
+)
+classified_test2[, expected := expected_class2[wtg_id]]
+classified_test2[, ok := as.character(terrain_class) == expected]
+cat(sprintf(
+  "Resultado: %d/%d turbinas classificadas corretamente (esperado: TTQ1-6 flat, TTQ7-9 complex, TTQ10 ridge).\n",
+  sum(classified_test2$ok), nrow(classified_test2)
+))
+
+
+## 3. Caso-limite: todas as turbinas ficam "ridge" (relative_elev_m
+## constante e >= o proprio quantil 0.90 de um vetor constante) -- nao ha
+## nao-ridge para o quantil de "complex" -- complex_cutoff deve ficar Inf,
+## sem erro (em vez de quantile(numeric(0), ...)) -----------------------
+
+cat("\n===== classify_terrain() -- caso-limite: todas as turbinas com a mesma relative_elev_m =====\n")
+turrain_test3 <- data.table::data.table(
+  wtg_id = c("TTQ_A", "TTQ_B", "TTQ_C"),
+  elev_m = 110, mean_elev_m = 100, relative_elev_m = 10,
+  mean_slope_deg = c(1, 5, 9), mean_tri_m = 1
+)
+classified_test3 <- classify_terrain(turrain_test3)
+print(classified_test3[, .(wtg_id, relative_elev_m, mean_slope_deg, terrain_class)])
+cat(sprintf(
+  "Esperado: todas 'ridge' (quantile(0.90) de um vetor constante == o proprio valor, >= inclusive) -- %s\n",
+  if (all(as.character(classified_test3$terrain_class) == "ridge")) "OK" else "FALHOU"
+))

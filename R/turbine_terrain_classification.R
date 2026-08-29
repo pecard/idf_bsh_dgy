@@ -26,17 +26,37 @@
 ##                acima da vizinhanca, independentemente da inclinacao)
 ##   "complex" -- (nao ridge) e mean_slope_deg >= complex_slope_deg
 ##   "flat"    -- resto (vizinhanca pouco acidentada e turbina nao elevada)
-## Os limiares por omissao (15m, 8 graus) sao um ponto de partida -- ajustar
-## depois de olhar para plot_turbine_terrain_map() e para o conhecimento do
-## terreno do proprio Paulo, nao sao valores validados cientificamente.
+##
+## Limiares POR OMISSAO SAO RELATIVOS AO PROPRIO PARQUE, nao valores fixos:
+## ridge_relelev_m/complex_slope_deg (omissao NULL) sao calculados como
+## quantis (ridge_relelev_q=0.90, complex_slope_q=0.75 por omissao) da
+## distribuicao observada nas turbinas passadas a classify_terrain() --
+## ridge = top ~10% por relative_elev_m, complex = top ~25% das restantes
+## por mean_slope_deg. Um limiar FIXO (ex: 15m/8 graus, a 1a versao desta
+## funcao) e' demasiado rigido -- um relevo suave onde a maior "crista"
+## real do parque so' tem 8m de desnivel nunca teria nenhuma turbina
+## classificada como "ridge", e um parque muito acidentado podia classificar
+## quase tudo como "ridge"/"complex" (caso real do Bash, 2026-08: so' 1
+## turbina em 80 ficou "ridge" e nenhuma "complex" com os limiares fixos
+## originais). A versao por quantil garante sempre uma divisao nao-trivial
+## nas 3 classes, calibrada ao relevo real de CADA parque -- passar valores
+## absolutos a ridge_relelev_m/complex_slope_deg desliga o calculo por
+## quantil e volta ao comportamento antigo (limiar fixo), se preferires um
+## valor absoluto conhecido em vez de relativo ao parque.
+## classify_terrain() imprime os limiares efetivamente usados (mensagem) e
+## guarda-os tambem no atributo "thresholds" do resultado (attr(dt, "thresholds")).
 ##
 ## Depende de: data.table, sf, terra, ggplot2
 ##
 ## Uso:
 ##   source("R/turbine_terrain_classification.R")
 ##   terrain_dt <- compute_turbine_terrain_metrics(wtg, dem_file, radius_m = 500)
-##   terrain_dt <- classify_terrain(terrain_dt, ridge_relelev_m = 15, complex_slope_deg = 8)
+##   terrain_dt <- classify_terrain(terrain_dt) # limiares por quantil, calibrados a este parque
+##   attr(terrain_dt, "thresholds") # ver os valores (m/graus) que os quantis deram
 ##   plot_turbine_terrain_map(wtg, terrain_dt) # confirma visualmente antes de usar
+##
+##   # limiares absolutos, se preferires um valor conhecido em vez de relativo:
+##   terrain_dt <- classify_terrain(terrain_dt, ridge_relelev_m = 15, complex_slope_deg = 8)
 ##
 ##   # cruzar com a analise de setor -- ver R/curtailment_bearing_sectors.R
 ##   bearing_dt <- compute_curtailment_bearing(curtl_dt, track_dt, wtg, turbine_terrain_dt = terrain_dt)
@@ -105,16 +125,53 @@ compute_turbine_terrain_metrics <- function(wtg_sf, dem_file, radius_m = 500, wt
 
 
 ## 2. Classificacao em 3 classes (ver limiares na nota do topo do ficheiro) ----
+##
+## ridge_relelev_m/complex_slope_deg = NULL (omissao) -- limiar calculado
+## como quantil (ridge_relelev_q/complex_slope_q) da distribuicao das
+## turbinas em turbine_terrain_dt; um valor numerico explicito desliga o
+## calculo por quantil correspondente e usa esse valor fixo.
 
-classify_terrain <- function(turbine_terrain_dt, ridge_relelev_m = 15, complex_slope_deg = 8) {
+classify_terrain <- function(turbine_terrain_dt,
+                             ridge_relelev_m = NULL, ridge_relelev_q = 0.90,
+                             complex_slope_deg = NULL, complex_slope_q = 0.75) {
 
   dt <- data.table::copy(turbine_terrain_dt)
+
+  ridge_cutoff <- if (!is.null(ridge_relelev_m)) {
+    ridge_relelev_m
+  } else {
+    as.numeric(stats::quantile(dt$relative_elev_m, probs = ridge_relelev_q, na.rm = TRUE))
+  }
+  dt[, is_ridge := relative_elev_m >= ridge_cutoff]
+
+  ## quantil de mean_slope_deg SO' entre as nao-ridge -- uma turbina de
+  ## crista tipicamente ja tem slope alto so' por estar no topo do relevo;
+  ## sem este filtro o quantil de complex ficava inflacionado pelas proprias
+  ## ridges, deixando poucas (ou nenhumas) turbinas acima do limiar de "complex"
+  non_ridge_slope <- dt[is_ridge == FALSE, mean_slope_deg]
+  complex_cutoff <- if (!is.null(complex_slope_deg)) {
+    complex_slope_deg
+  } else if (length(non_ridge_slope) == 0L) {
+    Inf # todas as turbinas ficaram "ridge" -- nao ha nao-ridge para calcular o quantil de "complex"
+  } else {
+    as.numeric(stats::quantile(non_ridge_slope, probs = complex_slope_q, na.rm = TRUE))
+  }
+
   dt[, terrain_class := data.table::fcase(
-    relative_elev_m >= ridge_relelev_m, "ridge",
-    mean_slope_deg >= complex_slope_deg, "complex",
+    is_ridge, "ridge",
+    mean_slope_deg >= complex_cutoff, "complex",
     default = "flat"
   )]
   dt[, terrain_class := factor(terrain_class, levels = c("flat", "complex", "ridge"))]
+  dt[, is_ridge := NULL]
+
+  message(sprintf(
+    "classify_terrain(): ridge se relative_elev_m >= %.1f m%s; complex se mean_slope_deg >= %.1f graus%s.",
+    ridge_cutoff, if (is.null(ridge_relelev_m)) sprintf(" (quantil %.2f)", ridge_relelev_q) else " (valor fixo)",
+    complex_cutoff, if (is.null(complex_slope_deg)) sprintf(" (quantil %.2f, so' nao-ridge)", complex_slope_q) else " (valor fixo)"
+  ))
+  data.table::setattr(dt, "thresholds", list(ridge_relelev_m = ridge_cutoff, complex_slope_deg = complex_cutoff))
+
   dt[]
 }
 
