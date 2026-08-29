@@ -7,23 +7,41 @@
 ## fator melhor do que a direcao de bussola.
 ##
 ## Metodologia (simples/exploratoria, thresholds ajustaveis -- ver
-## classify_terrain()): para cada turbina, recorta o DEM a um buffer circular
-## de raio radius_m a volta da turbina (mesma logica de crop/mask/reprojetar
-## para uma CRS local planar centrada na turbina de
-## R/coverage_3d_topography.R, build_terrain_mesh()) e calcula:
-##   elev_m           -- cota da propria turbina
-##   mean_elev_m       -- cota media do buffer a' volta
-##   relative_elev_m   -- elev_m - mean_elev_m (positivo = turbina mais alta
-##                        que a vizinhanca -- indicador de posicao de crista/
-##                        topo de relevo)
-##   mean_slope_deg    -- inclinacao media do terreno no buffer (terra::terrain, "slope")
-##   mean_tri_m        -- Terrain Ruggedness Index medio no buffer (terra::terrain,
-##                        "TRI" -- diferenca media de cota entre cada celula e
-##                        as suas 8 vizinhas; mais alto = terreno mais acidentado)
+## classify_terrain()): para cada turbina, recorta o DEM a 2 buffers
+## circulares CONCENTRICOS a volta da turbina -- radius_inner_m (250m por
+## omissao) e radius_outer_m (500m por omissao) -- mesma logica de
+## crop/mask/reprojetar para uma CRS local planar centrada na turbina de
+## R/coverage_3d_topography.R, build_terrain_mesh(). 2 buffers em vez de 1
+## (pedido do Paulo, 2026-08): 1 buffer so' nao apanha o caso de uma turbina
+## num pequeno plateau, com uma crista real a algumas centenas de metros --
+## como essa crista ja fica DENTRO de um buffer unico largo o suficiente
+## para a incluir, a media desse buffer tambem sobe, e a diferenca
+## (elev_m menos essa media) fica pequena mesmo a turbina estando
+## claramente perto de relevo. Com 2 buffers separamos:
+##   elev_m             -- cota da propria turbina
+##   mean_elev_inner_m   -- cota media do buffer PEQUENO (o footing imediato
+##                          da turbina -- ex: o proprio plateau onde assenta)
+##   mean_elev_outer_m   -- cota media do buffer GRANDE (footing + vizinhanca
+##                          mais larga -- ja apanha uma crista a algumas
+##                          centenas de metros, se existir)
+##   relative_elev_m     -- elev_m - mean_elev_outer_m (definicao original,
+##                          1 buffer so' -- mantida para comparacao)
+##   elev_gradient_m     -- mean_elev_outer_m - mean_elev_inner_m (positivo =
+##                          terreno a subir nalgum ponto entre os 2 raios --
+##                          sinal de crista PERTO mas fora do footing imediato)
+##   ridge_proximity_m   -- max(elev_m - mean_elev_inner_m, elev_gradient_m)
+##                          -- combina "a turbina esta em cima de algo" com
+##                          "ha relevo mais alto perto dela" num so' numero
+##   mean_slope_deg      -- inclinacao media do terreno no buffer outer (terra::terrain, "slope")
+##   mean_tri_m          -- Terrain Ruggedness Index medio no buffer outer (terra::terrain,
+##                          "TRI" -- diferenca media de cota entre cada celula e
+##                          as suas 8 vizinhas; mais alto = terreno mais acidentado)
 ##
 ## classify_terrain() classifica em 3 classes, por esta ordem de prioridade:
-##   "ridge"   -- relative_elev_m >= ridge_relelev_m (turbina claramente
-##                acima da vizinhanca, independentemente da inclinacao)
+##   "ridge"   -- <ridge_metric> >= ridge_relelev_m (por omissao ridge_metric
+##                = "ridge_proximity_m", o combinado dos 2 buffers acima;
+##                pode ser trocado para "relative_elev_m", a definicao
+##                original de 1 buffer so', para comparar os 2 criterios)
 ##   "complex" -- (nao ridge) e mean_slope_deg >= complex_slope_deg
 ##   "flat"    -- resto (vizinhanca pouco acidentada e turbina nao elevada)
 ##
@@ -31,7 +49,7 @@
 ## ridge_relelev_m/complex_slope_deg (omissao NULL) sao calculados como
 ## quantis (ridge_relelev_q=0.90, complex_slope_q=0.75 por omissao) da
 ## distribuicao observada nas turbinas passadas a classify_terrain() --
-## ridge = top ~10% por relative_elev_m, complex = top ~25% das restantes
+## ridge = top ~10% por ridge_metric, complex = top ~25% das restantes
 ## por mean_slope_deg. Um limiar FIXO (ex: 15m/8 graus, a 1a versao desta
 ## funcao) e' demasiado rigido -- um relevo suave onde a maior "crista"
 ## real do parque so' tem 8m de desnivel nunca teria nenhuma turbina
@@ -50,10 +68,13 @@
 ##
 ## Uso:
 ##   source("R/turbine_terrain_classification.R")
-##   terrain_dt <- compute_turbine_terrain_metrics(wtg, dem_file, radius_m = 500)
-##   terrain_dt <- classify_terrain(terrain_dt) # limiares por quantil, calibrados a este parque
+##   terrain_dt <- compute_turbine_terrain_metrics(wtg, dem_file, radius_inner_m = 250, radius_outer_m = 500)
+##   terrain_dt <- classify_terrain(terrain_dt) # ridge_proximity_m + limiares por quantil, calibrados a este parque
 ##   attr(terrain_dt, "thresholds") # ver os valores (m/graus) que os quantis deram
 ##   plot_turbine_terrain_map(wtg, terrain_dt) # confirma visualmente antes de usar
+##
+##   # comparar com o criterio original (1 buffer so'):
+##   terrain_dt_v1 <- classify_terrain(terrain_dt, ridge_metric = "relative_elev_m")
 ##
 ##   # limiares absolutos, se preferires um valor conhecido em vez de relativo:
 ##   terrain_dt <- classify_terrain(terrain_dt, ridge_relelev_m = 15, complex_slope_deg = 8)
@@ -64,8 +85,31 @@
 
 
 ## 1. Metricas de terreno a volta de cada turbina (a partir do DEM) ----
+##
+## 2 buffers concentricos (radius_inner_m/radius_outer_m, 250m/500m por
+## omissao) em vez de 1 -- pedido do Paulo (2026-08): um so' buffer nao
+## apanha o caso de uma turbina num pequeno plateau, com uma crista real a
+## algumas centenas de metros -- o buffer unico (500m) ja inclui essa
+## crista, por isso a media dele tambem sobe e relative_elev_m (elev_m
+## menos essa media) fica pequeno, mesmo a turbina estando claramente perto
+## de relevo. Com 2 buffers conseguimos separar "a turbina esta em cima de
+## algo" (elev_m vs mean_elev_inner_m, footing imediato) de "ha relevo mais
+## alto perto, so' que fora do footing imediato" (mean_elev_outer_m acima de
+## mean_elev_inner_m -- o buffer maior, ao incluir mais area, apanha essa
+## crista e a media sobe em relacao ao buffer pequeno).
+##
+## elev_gradient_m = mean_elev_outer_m - mean_elev_inner_m -- positivo
+## sugere terreno a subir algures entre radius_inner_m e radius_outer_m
+## (crista fora do footing imediato, mas ainda perto).
+## ridge_proximity_m = pmax(elev_m - mean_elev_inner_m, elev_gradient_m) --
+## combina os 2 sinais (turbina elevada OU relevo a subir perto dela) num
+## unico numero, usado por omissao em classify_terrain() (ver ridge_metric).
+## relative_elev_m mantido (elev_m - mean_elev_outer_m, definicao original,
+## 1 buffer so') para comparacao lado-a-lado.
 
-compute_turbine_terrain_metrics <- function(wtg_sf, dem_file, radius_m = 500, wtg_id_col = "InternalNa") {
+compute_turbine_terrain_metrics <- function(wtg_sf, dem_file,
+                                            radius_inner_m = 250, radius_outer_m = 500,
+                                            wtg_id_col = "InternalNa") {
 
   wtg_wgs84 <- sf::st_transform(wtg_sf, 4326)
   coords    <- sf::st_coordinates(wtg_wgs84)
@@ -94,29 +138,42 @@ compute_turbine_terrain_metrics <- function(wtg_sf, dem_file, radius_m = 500, wt
     wtg_pt_sf    <- sf::st_as_sf(data.frame(id = wtg_id, lon = wtg_lon, lat = wtg_lat), coords = c("lon", "lat"), crs = 4326)
     wtg_pt_local <- sf::st_transform(wtg_pt_sf, crs_local)
 
-    wtg_buffer_local  <- sf::st_buffer(wtg_pt_local, dist = radius_m)
-    wtg_buffer_demcrs <- sf::st_transform(wtg_buffer_local, sf::st_crs(dem)$wkt)
+    ## Recorta/reprojeta o DEM UMA SO' VEZ, ao buffer MAIOR (outer) -- o
+    ## buffer inner e' so' uma mascara adicional sobre esse raster ja local,
+    ## nao precisa de recortar/reprojetar o DEM outra vez
+    wtg_buffer_outer_local <- sf::st_buffer(wtg_pt_local, dist = radius_outer_m)
+    wtg_buffer_demcrs      <- sf::st_transform(wtg_buffer_outer_local, sf::st_crs(dem)$wkt)
 
     dem_crop  <- terra::crop(dem, terra::vect(wtg_buffer_demcrs))
     dem_crop  <- terra::mask(dem_crop, terra::vect(wtg_buffer_demcrs))
-    dem_local <- terra::project(dem_crop, crs_local)
+    dem_local <- terra::project(dem_crop, crs_local) # extensao = buffer outer
+
+    wtg_buffer_inner_local <- sf::st_buffer(wtg_pt_local, dist = radius_inner_m)
+    dem_local_inner        <- terra::mask(dem_local, terra::vect(wtg_buffer_inner_local))
 
     wtg_elev <- as.numeric(terra::extract(dem_local, terra::vect(wtg_pt_local))[[2]])
 
     slope_local <- terra::terrain(dem_local, v = "slope", unit = "degrees")
     tri_local   <- terra::terrain(dem_local, v = "TRI")
 
-    mean_elev  <- as.numeric(terra::global(dem_local, "mean", na.rm = TRUE)[1, 1])
-    mean_slope <- as.numeric(terra::global(slope_local, "mean", na.rm = TRUE)[1, 1])
-    mean_tri   <- as.numeric(terra::global(tri_local, "mean", na.rm = TRUE)[1, 1])
+    mean_elev_inner <- as.numeric(terra::global(dem_local_inner, "mean", na.rm = TRUE)[1, 1])
+    mean_elev_outer <- as.numeric(terra::global(dem_local, "mean", na.rm = TRUE)[1, 1])
+    mean_slope      <- as.numeric(terra::global(slope_local, "mean", na.rm = TRUE)[1, 1])
+    mean_tri        <- as.numeric(terra::global(tri_local, "mean", na.rm = TRUE)[1, 1])
+
+    elev_gradient   <- mean_elev_outer - mean_elev_inner
+    ridge_proximity <- max(wtg_elev - mean_elev_inner, elev_gradient)
 
     data.table::data.table(
-      wtg_id          = wtg_id,
-      elev_m          = wtg_elev,
-      mean_elev_m     = round(mean_elev, 1),
-      relative_elev_m = round(wtg_elev - mean_elev, 1),
-      mean_slope_deg  = round(mean_slope, 1),
-      mean_tri_m      = round(mean_tri, 1)
+      wtg_id             = wtg_id,
+      elev_m             = wtg_elev,
+      mean_elev_inner_m  = round(mean_elev_inner, 1),
+      mean_elev_outer_m  = round(mean_elev_outer, 1),
+      relative_elev_m    = round(wtg_elev - mean_elev_outer, 1), # definicao original (1 buffer), para comparacao
+      elev_gradient_m    = round(elev_gradient, 1),
+      ridge_proximity_m  = round(ridge_proximity, 1),
+      mean_slope_deg     = round(mean_slope, 1),
+      mean_tri_m         = round(mean_tri, 1)
     )
   })
 
@@ -126,23 +183,29 @@ compute_turbine_terrain_metrics <- function(wtg_sf, dem_file, radius_m = 500, wt
 
 ## 2. Classificacao em 3 classes (ver limiares na nota do topo do ficheiro) ----
 ##
+## ridge_metric -- qual coluna de turbine_terrain_dt usar para o criterio de
+## "ridge": "ridge_proximity_m" (omissao, o combinado de 2 buffers -- ver
+## compute_turbine_terrain_metrics()) ou "relative_elev_m" (definicao
+## original, 1 buffer so', para comparar os 2 criterios lado-a-lado).
+##
 ## ridge_relelev_m/complex_slope_deg = NULL (omissao) -- limiar calculado
 ## como quantil (ridge_relelev_q/complex_slope_q) da distribuicao das
 ## turbinas em turbine_terrain_dt; um valor numerico explicito desliga o
 ## calculo por quantil correspondente e usa esse valor fixo.
 
-classify_terrain <- function(turbine_terrain_dt,
+classify_terrain <- function(turbine_terrain_dt, ridge_metric = "ridge_proximity_m",
                              ridge_relelev_m = NULL, ridge_relelev_q = 0.90,
                              complex_slope_deg = NULL, complex_slope_q = 0.75) {
 
   dt <- data.table::copy(turbine_terrain_dt)
+  ridge_values <- dt[[ridge_metric]]
 
   ridge_cutoff <- if (!is.null(ridge_relelev_m)) {
     ridge_relelev_m
   } else {
-    as.numeric(stats::quantile(dt$relative_elev_m, probs = ridge_relelev_q, na.rm = TRUE))
+    as.numeric(stats::quantile(ridge_values, probs = ridge_relelev_q, na.rm = TRUE))
   }
-  dt[, is_ridge := relative_elev_m >= ridge_cutoff]
+  dt[, is_ridge := ridge_values >= ridge_cutoff]
 
   ## quantil de mean_slope_deg SO' entre as nao-ridge -- uma turbina de
   ## crista tipicamente ja tem slope alto so' por estar no topo do relevo;
@@ -166,11 +229,11 @@ classify_terrain <- function(turbine_terrain_dt,
   dt[, is_ridge := NULL]
 
   message(sprintf(
-    "classify_terrain(): ridge se relative_elev_m >= %.1f m%s; complex se mean_slope_deg >= %.1f graus%s.",
-    ridge_cutoff, if (is.null(ridge_relelev_m)) sprintf(" (quantil %.2f)", ridge_relelev_q) else " (valor fixo)",
+    "classify_terrain(): ridge se %s >= %.1f m%s; complex se mean_slope_deg >= %.1f graus%s.",
+    ridge_metric, ridge_cutoff, if (is.null(ridge_relelev_m)) sprintf(" (quantil %.2f)", ridge_relelev_q) else " (valor fixo)",
     complex_cutoff, if (is.null(complex_slope_deg)) sprintf(" (quantil %.2f, so' nao-ridge)", complex_slope_q) else " (valor fixo)"
   ))
-  data.table::setattr(dt, "thresholds", list(ridge_relelev_m = ridge_cutoff, complex_slope_deg = complex_cutoff))
+  data.table::setattr(dt, "thresholds", list(ridge_metric = ridge_metric, ridge_cutoff = ridge_cutoff, complex_slope_deg = complex_cutoff))
 
   dt[]
 }

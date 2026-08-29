@@ -36,7 +36,7 @@ turrain_test <- data.table::data.table(
 )
 
 cat("\n===== classify_terrain(turrain_test) =====\n")
-classified_test <- classify_terrain(turrain_test, ridge_relelev_m = 15, complex_slope_deg = 8)
+classified_test <- classify_terrain(turrain_test, ridge_metric = "relative_elev_m", ridge_relelev_m = 15, complex_slope_deg = 8)
 print(classified_test[, .(wtg_id, relative_elev_m, mean_slope_deg, terrain_class)])
 
 expected_class <- c(TTC_RIDGE = "ridge", TTC_COMPLEX = "complex", TTC_FLAT = "flat", TTC_BOUNDARY = "ridge")
@@ -69,14 +69,14 @@ turrain_test2 <- data.table::data.table(
   mean_tri_m      = 1
 )
 
-cat("\n===== classify_terrain(turrain_test2) -- limiares por omissao (quantil) =====\n")
-classified_test2 <- classify_terrain(turrain_test2)
+cat("\n===== classify_terrain(turrain_test2, ridge_metric = \"relative_elev_m\") -- limiares por omissao (quantil) =====\n")
+classified_test2 <- classify_terrain(turrain_test2, ridge_metric = "relative_elev_m")
 print(classified_test2[, .(wtg_id, relative_elev_m, mean_slope_deg, terrain_class)])
 
 thresholds2 <- attr(classified_test2, "thresholds")
 cat(sprintf(
-  "\nLimiares calculados: ridge_relelev_m=%.2f (esperado 16.40), complex_slope_deg=%.2f (esperado 7.00)\n",
-  thresholds2$ridge_relelev_m, thresholds2$complex_slope_deg
+  "\nLimiares calculados: ridge_cutoff=%.2f (esperado 16.40, sobre relative_elev_m), complex_slope_deg=%.2f (esperado 7.00)\n",
+  thresholds2$ridge_cutoff, thresholds2$complex_slope_deg
 ))
 
 expected_class2 <- stats::setNames(
@@ -102,9 +102,48 @@ turrain_test3 <- data.table::data.table(
   elev_m = 110, mean_elev_m = 100, relative_elev_m = 10,
   mean_slope_deg = c(1, 5, 9), mean_tri_m = 1
 )
-classified_test3 <- classify_terrain(turrain_test3)
+classified_test3 <- classify_terrain(turrain_test3, ridge_metric = "relative_elev_m")
 print(classified_test3[, .(wtg_id, relative_elev_m, mean_slope_deg, terrain_class)])
 cat(sprintf(
   "Esperado: todas 'ridge' (quantile(0.90) de um vetor constante == o proprio valor, >= inclusive) -- %s\n",
   if (all(as.character(classified_test3$terrain_class) == "ridge")) "OK" else "FALHOU"
+))
+
+
+## 4. ridge_metric -- confirma que o argumento realmente troca a coluna
+## usada para o criterio de "ridge" (por omissao "ridge_proximity_m", o
+## combinado de 2 buffers -- ver compute_turbine_terrain_metrics()) --------
+##
+## 2 turbinas com relative_elev_m e ridge_proximity_m EM DESACORDO
+## deliberadamente, para que a escolha do criterio mude o resultado:
+##   TTM_A -- relative_elev_m alto (20, seria "ridge" pelo criterio antigo),
+##            ridge_proximity_m baixo (2, plateau alto mas sem crista perto)
+##   TTM_B -- relative_elev_m baixo (2, seria "flat"/"complex" pelo criterio
+##            antigo), ridge_proximity_m alto (20 -- ex: elev_gradient_m
+##            alto, terreno a subir para uma crista fora do footing imediato,
+##            o caso que motivou esta seccao 2 de buffers)
+cat("\n===== classify_terrain() -- ridge_metric muda qual coluna decide \"ridge\" =====\n")
+turrain_test4 <- data.table::data.table(
+  wtg_id = c("TTM_A", "TTM_B"), elev_m = c(120, 102), mean_elev_m = 100,
+  relative_elev_m = c(20, 2), ridge_proximity_m = c(2, 20),
+  mean_slope_deg = 1, mean_tri_m = 1
+)
+
+## complex_slope_deg fixo e alto de proposito -- isola este teste do
+## criterio de "ridge", sem interferencia do quantil de "complex" (que com
+## so' 1 turbina nao-ridge de cada vez colapsaria no proprio valor -- mesmo
+## caso-limite da seccao 3 acima)
+by_proximity <- classify_terrain(turrain_test4, ridge_relelev_m = 15, complex_slope_deg = 999) # omissao: ridge_metric = "ridge_proximity_m"
+by_relelev   <- classify_terrain(turrain_test4, ridge_metric = "relative_elev_m", ridge_relelev_m = 15, complex_slope_deg = 999)
+
+cat("Por ridge_proximity_m (omissao):\n")
+print(by_proximity[, .(wtg_id, relative_elev_m, ridge_proximity_m, terrain_class)])
+cat("Por relative_elev_m (explicito):\n")
+print(by_relelev[, .(wtg_id, relative_elev_m, ridge_proximity_m, terrain_class)])
+
+ok_proximity <- identical(as.character(by_proximity$terrain_class), c("flat", "ridge")) # TTM_A flat, TTM_B ridge
+ok_relelev   <- identical(as.character(by_relelev$terrain_class), c("ridge", "flat"))   # invertido
+cat(sprintf(
+  "Esperado: por ridge_proximity_m -> TTM_A='flat'/TTM_B='ridge'; por relative_elev_m -> invertido -- %s\n",
+  if (ok_proximity && ok_relelev) "OK" else "FALHOU"
 ))
