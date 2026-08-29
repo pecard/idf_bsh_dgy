@@ -161,3 +161,28 @@ cat("\n----- Caso-limite: nenhuma turbina 'complex' -----\n")
 counts_test3 <- summarise_terrain_class_counts(classified_test3) # so' "ridge" (secção 3)
 print(counts_test3)
 cat("Esperado: flat n=0/0%, complex n=0/0%, ridge n=3/100% (0-fill nas classes ausentes).\n")
+
+
+## 6. plot_turbine_terrain_map() -- show_labels liga/desliga o rotulo -----
+## (nao precisa de DEM, so' de um wtg_sf sintetico + terrain_dt ja
+## classificado -- testavel, ao contrario de compute_turbine_terrain_metrics())
+
+cat("\n===== plot_turbine_terrain_map() -- show_labels =====\n")
+wtg_test <- sf::st_as_sf(
+  data.frame(InternalNa = c("TTC_RIDGE", "TTC_COMPLEX", "TTC_FLAT", "TTC_BOUNDARY"), x = c(0, 100, 200, 300), y = 0),
+  coords = c("x", "y"), crs = 32641
+)
+
+p_map_labels    <- plot_turbine_terrain_map(wtg_test, classified_test)
+p_map_no_labels <- plot_turbine_terrain_map(wtg_test, classified_test, show_labels = FALSE)
+
+has_text_layer <- function(p) any(vapply(p$layers, function(l) inherits(l$geom, "GeomText"), logical(1)))
+cat(sprintf(
+  "show_labels=TRUE tem camada de texto: %s (esperado TRUE) -- show_labels=FALSE tem camada de texto: %s (esperado FALSE)\n",
+  has_text_layer(p_map_labels), has_text_layer(p_map_no_labels)
+))
+cat(sprintf(
+  "Legenda em baixo (ambos): %s / %s -- eixos escondidos (ambos): %s / %s\n",
+  identical(p_map_labels$theme$legend.position, "bottom"), identical(p_map_no_labels$theme$legend.position, "bottom"),
+  inherits(p_map_labels$theme$axis.text, "element_blank"), inherits(p_map_no_labels$theme$axis.text, "element_blank")
+))

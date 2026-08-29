@@ -71,7 +71,8 @@
 ##   terrain_dt <- compute_turbine_terrain_metrics(wtg, dem_file, radius_inner_m = 250, radius_outer_m = 500)
 ##   terrain_dt <- classify_terrain(terrain_dt) # ridge_proximity_m + limiares por quantil, calibrados a este parque
 ##   attr(terrain_dt, "thresholds") # ver os valores (m/graus) que os quantis deram
-##   plot_turbine_terrain_map(wtg, terrain_dt) # confirma visualmente antes de usar
+##   plot_turbine_terrain_map(wtg, terrain_dt) # confirma visualmente antes de usar (com rotulos)
+##   plot_turbine_terrain_map(wtg, terrain_dt, show_labels = FALSE) # versao do relatorio, sem rotulos
 ##   summarise_terrain_class_counts(terrain_dt) # n e % de turbinas por classe (tabela do relatorio)
 ##
 ##   # comparar com o criterio original (1 buffer so'):
@@ -267,8 +268,15 @@ summarise_terrain_class_counts <- function(turbine_terrain_dt) {
 
 
 ## 4. Mapa de confirmacao visual (turbinas coloridas pela classe) ----
+##
+## show_labels = TRUE (omissao) -- mostra o wtg_id ao lado de cada turbina,
+## util para identificar uma turbina especifica ao confirmar a classificacao
+## na consola. show_labels = FALSE (usado na versao deste mapa que vai para
+## o relatorio, pedido do Paulo 2026-08) tira os rotulos -- so' as cores.
+## Legenda em baixo e sem eixos (as coordenadas UTM nao sao informativas
+## para quem le o relatorio) sempre, independentemente de show_labels.
 
-plot_turbine_terrain_map <- function(wtg_sf, turbine_terrain_dt, wtg_id_col = "InternalNa") {
+plot_turbine_terrain_map <- function(wtg_sf, turbine_terrain_dt, wtg_id_col = "InternalNa", show_labels = TRUE) {
 
   class_lookup <- stats::setNames(as.character(turbine_terrain_dt$terrain_class), turbine_terrain_dt$wtg_id)
 
@@ -276,10 +284,17 @@ plot_turbine_terrain_map <- function(wtg_sf, turbine_terrain_dt, wtg_id_col = "I
   map_sf$wtg_id <- wtg_sf[[wtg_id_col]]
   map_sf$terrain_class <- class_lookup[map_sf$wtg_id]
 
-  ggplot(map_sf) +
+  p <- ggplot(map_sf) +
     geom_sf(aes(colour = terrain_class), size = 3) +
-    geom_sf_text(aes(label = wtg_id), nudge_y = 50, size = 3) +
     scale_colour_manual(values = c(flat = "#4daf4a", complex = "#ff7f00", ridge = "#e41a1c")) +
     labs(colour = "Terrain class", title = "Turbine terrain classification") +
-    theme_bw()
+    theme_bw() +
+    theme(
+      legend.position = "bottom",
+      axis.title = element_blank(), axis.text = element_blank(), axis.ticks = element_blank()
+    )
+
+  if (show_labels) p <- p + geom_sf_text(aes(label = wtg_id), nudge_y = 50, size = 3)
+
+  p
 }

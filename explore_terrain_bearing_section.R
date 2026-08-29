@@ -47,7 +47,8 @@ print(table(terrain_dt$terrain_class))
 
 # confirmar visualmente antes de confiar na classificacao -- ajustar
 # ridge_relelev_q/complex_slope_q em classify_terrain() se nao bater certo
-# com o que conheces do terreno
+# com o que conheces do terreno (com rotulos, aqui na consola; a versao do
+# relatorio usa show_labels = FALSE)
 print(plot_turbine_terrain_map(wtg, terrain_dt))
 
 
@@ -68,14 +69,21 @@ summary_bearing_sp <- summarise_bearing_sectors(bearing_dt_sp, group_cols = c("s
 cat("\n===== Resumo (quantis) por especie x classe de terreno =====\n")
 print(summary_bearing_sp[, .(species, terrain_class, n, dist_median, speed_median, height_median)])
 
-## Os 2 graficos propostos para o relatorio (secção "Curtailment Distance,
-## Speed and Height by Terrain Class and Species") -- repetir para
-## metric = "avg_speed_ms" / "trigger_height_m" conforme o que quiseres ver
-p_box_species   <- plot_bearing_boxplot(bearing_dt_sp, metric = "trigger_dist_m")
-p_terrain_species <- plot_terrain_class_hist(bearing_dt_sp, metric = "trigger_dist_m")
+## Os 2 graficos usados no relatorio (secção "Curtailment Distance and Speed
+## by Species and Terrain Class") -- boxplot de distancia, histograma de
+## velocidade (free-y, titulo tamanho 8)
+p_box_species     <- plot_bearing_boxplot(bearing_dt_sp, metric = "trigger_dist_m")
+p_terrain_species <- plot_terrain_class_hist(bearing_dt_sp, metric = "avg_speed_ms")
 
 print(p_box_species)
 print(p_terrain_species)
+
+# tabelas compactas n/media/sd que acompanham os 2 graficos acima no
+# relatorio (uma para distancia, uma para velocidade)
+cat("\n===== Distancia: media/sd por especie x classe de terreno =====\n")
+print(summarise_bearing_mean_sd(bearing_dt_sp, metric = "trigger_dist_m"))
+cat("\n===== Velocidade: media/sd por especie x classe de terreno =====\n")
+print(summarise_bearing_mean_sd(bearing_dt_sp, metric = "avg_speed_ms"))
 
 # ggsave(file.path(folder_output, "bearing_boxplot_by_species.png"), p_box_species, width = 8, height = 8, dpi = 300, bg = "white")
 # ggsave(file.path(folder_output, "terrain_hist_by_species.png"), p_terrain_species, width = 9, height = 8, dpi = 300, bg = "white")

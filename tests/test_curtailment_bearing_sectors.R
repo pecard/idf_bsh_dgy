@@ -241,3 +241,29 @@ cat(sprintf(
   "Com 1 especie so' -- plot_terrain_class_hist() usa FacetWrap (nao Grid): %s\n",
   inherits(p_terrain_hist$facet, "FacetWrap")
 ))
+
+
+## 7. summarise_bearing_mean_sd() -- tabela compacta n/media/sd -------------
+##
+## bearing_dt_terrain_test: 8 eventos, todos species="Golden-Eagle_test" e
+## terrain_class="complex", trigger_dist_m = 100,200,300,400,500,100,100,100
+## -> mean = 1800/8 = 225.0, sd (amostra, n-1=7) = sqrt(175000/7) = 158.11
+## (calculo a mao)
+
+cat("\n===== summarise_bearing_mean_sd(bearing_dt_terrain_test) =====\n")
+mean_sd_test <- summarise_bearing_mean_sd(bearing_dt_terrain_test)
+print(mean_sd_test)
+cat(sprintf(
+  "Esperado: 1 linha, species='Golden-Eagle_test', terrain_class='complex', n=8, trigger_dist_m_mean=225.0 (obtido %.1f), trigger_dist_m_sd=158.11 (obtido %.2f)\n",
+  mean_sd_test$trigger_dist_m_mean, mean_sd_test$trigger_dist_m_sd
+))
+
+cat("\n----- summarise_bearing_mean_sd(bearing_dt_2sp_test) -- 2 especies -----\n")
+mean_sd_2sp_test <- summarise_bearing_mean_sd(bearing_dt_2sp_test)
+print(mean_sd_2sp_test)
+cat("Esperado: 2 linhas (Golden-Eagle_test n=5 [TB_N1-5], Steppe-Eagle_test n=3 [TB_E/S/W]).\n")
+
+cat("\n----- summarise_bearing_mean_sd(..., metric = \"avg_speed_ms\") -----\n")
+mean_sd_speed_test <- summarise_bearing_mean_sd(bearing_dt_terrain_test, metric = "avg_speed_ms")
+print(mean_sd_speed_test)
+cat("Esperado: 1 linha, avg_speed_ms_mean=9.5, avg_speed_ms_sd=0 (todos os tracks com a mesma velocidade).\n")

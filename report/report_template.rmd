@@ -145,8 +145,12 @@ params:
   terrain_bearing_species_text: !r NULL
   terrain_bearing_boxplot: !r NULL
   terrain_bearing_hist: !r NULL
+  terrain_bearing_dist_mean_sd: !r NULL
+  terrain_bearing_speed_mean_sd: !r NULL
   terrain_weekly_mean_plot: !r NULL
   terrain_weekly_active_plot: !r NULL
+  terrain_weekly_mean_table: !r NULL
+  terrain_weekly_active_table: !r NULL
   xlsx_terrain_classification: !r NULL
   xlsx_terrain_bearing: !r NULL
   xlsx_terrain_weekly: !r NULL
@@ -1229,25 +1233,51 @@ annex_note(params$xlsx_terrain_classification)
 ```
 
 <!-- Source: plot_turbine_terrain_map(), R/turbine_terrain_classification.R -->
-```{r terrain-map-plot, fig.width=6.30, fig.height=6.30}
+```{r terrain-map-plot, fig.width=5.91, fig.height=5.91}
 if (!is.null(params$terrain_map_plot)) print(params$terrain_map_plot)
 ```
 
-## Curtailment Distance, Speed and Height by Species and Terrain Class
+## Curtailment Distance and Speed by Species and Terrain Class
 
-For curtailments triggered by `r params$terrain_bearing_species_text`, the distance, flight speed and height at the moment the curtailment was triggered, grouped by the terrain class of the curtailed turbine and by the approach sector (the compass direction, relative to the turbine, the bird was coming from).
+For curtailments triggered by `r params$terrain_bearing_species_text`, the distance and flight speed at the moment the curtailment was triggered, grouped by the terrain class of the curtailed turbine and by the approach sector (the compass direction, relative to the turbine, the bird was coming from).
+
+### Curtailment trigger distance and terrain class
 
 <!-- Source: compute_curtailment_bearing()/plot_bearing_boxplot(), R/curtailment_bearing_sectors.R -->
 ```{r terrain-bearing-boxplot, fig.width=6.30, fig.height=8}
 if (!is.null(params$terrain_bearing_boxplot)) print(params$terrain_bearing_boxplot)
 ```
 
-<!-- Source: plot_terrain_class_hist(), R/curtailment_bearing_sectors.R -->
-```{r terrain-bearing-hist, fig.width=6.30, fig.height=8}
-if (!is.null(params$terrain_bearing_hist)) print(params$terrain_bearing_hist)
+<!-- Source: summarise_bearing_mean_sd(bearing_dt_sp, metric = "trigger_dist_m"), R/curtailment_bearing_sectors.R -->
+```{r terrain-bearing-dist-table}
+if (!is.null(params$terrain_bearing_dist_mean_sd)) {
+  report_table(rename_display(
+    params$terrain_bearing_dist_mean_sd,
+    c(species = "Species", terrain_class = "Terrain Class", n = "N",
+      trigger_dist_m_mean = "Mean Distance (m)", trigger_dist_m_sd = "SD Distance (m)")
+  ))
+}
 ```
 ```{r terrain-bearing-annex, results='asis'}
 annex_note(params$xlsx_terrain_bearing)
+```
+
+### Flight speed and terrain class
+
+<!-- Source: plot_terrain_class_hist(bearing_dt_sp, metric = "avg_speed_ms"), R/curtailment_bearing_sectors.R -->
+```{r terrain-bearing-hist, fig.width=4.72, fig.height=4.72}
+if (!is.null(params$terrain_bearing_hist)) print(params$terrain_bearing_hist)
+```
+
+<!-- Source: summarise_bearing_mean_sd(bearing_dt_sp, metric = "avg_speed_ms"), R/curtailment_bearing_sectors.R -->
+```{r terrain-bearing-speed-table}
+if (!is.null(params$terrain_bearing_speed_mean_sd)) {
+  report_table(rename_display(
+    params$terrain_bearing_speed_mean_sd,
+    c(species = "Species", terrain_class = "Terrain Class", n = "N",
+      avg_speed_ms_mean = "Mean Speed (m/s)", avg_speed_ms_sd = "SD Speed (m/s)")
+  ))
+}
 ```
 
 ## Weekly Space-Use Pattern by Terrain Class
@@ -1255,12 +1285,32 @@ annex_note(params$xlsx_terrain_bearing)
 Every recorded track -- not only the ones that triggered a curtailment -- assigned to the terrain class of its nearest turbine, counted in weekly (7-day) bins.
 
 <!-- Source: assign_track_terrain_class()/summarise_tracks_by_week_terrain(), R/track_terrain_temporal.R -->
-```{r terrain-weekly-mean-plot, fig.width=6.30, fig.height=5}
+```{r terrain-weekly-mean-plot, fig.width=5.91, fig.height=3.94}
 if (!is.null(params$terrain_weekly_mean_plot)) print(params$terrain_weekly_mean_plot)
 ```
 
-```{r terrain-weekly-active-plot, fig.width=6.30, fig.height=5}
+```{r terrain-weekly-mean-table}
+if (!is.null(params$terrain_weekly_mean_table)) {
+  report_table(rename_display(
+    params$terrain_weekly_mean_table,
+    c(week_start = "Week Starting", terrain_class = "Terrain Class", n_turbines = "Turbines",
+      mean_tracks_per_turbine = "Mean Tracks/Turbine", sd_tracks_per_turbine = "SD Tracks/Turbine")
+  ))
+}
+```
+
+```{r terrain-weekly-active-plot, fig.width=5.91, fig.height=3.94}
 if (!is.null(params$terrain_weekly_active_plot)) print(params$terrain_weekly_active_plot)
+```
+
+```{r terrain-weekly-active-table}
+if (!is.null(params$terrain_weekly_active_table)) {
+  report_table(rename_display(
+    params$terrain_weekly_active_table,
+    c(week_start = "Week Starting", terrain_class = "Terrain Class", n_turbines = "Turbines",
+      pct_turbines_active = "% Turbines Active")
+  ))
+}
 ```
 ```{r terrain-weekly-annex, results='asis'}
 annex_note(params$xlsx_terrain_weekly)
@@ -1268,4 +1318,4 @@ annex_note(params$xlsx_terrain_weekly)
 
 # Annexes
 
-The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: system availability, data coverage, curtailment response assessment, shutdown time, safe distance, 3D coverage, fatality investigation (full track/window detail), manual risk clusters and statistical turbine clustering (both including the cluster-threshold sensitivity sweep, weekly time series, and per-turbine/per-cluster breakdowns), minimum individuals per bin, terrain classification, curtailment distance/speed/height by species and terrain class, and the weekly space-use pattern by terrain class.
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: system availability, data coverage, curtailment response assessment, shutdown time, safe distance, 3D coverage, fatality investigation (full track/window detail), manual risk clusters and statistical turbine clustering (both including the cluster-threshold sensitivity sweep, weekly time series, and per-turbine/per-cluster breakdowns), minimum individuals per bin, terrain classification, curtailment distance and speed by species and terrain class, and the weekly space-use pattern by terrain class.

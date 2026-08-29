@@ -2264,10 +2264,10 @@ if (!exists("wtg")) {
   terrain_dt <- classify_terrain(terrain_dt)
   summary_terrain_counts <- summarise_terrain_class_counts(terrain_dt)
 
-  p_terrain_map <- plot_turbine_terrain_map(wtg, terrain_dt)
+  p_terrain_map <- plot_turbine_terrain_map(wtg, terrain_dt, show_labels = FALSE)
   ggsave(
     file.path(folder_output, "terrain_classification_map.png"),
-    plot = p_terrain_map, width = 8, height = 8, dpi = 300, bg = "white"
+    plot = p_terrain_map, width = 15, height = 15, units = "cm", dpi = 300, bg = "white"
   )
 
   write_xlsx_local(
@@ -2275,15 +2275,21 @@ if (!exists("wtg")) {
     file.path(folder_output, "terrain_classification.xlsx")
   )
 
-  ### 11.2. Curtailment distance/speed/height por setor, classe de terreno e especie ----
+  ### 11.2. Curtailment distance/velocidade por setor, classe de terreno e especie ----
 
   bearing_dt    <- compute_curtailment_bearing(curtl_dt, track_dt, wtg, turbine_terrain_dt = terrain_dt)
   bearing_dt_sp <- bearing_dt[species %in% terrain_bearing_species]
 
   summary_bearing_terrain_sp <- summarise_bearing_sectors(bearing_dt_sp, group_cols = c("species", "terrain_class"))
 
+  # tabelas compactas (n/media/desvio-padrao) para as 2 subsecções do
+  # relatorio (11.2.1 distancia, 11.2.2 velocidade) -- complementam
+  # summary_bearing_terrain_sp acima (quantis, so' no xlsx de anexo)
+  summary_bearing_dist_mean_sd  <- summarise_bearing_mean_sd(bearing_dt_sp, metric = "trigger_dist_m")
+  summary_bearing_speed_mean_sd <- summarise_bearing_mean_sd(bearing_dt_sp, metric = "avg_speed_ms")
+
   p_terrain_bearing_box  <- plot_bearing_boxplot(bearing_dt_sp, metric = "trigger_dist_m")
-  p_terrain_bearing_hist <- plot_terrain_class_hist(bearing_dt_sp, metric = "trigger_dist_m")
+  p_terrain_bearing_hist <- plot_terrain_class_hist(bearing_dt_sp, metric = "avg_speed_ms")
 
   if (!is.null(p_terrain_bearing_box)) {
     ggsave(
@@ -2294,12 +2300,15 @@ if (!exists("wtg")) {
   if (!is.null(p_terrain_bearing_hist)) {
     ggsave(
       file.path(folder_output, "terrain_bearing_hist_by_species.png"),
-      plot = p_terrain_bearing_hist, width = 9, height = 9, dpi = 300, bg = "white"
+      plot = p_terrain_bearing_hist, width = 12, height = 12, units = "cm", dpi = 300, bg = "white"
     )
   }
 
   write_xlsx_local(
-    list(Events = bearing_dt_sp, By_species_terrain = summary_bearing_terrain_sp),
+    list(
+      Events = bearing_dt_sp, By_species_terrain = summary_bearing_terrain_sp,
+      Distance_mean_sd = summary_bearing_dist_mean_sd, Speed_mean_sd = summary_bearing_speed_mean_sd
+    ),
     file.path(folder_output, "terrain_bearing_by_species.xlsx")
   )
 
@@ -2314,15 +2323,22 @@ if (!exists("wtg")) {
   if (!is.null(p_terrain_weekly_mean)) {
     ggsave(
       file.path(folder_output, "terrain_weekly_mean_tracks.png"),
-      plot = p_terrain_weekly_mean, width = 12, height = 6, dpi = 300, bg = "white"
+      plot = p_terrain_weekly_mean, width = 15, height = 10, units = "cm", dpi = 300, bg = "white"
     )
   }
   if (!is.null(p_terrain_weekly_active)) {
     ggsave(
       file.path(folder_output, "terrain_weekly_pct_active.png"),
-      plot = p_terrain_weekly_active, width = 12, height = 6, dpi = 300, bg = "white"
+      plot = p_terrain_weekly_active, width = 15, height = 10, units = "cm", dpi = 300, bg = "white"
     )
   }
+
+  # tabelas com os mesmos dados usados nos 2 graficos acima (pedido do
+  # Paulo, 2026-08, para acompanhar cada grafico semanal no relatorio) --
+  # subconjunto de colunas relevante a cada metrica, weekly_terrain_dt
+  # completo continua disponivel no xlsx de anexo
+  summary_weekly_mean_sd <- weekly_terrain_dt[, .(week_start, terrain_class, n_turbines, mean_tracks_per_turbine, sd_tracks_per_turbine)]
+  summary_weekly_active  <- weekly_terrain_dt[, .(week_start, terrain_class, n_turbines, pct_turbines_active)]
 
   write_xlsx_local(
     list(Weekly_by_terrain_class = weekly_terrain_dt),
@@ -2541,12 +2557,16 @@ report_params <- list(
   terrain_class_counts = if (exists("summary_terrain_counts")) summary_terrain_counts else NULL,
   terrain_map_plot     = if (exists("p_terrain_map")) p_terrain_map else NULL,
 
-  terrain_bearing_species_text = if (exists("terrain_bearing_species")) paste(terrain_bearing_species, collapse = ", ") else NULL,
-  terrain_bearing_boxplot      = if (exists("p_terrain_bearing_box")) p_terrain_bearing_box else NULL,
-  terrain_bearing_hist         = if (exists("p_terrain_bearing_hist")) p_terrain_bearing_hist else NULL,
+  terrain_bearing_species_text  = if (exists("terrain_bearing_species")) paste(terrain_bearing_species, collapse = ", ") else NULL,
+  terrain_bearing_boxplot       = if (exists("p_terrain_bearing_box")) p_terrain_bearing_box else NULL,
+  terrain_bearing_hist          = if (exists("p_terrain_bearing_hist")) p_terrain_bearing_hist else NULL,
+  terrain_bearing_dist_mean_sd  = if (exists("summary_bearing_dist_mean_sd")) summary_bearing_dist_mean_sd else NULL,
+  terrain_bearing_speed_mean_sd = if (exists("summary_bearing_speed_mean_sd")) summary_bearing_speed_mean_sd else NULL,
 
-  terrain_weekly_mean_plot   = if (exists("p_terrain_weekly_mean")) p_terrain_weekly_mean else NULL,
-  terrain_weekly_active_plot = if (exists("p_terrain_weekly_active")) p_terrain_weekly_active else NULL,
+  terrain_weekly_mean_plot    = if (exists("p_terrain_weekly_mean")) p_terrain_weekly_mean else NULL,
+  terrain_weekly_active_plot  = if (exists("p_terrain_weekly_active")) p_terrain_weekly_active else NULL,
+  terrain_weekly_mean_table   = if (exists("summary_weekly_mean_sd")) summary_weekly_mean_sd else NULL,
+  terrain_weekly_active_table = if (exists("summary_weekly_active")) summary_weekly_active else NULL,
 
   xlsx_terrain_classification = xlsx_terrain_classification_name,
   xlsx_terrain_bearing        = xlsx_terrain_bearing_name,

@@ -64,7 +64,8 @@
 ##   priority_species <- c("Egyptian-Vulture", "Steppe-Eagle", "Saker-Falcon")
 ##   bearing_dt_sp <- bearing_dt2[species %in% priority_species]
 ##   plot_bearing_boxplot(bearing_dt_sp, metric = "trigger_dist_m") # 1 painel por especie
-##   plot_terrain_class_hist(bearing_dt_sp, metric = "trigger_dist_m") # especie x terrain_class
+##   plot_terrain_class_hist(bearing_dt_sp, metric = "avg_speed_ms") # especie x terrain_class
+##   summarise_bearing_mean_sd(bearing_dt_sp, metric = "trigger_dist_m") # tabela compacta n/media/sd
 ##
 
 
@@ -224,6 +225,32 @@ summarise_bearing_sectors <- function(bearing_dt, group_cols = "sector") {
 }
 
 
+## 2b. Media + desvio-padrao por grupo -- tabela compacta para o relatorio ----
+##
+## Complementar a summarise_bearing_sectors() (quantis, seccao 2 acima) --
+## essa continua a ser a analise de referencia para ver a FORMA da
+## distribuicao; esta funcao existe so' para dar uma tabela pequena e
+## legivel (n/media/desvio-padrao por grupo) ao lado do boxplot no
+## relatorio, pedido do Paulo, 2026-08, para a tabela "distancia por
+## especie x classe de terreno". Sem preenchimento de grupos vazios (ao
+## contrario de summarise_bearing_sectors(group_cols="sector")) -- grupos
+## sem eventos simplesmente nao aparecem.
+
+summarise_bearing_mean_sd <- function(bearing_dt, metric = "trigger_dist_m", group_cols = c("species", "terrain_class")) {
+
+  dt <- bearing_dt[!is.na(get(metric))]
+
+  out <- dt[, .(
+    n    = .N,
+    mean = round(mean(get(metric)), 1),
+    sd   = round(stats::sd(get(metric)), 2)
+  ), by = group_cols]
+
+  data.table::setnames(out, c("mean", "sd"), paste0(metric, c("_mean", "_sd")))
+  out[]
+}
+
+
 ## 3. Boxplot + histograma -- forma da distribuicao, nao so' um numero
 ## resumo por setor/grupo (mesmo motivo da seccao 2 acima) ----
 
@@ -350,7 +377,8 @@ plot_terrain_class_hist <- function(bearing_dt, metric = c("trigger_dist_m", "av
       x = x_lab, y = "Count",
       title = sprintf("Distribution of %s by terrain class", tolower(x_lab))
     ) +
-    theme_bw()
+    theme_bw() +
+    theme(plot.title = element_text(size = 8)) # pedido do Paulo, 2026-08, para a versao do relatorio -- titulo nao cortava no docx
 
   if (has_species) {
     p <- p + facet_grid(species ~ terrain_class, scales = "free_y")
