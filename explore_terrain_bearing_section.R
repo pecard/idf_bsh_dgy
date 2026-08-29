@@ -1,9 +1,13 @@
 ##
-## Teste final, em consola, da futura secção "Terrain & Spatial Use
-## Patterns" do relatorio anual (BSH/DGY) -- NAO faz parte do pipeline de
-## producao (IDF_analysis.R nunca o chama, nao escreve nada em outputs/).
+## Script de consola para inspecionar rapidamente a secção "Terrain &
+## Spatial Use Patterns" do relatorio anual (BSH/DGY, IDF_analysis.R
+## secção 11) sem correr o IDF_analysis.R completo -- NAO faz parte do
+## pipeline de producao (IDF_analysis.R nunca o chama, nao escreve nada em
+## outputs/, so' imprime os graficos na consola/Viewer).
 ##
-## Junta os 3 blocos construidos em 2026-08 a pedido do Paulo:
+## Junta os 3 blocos construidos em 2026-08 a pedido do Paulo, ja
+## efetivamente adotados na secção 11 (2026-08, estrutura aprovada pelo
+## Paulo):
 ##   R/turbine_terrain_classification.R -- classe de terreno por turbina (DEM)
 ##   R/curtailment_bearing_sectors.R    -- distancia/velocidade/altura do
 ##                                          disparo de curtailment, por setor
@@ -13,10 +17,10 @@
 ##                                          (TODOS os tracks) por classe de
 ##                                          terreno
 ##
-## So' os graficos combinados abaixo (2 da parte de curtailments/especies +
-## 2 da parte temporal) sao os que se propoe levar para o relatorio -- ver
-## mensagem ao Paulo para a estrutura da secção proposta antes de mexer em
-## report_template.rmd/IDF_analysis.R.
+## Os graficos abaixo sao exatamente os que aparecem na secção 11 do
+## relatorio -- util para testar um ajuste (ex: outro radius_inner_m/outer_m,
+## outra especie em terrain_bearing_species) sem esperar pelo
+## rmarkdown::render() completo.
 ##
 ## Pre-requisitos (correr isto DEPOIS de uma corrida normal de
 ## IDF_analysis.R, na mesma sessao) -- objetos ja tem de existir:
