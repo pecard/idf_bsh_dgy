@@ -36,10 +36,12 @@
 ##
 ## Uso:
 ##   source("R/curtailment_bearing_sectors.R")
-##   bearing_dt    <- compute_curtailment_bearing(curtl_dt, track_dt, wtg, min_points = 5)
+##   bearing_dt      <- compute_curtailment_bearing(curtl_dt, track_dt, wtg, min_points = 5)
 ##   summary_bearing <- summarise_bearing_sectors(bearing_dt)
-##   plot_bearing_by_sector(summary_bearing, metric = "mean_trigger_dist_m")
-##   plot_bearing_by_sector(summary_bearing, metric = "mean_speed_ms")
+##   plot_bearing_boxplot(bearing_dt, metric = "trigger_dist_m")
+##   plot_bearing_boxplot(bearing_dt, metric = "avg_speed_ms")
+##   plot_bearing_hist(bearing_dt, metric = "trigger_dist_m")
+##   plot_bearing_hist(bearing_dt, metric = "avg_speed_ms")
 ##
 
 
@@ -100,33 +102,60 @@ compute_curtailment_bearing <- function(curtl_dt, track_dt, wtg_sf,
 }
 
 
-## 2. Resumo por setor -- n, distancia media/mediana, velocidade media/mediana ----
+## 2. Resumo por setor -- distribuicao (quantis), nao so' a media ----
+##
+## Medias ficam facilmente parecidas entre setores mesmo quando a FORMA da
+## distribuicao difere (ex: um setor com cauda longa a direita -- poucas
+## aproximacoes muito rapidas/muito perto -- pode ter a mesma media que um
+## setor uniforme) -- pedido do Paulo, 2026-08: olhar para a distribuicao
+## completa (quantis), nao so' a media/mediana, para detetar caudas longas
+## ou outros padroes que a media escode.
+##
+## dist_skew_ratio/speed_skew_ratio = (p90 - mediana) / (mediana - p10) --
+## heuristica simples (nao uma medida formal de assimetria): >1 sugere cauda
+## mais longa acima da mediana (ex: poucas aproximacoes a distancia/
+## velocidade muito acima do tipico), <1 sugere cauda mais longa abaixo,
+## ~1 sugere distribuicao aproximadamente simetrica. NaN quando n<=1 ou sem
+## variabilidade (p90==mediana==p10) -- nesse caso o racio nao e' informativo,
+## ver antes o grafico (plot_bearing_boxplot()/plot_bearing_hist()).
 
 summarise_bearing_sectors <- function(bearing_dt) {
 
   dt <- bearing_dt[!is.na(sector)]
+  probs <- c(0.1, 0.25, 0.5, 0.75, 0.9)
 
-  out <- dt[, .(
-    n                      = .N,
-    n_speed_known          = sum(!is.na(avg_speed_ms)),
-    mean_trigger_dist_m    = round(mean(trigger_dist_m, na.rm = TRUE), 1),
-    median_trigger_dist_m  = round(median(trigger_dist_m, na.rm = TRUE), 1),
-    mean_speed_ms          = round(mean(avg_speed_ms, na.rm = TRUE), 1),
-    median_speed_ms        = round(median(avg_speed_ms, na.rm = TRUE), 1)
-  ), by = sector]
+  out <- dt[, {
+    s <- avg_speed_ms[!is.na(avg_speed_ms)]
+    dist_q  <- stats::quantile(trigger_dist_m, probs = probs, names = FALSE)
+    speed_q <- if (length(s) > 0) stats::quantile(s, probs = probs, names = FALSE) else rep(NA_real_, length(probs))
+    .(
+      n             = .N,
+      n_speed_known = length(s),
+
+      dist_p10    = round(dist_q[1], 1), dist_p25 = round(dist_q[2], 1),
+      dist_median = round(dist_q[3], 1),
+      dist_p75    = round(dist_q[4], 1), dist_p90 = round(dist_q[5], 1),
+      dist_max    = round(max(trigger_dist_m), 1),
+
+      speed_p10    = round(speed_q[1], 1), speed_p25 = round(speed_q[2], 1),
+      speed_median = round(speed_q[3], 1),
+      speed_p75    = round(speed_q[4], 1), speed_p90 = round(speed_q[5], 1),
+      speed_max    = round(if (length(s) > 0) max(s) else NA_real_, 1)
+    )
+  }, by = sector]
+
+  out[, dist_skew_ratio  := round((dist_p90 - dist_median) / (dist_median - dist_p10), 2)]
+  out[, speed_skew_ratio := round((speed_p90 - speed_median) / (speed_median - speed_p10), 2)]
 
   # setores sem nenhum evento ficam de fora do agrupamento acima -- completa
   # a tabela com n=0 para os 8 setores aparecerem sempre, mesmo sem dados
   missing_sectors <- setdiff(compass_sectors, as.character(out$sector))
   if (length(missing_sectors) > 0) {
-    out <- data.table::rbindlist(list(
-      out,
-      data.table::data.table(
-        sector = missing_sectors, n = 0L, n_speed_known = 0L,
-        mean_trigger_dist_m = NA_real_, median_trigger_dist_m = NA_real_,
-        mean_speed_ms = NA_real_, median_speed_ms = NA_real_
-      )
-    ))
+    filler <- data.table::data.table(sector = missing_sectors, n = 0L, n_speed_known = 0L)
+    na_cols <- setdiff(names(out), c("sector", "n", "n_speed_known"))
+    filler[, (na_cols) := NA_real_]
+    data.table::setcolorder(filler, names(out))
+    out <- data.table::rbindlist(list(out, filler), use.names = TRUE)
   }
   out[, sector := factor(sector, levels = compass_sectors)]
   data.table::setorder(out, sector)
@@ -134,24 +163,57 @@ summarise_bearing_sectors <- function(bearing_dt) {
 }
 
 
-## 3. Grafico de barras (ordenado por setor de bussola) de uma metrica ----
+## 3. Boxplot + histograma faceado por setor -- forma da distribuicao, nao
+## so' um numero resumo por setor (mesmo motivo da seccao 2 acima) ----
 
-plot_bearing_by_sector <- function(summary_dt, metric = c("mean_trigger_dist_m", "mean_speed_ms")) {
+plot_bearing_boxplot <- function(bearing_dt, metric = c("trigger_dist_m", "avg_speed_ms")) {
 
   metric <- match.arg(metric)
-  dt <- summary_dt[!is.na(get(metric))]
+  dt <- bearing_dt[!is.na(sector) & !is.na(get(metric))]
 
   if (nrow(dt) == 0L) {
-    message(sprintf("plot_bearing_by_sector(): sem setores com '%s' calculavel -- NULL devolvido.", metric))
+    message(sprintf("plot_bearing_boxplot(): sem eventos com '%s' calculavel -- NULL devolvido.", metric))
     return(NULL)
   }
 
-  y_lab <- if (metric == "mean_trigger_dist_m") "Mean trigger distance (m)" else "Mean flight speed (m/s)"
+  y_lab <- if (metric == "trigger_dist_m") "Trigger distance (m)" else "Flight speed (m/s)"
 
+  # geom_jitter por cima do boxplot -- com amostras pequenas por setor (caso
+  # tipico aqui), ver os pontos individuais e' mais informativo do que
+  # confiar so' nos whiskers/outliers do boxplot
   ggplot(dt, aes(x = sector, y = .data[[metric]])) +
-    geom_col(fill = "#17aeb0") +
-    geom_text(aes(label = sprintf("n=%d", n)), vjust = -0.3, size = 3) +
+    geom_boxplot(outlier.shape = NA, fill = "#17aeb0", alpha = 0.3) +
+    geom_jitter(width = 0.15, height = 0, alpha = 0.6, colour = "#0d6e70") +
     scale_x_discrete(limits = compass_sectors, drop = FALSE) +
-    labs(x = "Approach sector (from turbine)", y = y_lab, title = sprintf("%s by approach sector", y_lab)) +
+    labs(
+      x = "Approach sector (from turbine)", y = y_lab,
+      title = sprintf("Distribution of %s by approach sector", tolower(y_lab))
+    ) +
+    theme_bw()
+}
+
+plot_bearing_hist <- function(bearing_dt, metric = c("trigger_dist_m", "avg_speed_ms"), bins = 15) {
+
+  metric <- match.arg(metric)
+  dt <- bearing_dt[!is.na(sector) & !is.na(get(metric))]
+
+  if (nrow(dt) == 0L) {
+    message(sprintf("plot_bearing_hist(): sem eventos com '%s' calculavel -- NULL devolvido.", metric))
+    return(NULL)
+  }
+
+  x_lab <- if (metric == "trigger_dist_m") "Trigger distance (m)" else "Flight speed (m/s)"
+
+  # scales="free_y" -- setores com poucos eventos ficam com uma barra
+  # ilegivel se partilharem escala com o setor mais frequente (mesma razao
+  # de plot_safe_distance_hist(), R/curtailment_safe_distance.R); drop=FALSE
+  # mostra os 8 setores mesmo os sem eventos (paineis vazios)
+  ggplot(dt, aes(x = .data[[metric]])) +
+    geom_histogram(bins = bins, colour = "grey", fill = "#17aeb0") +
+    facet_wrap(~sector, ncol = 4, scales = "free_y", drop = FALSE) +
+    labs(
+      x = x_lab, y = "Count",
+      title = sprintf("Distribution of %s by approach sector", tolower(x_lab))
+    ) +
     theme_bw()
 }

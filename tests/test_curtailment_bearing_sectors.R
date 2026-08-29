@@ -2,10 +2,13 @@
 ## Teste com dados simulados para R/curtailment_bearing_sectors.R
 ##
 ## Turbina sintetica "TBS1" fixa em UTM (1000, 1000) (CRS arbitrario, so'
-## interessa a geometria plana). 4 tracks sinteticos aproximando-se exatamente
-## de N/E/S/W (100m de distancia cada, bearing exato), mais casos de exclusao:
-## track curto (< min_points), track ausente de track_dt, e turbina ausente
-## do shapefile wtg.
+## interessa a geometria plana). Setor Norte tem 5 tracks a distancias
+## diferentes (100/200/300/400/500m) para testar os quantis/skew_ratio de
+## summarise_bearing_sectors() com uma distribuicao real; E/S/W tem 1 track
+## cada (100m), para testar tambem o caso-limite n=1 (quantis colapsam no
+## unico valor, skew_ratio fica NaN). Mais 3 casos de exclusao: track curto
+## (< min_points), track ausente de track_dt, e turbina ausente do
+## shapefile wtg.
 ##
 ## Correr: source("tests/test_curtailment_bearing_sectors.R")
 ##
@@ -22,37 +25,34 @@ wtg_test <- sf::st_as_sf(
 t0 <- as.POSIXct("2026-05-01 08:00:00", tz = "UTC")
 
 ## 5 pontos por track (>= min_points = 5), speed_ms identico em todos
-## (8,9,10,11,50 -- 50 e outlier, excluido pelo percentil 95) para isolar a
-## verificacao do bearing/setor/distancia -- avg_speed esperado = 9.5 em
-## todos os 4 tracks direcionais (mesma logica de test_curtailment_safe_distance.R)
+## (8,9,10,11,50 -- 50 e outlier, excluido pelo percentil 95) -- isola a
+## verificacao do bearing/setor/distancia/quantis: avg_speed esperado = 9.5
+## em TODOS os tracks abaixo (mesma logica de test_curtailment_safe_distance.R)
 
-## TB_N -- exatamente a Norte da turbina (0, +100) -> bearing 0, setor "N" --
-track_n <- data.table::data.table(
-  track_id = "TB_N", timestamp = t0 + 0:4,
-  utm_x = c(1000, 1000, 1001, 1000, 999), utm_y = c(1100, 1101, 1102, 1103, 1104),
-  speed_ms = c(8, 9, 10, 11, 50)
-)
+make_track <- function(track_id, first_x, first_y) {
+  data.table::data.table(
+    track_id = track_id, timestamp = t0 + 0:4,
+    utm_x = c(first_x, first_x, first_x + 1, first_x, first_x - 1),
+    utm_y = c(first_y, first_y + 1, first_y + 2, first_y + 3, first_y + 4),
+    speed_ms = c(8, 9, 10, 11, 50)
+  )
+}
 
-## TB_E -- exatamente a Este (+100, 0) -> bearing 90, setor "E" -----------
-track_e <- data.table::data.table(
-  track_id = "TB_E", timestamp = t0 + 0:4,
-  utm_x = c(1100, 1101, 1102, 1103, 1104), utm_y = c(1000, 1000, 999, 1001, 1000),
-  speed_ms = c(8, 9, 10, 11, 50)
-)
+## Setor Norte -- 5 tracks a 100/200/300/400/500m, todos exatamente a Norte
+## (dx=0) -- distribuicao conhecida para testar os quantis de trigger_dist_m:
+## p10=140, p25=200, mediana=300, p75=400, p90=460, max=500, skew_ratio=1
+## (quantile() tipo 7, calculo a mao)
+track_n1 <- make_track("TB_N1", 1000, 1100) # 100m
+track_n2 <- make_track("TB_N2", 1000, 1200) # 200m
+track_n3 <- make_track("TB_N3", 1000, 1300) # 300m
+track_n4 <- make_track("TB_N4", 1000, 1400) # 400m
+track_n5 <- make_track("TB_N5", 1000, 1500) # 500m
 
-## TB_S -- exatamente a Sul (0, -100) -> bearing 180, setor "S" -----------
-track_s <- data.table::data.table(
-  track_id = "TB_S", timestamp = t0 + 0:4,
-  utm_x = c(1000, 999, 1000, 1001, 1000), utm_y = c(900, 899, 898, 897, 896),
-  speed_ms = c(8, 9, 10, 11, 50)
-)
-
-## TB_W -- exatamente a Oeste (-100, 0) -> bearing 270, setor "W" ---------
-track_w <- data.table::data.table(
-  track_id = "TB_W", timestamp = t0 + 0:4,
-  utm_x = c(900, 899, 898, 897, 896), utm_y = c(1000, 1001, 1000, 999, 1000),
-  speed_ms = c(8, 9, 10, 11, 50)
-)
+## E/S/W -- 1 track cada, exatamente a 100m -- testa o bearing/setor destes
+## 3 pontos cardinais e o caso-limite n=1 (quantis == valor unico, skew NaN)
+track_e <- make_track("TB_E", 1100, 1000) # bearing 90, setor "E"
+track_s <- make_track("TB_S", 1000, 900)  # bearing 180, setor "S"
+track_w <- make_track("TB_W", 900, 1000)  # bearing 270, setor "W"
 
 ## TB_SHORT -- so' 3 pontos (< min_points = 5) -- deve ficar de fora --------
 track_short <- data.table::data.table(
@@ -61,18 +61,25 @@ track_short <- data.table::data.table(
   speed_ms = c(5, 6, 7)
 )
 
-track_dt_test <- data.table::rbindlist(list(track_n, track_e, track_s, track_w, track_short))
+track_dt_test <- data.table::rbindlist(list(
+  track_n1, track_n2, track_n3, track_n4, track_n5,
+  track_e, track_s, track_w, track_short
+))
 
-curtl_dt_test <- data.table::data.table(
-  turbine  = c("TBS1", "TBS1", "TBS1", "TBS1", "TBS1", "TBS1", "T_MISSING"),
-  track_id = c("TB_N", "TB_E", "TB_S", "TB_W", "TB_SHORT", "TB_ABSENT", "TB_N"),
-  species  = c("Golden-Eagle_test", "Golden-Eagle_test", "Golden-Eagle_test",
-              "Golden-Eagle_test", "Golden-Eagle_test", "Golden-Eagle_test", "Golden-Eagle_test"),
-  start    = t0 + c(10, 10, 10, 10, 10, 10, 10)
-)
+qualifying_track_ids <- c("TB_N1", "TB_N2", "TB_N3", "TB_N4", "TB_N5", "TB_E", "TB_S", "TB_W")
+
+curtl_dt_test <- data.table::rbindlist(list(
+  data.table::data.table(
+    turbine = "TBS1", track_id = qualifying_track_ids, species = "Golden-Eagle_test",
+    start = t0 + 10
+  ),
+  data.table::data.table(turbine = "TBS1", track_id = "TB_SHORT", species = "Golden-Eagle_test", start = t0 + 10),
+  data.table::data.table(turbine = "TBS1", track_id = "TB_ABSENT", species = "Golden-Eagle_test", start = t0 + 10),
+  data.table::data.table(turbine = "T_MISSING", track_id = "TB_N1", species = "Golden-Eagle_test", start = t0 + 10)
+))
 ## TB_SHORT -- excluido por ter < min_points registos em track_dt_test
 ## TB_ABSENT -- excluido por nao existir de todo em track_dt_test
-## T_MISSING -- excluido por nao existir no shapefile wtg_test
+## T_MISSING -- excluido por nao existir no shapefile wtg_test (nao duplica o TB_N1 valido)
 
 
 ## 1. bearing_to_sector() -- casos de fronteira (calculados a mao) ----------
@@ -95,10 +102,10 @@ bearing_dt_test <- compute_curtailment_bearing(curtl_dt_test, track_dt_test, wtg
 print(bearing_dt_test)
 
 expected_events <- data.table::data.table(
-  track_id           = c("TB_N", "TB_E", "TB_S", "TB_W"),
-  expected_sector    = c("N", "E", "S", "W"),
-  expected_dist_m    = c(100, 100, 100, 100),
-  expected_avg_speed = c(9.5, 9.5, 9.5, 9.5)
+  track_id           = c("TB_N1", "TB_N2", "TB_N3", "TB_N4", "TB_N5", "TB_E", "TB_S", "TB_W"),
+  expected_sector    = c("N", "N", "N", "N", "N", "E", "S", "W"),
+  expected_dist_m    = c(100, 200, 300, 400, 500, 100, 100, 100),
+  expected_avg_speed = 9.5
 )
 check2 <- merge(bearing_dt_test, expected_events, by = "track_id")
 check2[, `:=`(
@@ -116,17 +123,46 @@ cat(sprintf(
 ))
 
 cat(sprintf(
-  "\nLinhas no resultado: %d (esperado: 4 -- TB_SHORT/TB_ABSENT/T_MISSING excluidos) -- %s\n",
-  nrow(bearing_dt_test), if (nrow(bearing_dt_test) == 4L) "OK" else "FALHOU"
+  "\nLinhas no resultado: %d (esperado: 8 -- TB_SHORT/TB_ABSENT/T_MISSING excluidos) -- %s\n",
+  nrow(bearing_dt_test), if (nrow(bearing_dt_test) == 8L) "OK" else "FALHOU"
 ))
 
 
-## 3. summarise_bearing_sectors() -- 1 evento por setor N/E/S/W, 0 nos outros -
+## 3. summarise_bearing_sectors() -- quantis por setor, nao so' a media ----
 
 cat("\n===== summarise_bearing_sectors(bearing_dt_test) =====\n")
 summary_bearing_test <- summarise_bearing_sectors(bearing_dt_test)
 print(summary_bearing_test)
-cat(paste(
-  "Esperado: 8 setores, N/E/S/W com n=1 (mean_trigger_dist_m=100, mean_speed_ms=9.5)",
-  "cada, NE/SE/SW/NW com n=0 (medias NA).\n"
+
+n_sector <- summary_bearing_test[sector == "N"]
+cat("\n----- Setor N (5 eventos a 100/200/300/400/500m) -----\n")
+cat(sprintf(
+  "dist_p10=%.1f (esp. 140), dist_p25=%.1f (esp. 200), dist_median=%.1f (esp. 300), dist_p75=%.1f (esp. 400), dist_p90=%.1f (esp. 460), dist_max=%.1f (esp. 500), dist_skew_ratio=%.2f (esp. 1)\n",
+  n_sector$dist_p10, n_sector$dist_p25, n_sector$dist_median, n_sector$dist_p75, n_sector$dist_p90, n_sector$dist_max, n_sector$dist_skew_ratio
+))
+cat(sprintf(
+  "speed_median=%.1f (esp. 9.5), speed_skew_ratio=%s (esp. NaN -- sem variabilidade, todos os tracks com a mesma velocidade)\n",
+  n_sector$speed_median, as.character(n_sector$speed_skew_ratio)
+))
+
+cat("\n----- Setores E/S/W (n=1 -- caso-limite) -----\n")
+print(summary_bearing_test[sector %in% c("E", "S", "W"), .(sector, n, dist_p10, dist_median, dist_p90, dist_skew_ratio)])
+cat("Esperado: n=1, dist_p10==dist_median==dist_p90==100, dist_skew_ratio=NaN (0/0, sem variabilidade).\n")
+
+cat("\n----- Setores sem eventos (NE/SE/SW/NW) -----\n")
+print(summary_bearing_test[sector %in% c("NE", "SE", "SW", "NW"), .(sector, n, dist_median)])
+cat("Esperado: n=0, dist_median=NA nos 4 setores.\n")
+
+
+## 4. plot_bearing_boxplot()/plot_bearing_hist() -- so' verificar que correm
+## sem erro e devolvem um ggplot (nao NULL, ha dados) --------------------
+
+cat("\n===== plot_bearing_boxplot()/plot_bearing_hist() -- smoke test =====\n")
+p_box_dist  <- plot_bearing_boxplot(bearing_dt_test, metric = "trigger_dist_m")
+p_box_speed <- plot_bearing_boxplot(bearing_dt_test, metric = "avg_speed_ms")
+p_hist_dist  <- plot_bearing_hist(bearing_dt_test, metric = "trigger_dist_m")
+p_hist_speed <- plot_bearing_hist(bearing_dt_test, metric = "avg_speed_ms")
+cat(sprintf(
+  "4 plots gerados sem erro, todos nao-NULL: %s\n",
+  if (!is.null(p_box_dist) && !is.null(p_box_speed) && !is.null(p_hist_dist) && !is.null(p_hist_speed)) "OK" else "FALHOU"
 ))
