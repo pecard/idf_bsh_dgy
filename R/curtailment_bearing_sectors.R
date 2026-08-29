@@ -58,6 +58,14 @@
 ##   plot_bearing_boxplot(bearing_dt2, metric = "trigger_dist_m") # cores automaticas por terrain_class
 ##   plot_terrain_class_hist(bearing_dt2, metric = "trigger_height_m")
 ##
+##   # + por especie (pedido do Paulo, 2026-08) -- filtrar bearing_dt2 as
+##   # especies de interesse ANTES de chamar os plots -- ambos detetam
+##   # sozinhos que ha mais de 1 especie e acrescentam um painel por especie
+##   priority_species <- c("Egyptian-Vulture", "Steppe-Eagle", "Saker-Falcon")
+##   bearing_dt_sp <- bearing_dt2[species %in% priority_species]
+##   plot_bearing_boxplot(bearing_dt_sp, metric = "trigger_dist_m") # 1 painel por especie
+##   plot_terrain_class_hist(bearing_dt_sp, metric = "trigger_dist_m") # especie x terrain_class
+##
 
 
 ## 1. Bearing/setor de cada curtailment (por track/turbina) ----
@@ -227,11 +235,18 @@ summarise_bearing_sectors <- function(bearing_dt, group_cols = "sector") {
   )
 }
 
-## Boxplot por setor -- se bearing_dt tiver uma coluna terrain_class (ver
-## R/turbine_terrain_classification.R e compute_curtailment_bearing(),
+## Boxplot por setor -- so' o boxplot (sem jitter de pontos individuais por
+## cima -- pedido do Paulo, 2026-08, para a versao deste grafico que vai
+## para o relatorio: com varias especies/classes de terreno em simultaneo os
+## pontos individuais poluiam mais do que ajudavam; os outliers do proprio
+## boxplot continuam visiveis). Se bearing_dt tiver uma coluna terrain_class
+## (ver R/turbine_terrain_classification.R e compute_curtailment_bearing(),
 ## argumento turbine_terrain_dt), colore/agrupa automaticamente por essa
-## classe dentro de cada setor; caso contrario, comportamento original
-## (1 boxplot por setor, sem cor).
+## classe dentro de cada setor; caso contrario, 1 boxplot por setor, sem cor.
+## Se bearing_dt tiver mais de 1 especie, um painel por especie (facet_wrap) --
+## pedido do Paulo para comparar Egyptian-Vulture/Steppe-Eagle/Saker-Falcon
+## lado-a-lado -- filtrar bearing_dt as especies de interesse ANTES de
+## chamar esta funcao (ver Uso, topo do ficheiro).
 plot_bearing_boxplot <- function(bearing_dt, metric = c("trigger_dist_m", "avg_speed_ms", "trigger_height_m")) {
 
   metric <- match.arg(metric)
@@ -244,17 +259,11 @@ plot_bearing_boxplot <- function(bearing_dt, metric = c("trigger_dist_m", "avg_s
 
   y_lab <- .bearing_metric_label(metric)
   has_terrain <- "terrain_class" %in% names(dt) && any(!is.na(dt$terrain_class))
+  has_species <- "species" %in% names(dt) && data.table::uniqueN(dt$species) > 1
 
-  # geom_jitter por cima do boxplot -- com amostras pequenas por setor (caso
-  # tipico aqui), ver os pontos individuais e' mais informativo do que
-  # confiar so' nos whiskers/outliers do boxplot
   if (has_terrain) {
-    ggplot(dt, aes(x = sector, y = .data[[metric]], fill = terrain_class)) +
-      geom_boxplot(outlier.shape = NA, alpha = 0.5, position = ggplot2::position_dodge2(preserve = "single")) +
-      geom_point(
-        position = ggplot2::position_jitterdodge(jitter.width = 0.1, dodge.width = 0.75),
-        alpha = 0.5, size = 1
-      ) +
+    p <- ggplot(dt, aes(x = sector, y = .data[[metric]], fill = terrain_class)) +
+      geom_boxplot(position = ggplot2::position_dodge2(preserve = "single")) +
       scale_x_discrete(limits = compass_sectors, drop = FALSE) +
       labs(
         x = "Approach sector (from turbine)", y = y_lab, fill = "Terrain class",
@@ -262,9 +271,8 @@ plot_bearing_boxplot <- function(bearing_dt, metric = c("trigger_dist_m", "avg_s
       ) +
       theme_bw()
   } else {
-    ggplot(dt, aes(x = sector, y = .data[[metric]])) +
-      geom_boxplot(outlier.shape = NA, fill = "#17aeb0", alpha = 0.3) +
-      geom_jitter(width = 0.15, height = 0, alpha = 0.6, colour = "#0d6e70") +
+    p <- ggplot(dt, aes(x = sector, y = .data[[metric]])) +
+      geom_boxplot(fill = "#17aeb0", alpha = 0.5) +
       scale_x_discrete(limits = compass_sectors, drop = FALSE) +
       labs(
         x = "Approach sector (from turbine)", y = y_lab,
@@ -272,6 +280,13 @@ plot_bearing_boxplot <- function(bearing_dt, metric = c("trigger_dist_m", "avg_s
       ) +
       theme_bw()
   }
+
+  # 1 painel por especie, MESMA escala Y -- comparavel diretamente entre
+  # especies (ao contrario do facet de histograma, aqui e' o mesmo eixo
+  # continuo em todos os paineis, nao uma contagem que varia com o N de cada um)
+  if (has_species) p <- p + facet_wrap(~species, ncol = 1)
+
+  p
 }
 
 plot_bearing_hist <- function(bearing_dt, metric = c("trigger_dist_m", "avg_speed_ms", "trigger_height_m"), bins = 15) {
@@ -300,9 +315,14 @@ plot_bearing_hist <- function(bearing_dt, metric = c("trigger_dist_m", "avg_spee
     theme_bw()
 }
 
-## Histograma faceado so' por terrain_class (3 paineis) -- comparacao direta
+## Histograma faceado por terrain_class (3 colunas) -- comparacao direta
 ## entre classes de terreno, sem cruzar com o setor de bussola. Requer
-## bearing_dt vindo de compute_curtailment_bearing(..., turbine_terrain_dt = ...)
+## bearing_dt vindo de compute_curtailment_bearing(..., turbine_terrain_dt = ...).
+## Se bearing_dt tiver mais de 1 especie, cruza tambem por especie (facet_grid,
+## 1 linha por especie x 1 coluna por classe) -- pedido do Paulo, 2026-08,
+## para comparar Egyptian-Vulture/Steppe-Eagle/Saker-Falcon lado-a-lado --
+## filtrar bearing_dt as especies de interesse ANTES de chamar esta funcao
+## (ver Uso, topo do ficheiro).
 plot_terrain_class_hist <- function(bearing_dt, metric = c("trigger_dist_m", "avg_speed_ms", "trigger_height_m"), bins = 15) {
 
   metric <- match.arg(metric)
@@ -322,13 +342,21 @@ plot_terrain_class_hist <- function(bearing_dt, metric = c("trigger_dist_m", "av
   }
 
   x_lab <- .bearing_metric_label(metric)
+  has_species <- "species" %in% names(dt) && data.table::uniqueN(dt$species) > 1
 
-  ggplot(dt, aes(x = .data[[metric]])) +
+  p <- ggplot(dt, aes(x = .data[[metric]])) +
     geom_histogram(bins = bins, colour = "grey", fill = "#17aeb0") +
-    facet_wrap(~terrain_class, ncol = 3, scales = "free_y") +
     labs(
       x = x_lab, y = "Count",
       title = sprintf("Distribution of %s by terrain class", tolower(x_lab))
     ) +
     theme_bw()
+
+  if (has_species) {
+    p <- p + facet_grid(species ~ terrain_class, scales = "free_y")
+  } else {
+    p <- p + facet_wrap(~terrain_class, ncol = 3, scales = "free_y")
+  }
+
+  p
 }

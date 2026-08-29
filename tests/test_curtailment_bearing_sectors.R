@@ -211,3 +211,33 @@ all_ok <- !is.null(p_box_dist) && !is.null(p_box_speed) && !is.null(p_box_height
   !is.null(p_box_terrain) && !is.null(p_hist_dist) && !is.null(p_hist_height) &&
   !is.null(p_terrain_hist) && is.null(p_terrain_hist_none)
 cat(sprintf("7 plots gerados sem erro (nao-NULL) + 1 NULL esperado (sem terrain_class): %s\n", all_ok))
+
+
+## 6. facet por especie em plot_bearing_boxplot()/plot_terrain_class_hist() -
+## (pedido do Paulo, 2026-08 -- comparar especies prioritarias lado-a-lado) -
+
+cat("\n===== facet por especie (bearing_dt com 2 especies) =====\n")
+bearing_dt_2sp_test <- data.table::copy(bearing_dt_terrain_test)
+bearing_dt_2sp_test[track_id %in% c("TB_E", "TB_S", "TB_W"), species := "Steppe-Eagle_test"]
+cat(sprintf("Especies em bearing_dt_2sp_test: %s\n", paste(sort(unique(bearing_dt_2sp_test$species)), collapse = ", ")))
+
+p_box_2sp    <- plot_bearing_boxplot(bearing_dt_2sp_test, metric = "trigger_dist_m")
+p_terrain_2sp <- plot_terrain_class_hist(bearing_dt_2sp_test, metric = "trigger_dist_m")
+
+cat(sprintf(
+  "plot_bearing_boxplot() facetado por especie (%d paineis esperados): %s\n",
+  data.table::uniqueN(bearing_dt_2sp_test$species),
+  if (!is.null(p_box_2sp)) inherits(p_box_2sp$facet, "FacetWrap") else "FALHOU (NULL)"
+))
+cat(sprintf(
+  "plot_terrain_class_hist() facetado por especie x terrain_class: %s\n",
+  if (!is.null(p_terrain_2sp)) inherits(p_terrain_2sp$facet, "FacetGrid") else "FALHOU (NULL)"
+))
+
+## com 1 especie so' (bearing_dt_terrain_test original), deve manter o
+## comportamento antigo -- facet_wrap simples em plot_terrain_class_hist(),
+## sem facet nenhum em plot_bearing_boxplot()
+cat(sprintf(
+  "Com 1 especie so' -- plot_terrain_class_hist() usa FacetWrap (nao Grid): %s\n",
+  inherits(p_terrain_hist$facet, "FacetWrap")
+))
