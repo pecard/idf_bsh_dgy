@@ -108,6 +108,11 @@ cat(sprintf(
 ))
 
 cat(sprintf(
+  "pct_turbines_active: flat semana0=%.1f (esp. 100, 2/2 ativas), flat semana1=%.1f (esp. 50, 1/2), ridge semana0=%.1f (esp. 100, 1/1), ridge semana1=%.1f (esp. 0, 0/1)\n",
+  flat_w0$pct_turbines_active, flat_w1$pct_turbines_active, ridge_w0$pct_turbines_active, ridge_w1$pct_turbines_active
+))
+
+cat(sprintf(
   "\nClasses presentes no resultado: %s (esperado: so' 'flat'/'ridge' -- 'complex' nao aparece, 0 turbinas dessa classe em turbine_terrain_dt_test)\n",
   paste(sort(unique(as.character(weekly_test$terrain_class))), collapse = ", ")
 ))
@@ -120,6 +125,7 @@ cat("\n===== plot_tracks_by_week_terrain() -- smoke test =====\n")
 p_mean   <- plot_tracks_by_week_terrain(weekly_test) # omissao: mean_tracks_per_turbine + banda SD
 p_total  <- plot_tracks_by_week_terrain(weekly_test, metric = "n_tracks")
 p_median <- plot_tracks_by_week_terrain(weekly_test, metric = "median_tracks_per_turbine")
+p_active <- plot_tracks_by_week_terrain(weekly_test, metric = "pct_turbines_active")
 p_facet  <- plot_tracks_by_week_terrain(weekly_test, facet = TRUE)
 
 ## chamado sobre a tabela ERRADA (track_terrain_test, per-track, sem
@@ -127,7 +133,7 @@ p_facet  <- plot_tracks_by_week_terrain(weekly_test, facet = TRUE)
 p_wrong_table <- plot_tracks_by_week_terrain(track_terrain_test)
 
 cat(sprintf(
-  "4 plots gerados sem erro (nao-NULL): %s -- tabela errada devolveu NULL: %s\n",
-  if (!is.null(p_mean) && !is.null(p_total) && !is.null(p_median) && !is.null(p_facet)) "OK" else "FALHOU",
+  "5 plots gerados sem erro (nao-NULL): %s -- tabela errada devolveu NULL: %s\n",
+  if (!is.null(p_mean) && !is.null(p_total) && !is.null(p_median) && !is.null(p_active) && !is.null(p_facet)) "OK" else "FALHOU",
   is.null(p_wrong_table)
 ))

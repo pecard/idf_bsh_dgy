@@ -48,6 +48,19 @@
 ##                                poucas (mesma logica de "a media sozinha
 ##                                nao chega" ja aplicada noutras seccoes
 ##                                deste projeto -- ver R/curtailment_bearing_sectors.R)
+##   pct_turbines_active       -- % de turbinas da classe com >= 1 track
+##                                nessa semana. Explica um efeito real
+##                                confirmado no Bash (2026-08): com atividade
+##                                concentrada nalgumas turbinas (ex: 457
+##                                tracks numa semana, mas so' 6 das 52
+##                                turbinas "flat" tiveram algum), a MEDIANA
+##                                colapsa para 0 (< metade das turbinas
+##                                ativas), apesar de haver atividade real e a
+##                                media continuar positiva -- nao e' bug, e'
+##                                so' o que a mediana faz com dados esparsos.
+##                                pct_turbines_active mostra essa esparsidade
+##                                diretamente, em vez de deixar a mediana
+##                                "desaparecer" em silencio.
 ##
 ## Depende de: data.table, sf, RANN, ggplot2
 ##
@@ -57,6 +70,7 @@
 ##   weekly_dt <- summarise_tracks_by_week_terrain(track_terrain_dt, terrain_dt) # terrain_dt AQUI e' o mesmo objeto classificado (classify_terrain()), precisa de TODAS as turbinas, nao so' as com tracks
 ##   plot_tracks_by_week_terrain(weekly_dt) # mean_tracks_per_turbine, com banda +/-1 SD (omissao)
 ##   plot_tracks_by_week_terrain(weekly_dt, metric = "n_tracks") # total bruto, sem ajustar ao nº de turbinas
+##   plot_tracks_by_week_terrain(weekly_dt, metric = "pct_turbines_active") # % turbinas com >=1 track -- ve a esparsidade diretamente
 ##   plot_tracks_by_week_terrain(weekly_dt, facet = TRUE) # 1 painel por classe, escala Y livre
 ##
 
@@ -114,7 +128,8 @@ summarise_tracks_by_week_terrain <- function(track_terrain_dt, turbine_terrain_d
     return(dt[, .(
       week_start = as.Date(character()), terrain_class = character(), n_turbines = integer(),
       n_tracks = integer(), mean_tracks_per_turbine = numeric(),
-      median_tracks_per_turbine = numeric(), sd_tracks_per_turbine = numeric()
+      median_tracks_per_turbine = numeric(), sd_tracks_per_turbine = numeric(),
+      pct_turbines_active = numeric()
     )])
   }
 
@@ -142,7 +157,8 @@ summarise_tracks_by_week_terrain <- function(track_terrain_dt, turbine_terrain_d
     n_tracks                  = sum(n_tracks),
     mean_tracks_per_turbine   = round(mean(n_tracks), 2),
     median_tracks_per_turbine = round(stats::median(n_tracks), 2),
-    sd_tracks_per_turbine     = round(stats::sd(n_tracks), 2)
+    sd_tracks_per_turbine     = round(stats::sd(n_tracks), 2),
+    pct_turbines_active       = round(100 * sum(n_tracks > 0) / .N, 1)
   ), by = .(week_start, terrain_class)]
 
   out[, terrain_class := factor(terrain_class, levels = c("flat", "complex", "ridge"))]
@@ -158,12 +174,16 @@ summarise_tracks_by_week_terrain <- function(track_terrain_dt, turbine_terrain_d
 ## (nao ha tracks negativos) -- mostra se a media de cada semana representa
 ## bem todas as turbinas da classe ou se esconde muita variacao entre elas.
 ## "n_tracks" (total bruto, sem ajustar ao numero de turbinas -- ver nota no
-## topo do ficheiro sobre porque isto pode enganar) e
-## "median_tracks_per_turbine" (mais robusta a 1-2 turbinas muito ativas)
-## tambem disponiveis, sem banda (SD nao se aplica a mediana).
+## topo do ficheiro sobre porque isto pode enganar), "median_tracks_per_turbine"
+## (mais robusta a 1-2 turbinas muito ativas, mas colapsa para 0 quando menos
+## de metade das turbinas da classe tem alguma atividade -- ver
+## pct_turbines_active) e "pct_turbines_active" (% de turbinas da classe com
+## >= 1 track -- mostra essa esparsidade diretamente) tambem disponiveis, sem
+## banda (SD nao se aplica a mediana/percentagem).
 
 plot_tracks_by_week_terrain <- function(weekly_dt,
-                                        metric = c("mean_tracks_per_turbine", "n_tracks", "median_tracks_per_turbine"),
+                                        metric = c("mean_tracks_per_turbine", "n_tracks",
+                                                  "median_tracks_per_turbine", "pct_turbines_active"),
                                         facet = FALSE) {
 
   metric <- match.arg(metric)
@@ -184,7 +204,8 @@ plot_tracks_by_week_terrain <- function(weekly_dt,
   y_lab <- switch(metric,
     n_tracks                  = "Number of tracks",
     mean_tracks_per_turbine   = "Mean tracks per turbine",
-    median_tracks_per_turbine = "Median tracks per turbine"
+    median_tracks_per_turbine = "Median tracks per turbine",
+    pct_turbines_active       = "% turbines active"
   )
 
   p <- ggplot(weekly_dt, aes(x = week_start, y = .data[[metric]], colour = terrain_class))
