@@ -42,7 +42,8 @@ run_sections <- list(
   coverage_3d             = T,  # 5.2 -- LIGAR so' depois de colocar dem_filename (abaixo) em inputs/
   min_individuals          = TRUE,  # 6.4 -- prioridade do Paulo para o DGY (atividade sazonal por especie prioritaria)
   turbine_clustering       = TRUE,  # 10 (via ESTATISTICA, por distancia) -- via principal do DGY por agora (sem setores manuais definidos)
-  risk_clusters            = T  # 10 (via MANUAL/setores) -- LIGAR so' depois de manual_turbine_clusters estar definido abaixo (ainda por fazer)
+  risk_clusters            = T,  # 10 (via MANUAL/setores) -- LIGAR so' depois de manual_turbine_clusters estar definido abaixo (ainda por fazer)
+  terrain_bearing_analysis = T   # 11 (classe de terreno -- ridge/complex/flat -- cruzada com distancia/velocidade/altura do disparo por especie, e com o padrao semanal de uso do espaco) -- precisa do mesmo DEM de 5.2 (dem_file)
 )
 
 
@@ -226,6 +227,13 @@ nonprioritysp <- c(
   'Eagle-Unknown',
   'Eagle-Sp'
 )
+
+## Especies prioritarias em foco na secção 11.2 (distancia/velocidade/altura
+## do disparo de curtailment por classe de terreno) -- subconjunto mais
+## pequeno de prioritysp acima, escolhido pelo Paulo (2026-08) como ponto de
+## partida -- alargar esta lista e' o unico passo necessario para incluir
+## mais especies nessa secção.
+terrain_bearing_species <- c('Egyptian-Vulture', 'Steppe-Eagle', 'Saker-Falcon')
 
 othersp <- c(
   'Common-Crane',

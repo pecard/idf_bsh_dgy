@@ -169,10 +169,11 @@ summarise_tracks_by_week_terrain <- function(track_terrain_dt, turbine_terrain_d
 
 ## 3. Grafico de linhas -- 1 linha por classe de terreno, ao longo do tempo --
 ##
-## Eixo X com 1 marca/rotulo POR SEMANA (scale_x_date(date_breaks="1 week")),
+## Eixo X com 1 marca/rotulo a cada 15 dias (scale_x_date(date_breaks="15 days")),
 ## texto vertical (90 graus) -- pedido do Paulo, 2026-08, para a versao
-## deste grafico que vai para o relatorio (ficheiro sem isto teria demasiadas
-## semanas para caber legivel na horizontal).
+## deste grafico que vai para o relatorio (uma marca por semana ficava
+## demasiado denso para caber legivel, mesmo na vertical, ao longo de mais
+## de 1 ano de dados).
 ##
 ## metric = "mean_tracks_per_turbine" (omissao) -- desenha tambem uma banda
 ## +/-1 desvio-padrao ENTRE TURBINAS (sd_tracks_per_turbine), truncada em 0
@@ -231,7 +232,7 @@ plot_tracks_by_week_terrain <- function(weekly_dt,
     geom_line() +
     geom_point(size = 1) +
     scale_colour_manual(values = c(flat = "#4daf4a", complex = "#ff7f00", ridge = "#e41a1c")) +
-    scale_x_date(date_breaks = "1 week", date_labels = "%Y-%m-%d") +
+    scale_x_date(date_breaks = "15 days", date_labels = "%Y-%m-%d") +
     labs(
       x = "Week starting", y = y_lab, colour = "Terrain class",
       title = sprintf("Weekly %s by terrain class", tolower(y_lab))

@@ -235,11 +235,11 @@ summarise_bearing_sectors <- function(bearing_dt, group_cols = "sector") {
   )
 }
 
-## Boxplot por setor -- so' o boxplot (sem jitter de pontos individuais por
-## cima -- pedido do Paulo, 2026-08, para a versao deste grafico que vai
-## para o relatorio: com varias especies/classes de terreno em simultaneo os
-## pontos individuais poluiam mais do que ajudavam; os outliers do proprio
-## boxplot continuam visiveis). Se bearing_dt tiver uma coluna terrain_class
+## Boxplot por setor -- so' o boxplot, sem pontos individuais NEM outliers
+## (outlier.shape = NA) -- pedido do Paulo, 2026-08, para a versao deste
+## grafico que vai para o relatorio: com varias especies/classes de terreno
+## em simultaneo, pontos individuais (jitter ou outliers) poluiam mais do
+## que ajudavam. Se bearing_dt tiver uma coluna terrain_class
 ## (ver R/turbine_terrain_classification.R e compute_curtailment_bearing(),
 ## argumento turbine_terrain_dt), colore/agrupa automaticamente por essa
 ## classe dentro de cada setor; caso contrario, 1 boxplot por setor, sem cor.
@@ -263,7 +263,7 @@ plot_bearing_boxplot <- function(bearing_dt, metric = c("trigger_dist_m", "avg_s
 
   if (has_terrain) {
     p <- ggplot(dt, aes(x = sector, y = .data[[metric]], fill = terrain_class)) +
-      geom_boxplot(position = ggplot2::position_dodge2(preserve = "single")) +
+      geom_boxplot(outlier.shape = NA, position = ggplot2::position_dodge2(preserve = "single")) +
       scale_x_discrete(limits = compass_sectors, drop = FALSE) +
       labs(
         x = "Approach sector (from turbine)", y = y_lab, fill = "Terrain class",
@@ -272,7 +272,7 @@ plot_bearing_boxplot <- function(bearing_dt, metric = c("trigger_dist_m", "avg_s
       theme_bw()
   } else {
     p <- ggplot(dt, aes(x = sector, y = .data[[metric]])) +
-      geom_boxplot(fill = "#17aeb0", alpha = 0.5) +
+      geom_boxplot(outlier.shape = NA, fill = "#17aeb0", alpha = 0.5) +
       scale_x_discrete(limits = compass_sectors, drop = FALSE) +
       labs(
         x = "Approach sector (from turbine)", y = y_lab,

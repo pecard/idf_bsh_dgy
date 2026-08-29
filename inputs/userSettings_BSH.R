@@ -22,7 +22,8 @@ run_sections <- list(
   coverage_3d             = T,  # 5.2 (malha 3D com topografia) -- a mais morosa; poe FALSE depois da 1ª corrida com uma serie de dados estavel
   min_individuals          = F,  # 6.4 (contagem minima de individuos por bin, farm-wide)
   turbine_clustering       = F, # 10 (clusters ESTATISTICOS de turbinas, por distancia: curtailments e tracks de especie) -- corre sobre o historico completo (_unfilt), pode ser mais lento. Desligada (2026-08, pedido do Paulo): a via estatistica nao acrescentava clareza ao lado da via manual/risk_clusters no relatorio -- reativar aqui e' o unico passo necessario para a secção voltar a aparecer (o Rmd ja trata a ausencia dela)
-  risk_clusters            = F   # 10 (clusters MANUAIS/setores, a mesma analise mas para manual_turbine_clusters -- independente do estatistico acima, liga/desliga a sua vontade)
+  risk_clusters            = F,  # 10 (clusters MANUAIS/setores, a mesma analise mas para manual_turbine_clusters -- independente do estatistico acima, liga/desliga a sua vontade)
+  terrain_bearing_analysis = T   # 11 (classe de terreno -- ridge/complex/flat -- cruzada com distancia/velocidade/altura do disparo por especie, e com o padrao semanal de uso do espaco) -- precisa do mesmo DEM de 5.2 (dem_file)
 )
 
 
@@ -136,6 +137,13 @@ nonprioritysp <- c(
   'Eagle-Unknown',
   'Eagle-Sp'
 )
+
+## Especies prioritarias em foco na secção 11.2 (distancia/velocidade/altura
+## do disparo de curtailment por classe de terreno) -- subconjunto mais
+## pequeno de prioritysp acima, escolhido pelo Paulo (2026-08) como ponto de
+## partida -- alargar esta lista e' o unico passo necessario para incluir
+## mais especies nessa secção.
+terrain_bearing_species <- c('Egyptian-Vulture', 'Steppe-Eagle', 'Saker-Falcon')
 
 # 17
 othersp <- c(

@@ -2226,7 +2226,114 @@ if (!exists("track_dt_unfilt")) {
       file.path(folder_output, "species_cluster_risk_ranking_manual.xlsx")
     )
   }
-  
+
+}
+
+
+## 11. Terrain & Spatial Use Patterns ----
+##
+## Classifica cada turbina em ridge/complex/flat a partir do DEM (2 buffers
+## concentricos, R/turbine_terrain_classification.R) e cruza essa classe com
+## 2 analises distintas:
+##   11.2 -- distancia/velocidade/altura do DISPARO de curtailment, por
+##           setor de bussola + classe de terreno + especie prioritaria
+##           (R/curtailment_bearing_sectors.R, so' curtailments -- pedido do
+##           Paulo, 2026-08, depois de o setor de bussola sozinho nao
+##           mostrar padrao claro)
+##   11.3 -- padrao SEMANAL de uso do espaco por classe de terreno, com
+##           TODOS os tracks (nao so' os que dispararam curtailment) --
+##           R/track_terrain_temporal.R
+## terrain_bearing_species --> definido no userSettings_BSH.R/DGY.R (lista
+## de especies prioritarias em foco na secção 11.2). Usa o mesmo dem_file da
+## secção 5.2 -- precisa dela ter corrido nesta ronda (ou de uma ronda
+## anterior na mesma sessao) para dem_file existir.
+
+if (!exists("wtg")) {
+  message("11 saltada: wtg nao existe (ver secção 0 -- Import data).")
+} else if (!exists("dem_file")) {
+  message("11 saltada: dem_file nao existe -- e' definido na secção 5.2, correr essa secção primeiro (mesmo com coverage_3d = FALSE, dem_file e' definido antes do if).")
+} else if (file.exists(dem_file) && isTRUE(run_sections$terrain_bearing_analysis)) {
+
+  source("R/turbine_terrain_classification.R")
+  source("R/curtailment_bearing_sectors.R")
+  source("R/track_terrain_temporal.R")
+
+  ### 11.1. Classificacao do terreno (ridge/complex/flat) ----
+
+  terrain_dt <- compute_turbine_terrain_metrics(wtg, dem_file, radius_inner_m = 250, radius_outer_m = 500)
+  terrain_dt <- classify_terrain(terrain_dt)
+  summary_terrain_counts <- summarise_terrain_class_counts(terrain_dt)
+
+  p_terrain_map <- plot_turbine_terrain_map(wtg, terrain_dt)
+  ggsave(
+    file.path(folder_output, "terrain_classification_map.png"),
+    plot = p_terrain_map, width = 8, height = 8, dpi = 300, bg = "white"
+  )
+
+  write_xlsx_local(
+    list(By_turbine = terrain_dt, By_class = summary_terrain_counts),
+    file.path(folder_output, "terrain_classification.xlsx")
+  )
+
+  ### 11.2. Curtailment distance/speed/height por setor, classe de terreno e especie ----
+
+  bearing_dt    <- compute_curtailment_bearing(curtl_dt, track_dt, wtg, turbine_terrain_dt = terrain_dt)
+  bearing_dt_sp <- bearing_dt[species %in% terrain_bearing_species]
+
+  summary_bearing_terrain_sp <- summarise_bearing_sectors(bearing_dt_sp, group_cols = c("species", "terrain_class"))
+
+  p_terrain_bearing_box  <- plot_bearing_boxplot(bearing_dt_sp, metric = "trigger_dist_m")
+  p_terrain_bearing_hist <- plot_terrain_class_hist(bearing_dt_sp, metric = "trigger_dist_m")
+
+  if (!is.null(p_terrain_bearing_box)) {
+    ggsave(
+      file.path(folder_output, "terrain_bearing_boxplot_by_species.png"),
+      plot = p_terrain_bearing_box, width = 8, height = 10, dpi = 300, bg = "white"
+    )
+  }
+  if (!is.null(p_terrain_bearing_hist)) {
+    ggsave(
+      file.path(folder_output, "terrain_bearing_hist_by_species.png"),
+      plot = p_terrain_bearing_hist, width = 9, height = 9, dpi = 300, bg = "white"
+    )
+  }
+
+  write_xlsx_local(
+    list(Events = bearing_dt_sp, By_species_terrain = summary_bearing_terrain_sp),
+    file.path(folder_output, "terrain_bearing_by_species.xlsx")
+  )
+
+  ### 11.3. Padrao semanal de uso do espaco por classe de terreno (todos os tracks) ----
+
+  track_terrain_dt  <- assign_track_terrain_class(track_dt, wtg, terrain_dt)
+  weekly_terrain_dt <- summarise_tracks_by_week_terrain(track_terrain_dt, terrain_dt)
+
+  p_terrain_weekly_mean   <- plot_tracks_by_week_terrain(weekly_terrain_dt, metric = "mean_tracks_per_turbine")
+  p_terrain_weekly_active <- plot_tracks_by_week_terrain(weekly_terrain_dt, metric = "pct_turbines_active")
+
+  if (!is.null(p_terrain_weekly_mean)) {
+    ggsave(
+      file.path(folder_output, "terrain_weekly_mean_tracks.png"),
+      plot = p_terrain_weekly_mean, width = 12, height = 6, dpi = 300, bg = "white"
+    )
+  }
+  if (!is.null(p_terrain_weekly_active)) {
+    ggsave(
+      file.path(folder_output, "terrain_weekly_pct_active.png"),
+      plot = p_terrain_weekly_active, width = 12, height = 6, dpi = 300, bg = "white"
+    )
+  }
+
+  write_xlsx_local(
+    list(Weekly_by_terrain_class = weekly_terrain_dt),
+    file.path(folder_output, "terrain_weekly_space_use.xlsx")
+  )
+
+} else {
+  message(sprintf(
+    "11 saltada nesta ronda -- run_sections$terrain_bearing_analysis = %s, DEM encontrado (%s) = %s.",
+    isTRUE(run_sections$terrain_bearing_analysis), dem_file, file.exists(dem_file)
+  ))
 }
 
 
@@ -2281,6 +2388,12 @@ n_idf_total <- if (exists("turbine_idf_manual_dt")) {
 xlsx_latency_name   <- if (exists("scada_ini")) sprintf("curtailment_response_latency_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
 xlsx_shutdown_name  <- if (exists("scada_ini")) sprintf("curtailment_shutdown_time_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
 xlsx_safe_dist_name <- if (exists("scada_ini")) sprintf("curtailment_safe_distance_%sto%s.xlsx", date(scada_ini), date(scada_end)) else NULL
+
+# Nomes fixos (secção 11 nao janela por SCADA, corre sobre curtl_dt/track_dt
+# diretamente -- ver R/curtailment_bearing_sectors.R)
+xlsx_terrain_classification_name <- "terrain_classification.xlsx"
+xlsx_terrain_bearing_name        <- "terrain_bearing_by_species.xlsx"
+xlsx_terrain_weekly_name         <- "terrain_weekly_space_use.xlsx"
 
 report_params <- list(
   title         = paste("IDF Analysis Report -", project_ref),
@@ -2423,7 +2536,21 @@ report_params <- list(
   cluster_perm_n      = cluster_perm_n,
   
   min_individuals_bin_min      = min_individuals_bin_min,
-  min_individuals_merge_dist_m = min_individuals_merge_dist_m
+  min_individuals_merge_dist_m = min_individuals_merge_dist_m,
+
+  terrain_class_counts = if (exists("summary_terrain_counts")) summary_terrain_counts else NULL,
+  terrain_map_plot     = if (exists("p_terrain_map")) p_terrain_map else NULL,
+
+  terrain_bearing_species_text = if (exists("terrain_bearing_species")) paste(terrain_bearing_species, collapse = ", ") else NULL,
+  terrain_bearing_boxplot      = if (exists("p_terrain_bearing_box")) p_terrain_bearing_box else NULL,
+  terrain_bearing_hist         = if (exists("p_terrain_bearing_hist")) p_terrain_bearing_hist else NULL,
+
+  terrain_weekly_mean_plot   = if (exists("p_terrain_weekly_mean")) p_terrain_weekly_mean else NULL,
+  terrain_weekly_active_plot = if (exists("p_terrain_weekly_active")) p_terrain_weekly_active else NULL,
+
+  xlsx_terrain_classification = xlsx_terrain_classification_name,
+  xlsx_terrain_bearing        = xlsx_terrain_bearing_name,
+  xlsx_terrain_weekly         = xlsx_terrain_weekly_name
 )
 
 ## Reutiliza o template Word da empresa (estilos, cabecalho/rodape com

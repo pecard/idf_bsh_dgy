@@ -139,6 +139,17 @@ params:
 
   min_individuals_bin_min: !r NULL
   min_individuals_merge_dist_m: !r NULL
+
+  terrain_class_counts: !r NULL
+  terrain_map_plot: !r NULL
+  terrain_bearing_species_text: !r NULL
+  terrain_bearing_boxplot: !r NULL
+  terrain_bearing_hist: !r NULL
+  terrain_weekly_mean_plot: !r NULL
+  terrain_weekly_active_plot: !r NULL
+  xlsx_terrain_classification: !r NULL
+  xlsx_terrain_bearing: !r NULL
+  xlsx_terrain_weekly: !r NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -1196,6 +1207,65 @@ annex_note(params$xlsx_min_indiv)
 if (!is.null(params$min_indiv_plot_daily)) print(params$min_indiv_plot_daily)
 ```
 
+# Terrain & Spatial Use Patterns
+
+Turbines classified by local terrain (ridge, complex or flat) from the digital elevation model, cross-referenced with the distance, speed and height of curtailment triggers by species, and with the weekly pattern of space use around each terrain class.
+
+## Terrain Classification
+
+Each turbine's terrain is classified from its elevation relative to its surroundings, checked at two radii (250m and 500m) around the turbine, and the average ground slope within the wider radius. A turbine standing out above its surroundings -- either directly beneath it or over the wider radius -- is classified as a ridge; among the remaining turbines, one surrounded by markedly uneven ground is classified as complex; the rest are classified as flat.
+
+<!-- Source: compute_turbine_terrain_metrics()/classify_terrain(), R/turbine_terrain_classification.R -->
+```{r terrain-class-table}
+if (!is.null(params$terrain_class_counts)) {
+  report_table(rename_display(
+    params$terrain_class_counts,
+    c(terrain_class = "Terrain Class", n_turbines = "Turbines", pct_turbines = "% of Turbines")
+  ))
+}
+```
+```{r terrain-class-annex, results='asis'}
+annex_note(params$xlsx_terrain_classification)
+```
+
+<!-- Source: plot_turbine_terrain_map(), R/turbine_terrain_classification.R -->
+```{r terrain-map-plot, fig.width=6.30, fig.height=6.30}
+if (!is.null(params$terrain_map_plot)) print(params$terrain_map_plot)
+```
+
+## Curtailment Distance, Speed and Height by Species and Terrain Class
+
+For curtailments triggered by `r params$terrain_bearing_species_text`, the distance, flight speed and height at the moment the curtailment was triggered, grouped by the terrain class of the curtailed turbine and by the approach sector (the compass direction, relative to the turbine, the bird was coming from).
+
+<!-- Source: compute_curtailment_bearing()/plot_bearing_boxplot(), R/curtailment_bearing_sectors.R -->
+```{r terrain-bearing-boxplot, fig.width=6.30, fig.height=8}
+if (!is.null(params$terrain_bearing_boxplot)) print(params$terrain_bearing_boxplot)
+```
+
+<!-- Source: plot_terrain_class_hist(), R/curtailment_bearing_sectors.R -->
+```{r terrain-bearing-hist, fig.width=6.30, fig.height=8}
+if (!is.null(params$terrain_bearing_hist)) print(params$terrain_bearing_hist)
+```
+```{r terrain-bearing-annex, results='asis'}
+annex_note(params$xlsx_terrain_bearing)
+```
+
+## Weekly Space-Use Pattern by Terrain Class
+
+Every recorded track -- not only the ones that triggered a curtailment -- assigned to the terrain class of its nearest turbine, counted in weekly (7-day) bins.
+
+<!-- Source: assign_track_terrain_class()/summarise_tracks_by_week_terrain(), R/track_terrain_temporal.R -->
+```{r terrain-weekly-mean-plot, fig.width=6.30, fig.height=5}
+if (!is.null(params$terrain_weekly_mean_plot)) print(params$terrain_weekly_mean_plot)
+```
+
+```{r terrain-weekly-active-plot, fig.width=6.30, fig.height=5}
+if (!is.null(params$terrain_weekly_active_plot)) print(params$terrain_weekly_active_plot)
+```
+```{r terrain-weekly-annex, results='asis'}
+annex_note(params$xlsx_terrain_weekly)
+```
+
 # Annexes
 
-The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: system availability, data coverage, curtailment response assessment, shutdown time, safe distance, 3D coverage, fatality investigation (full track/window detail), manual risk clusters and statistical turbine clustering (both including the cluster-threshold sensitivity sweep, weekly time series, and per-turbine/per-cluster breakdowns), and minimum individuals per bin.
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report, one workbook/plot set per section: system availability, data coverage, curtailment response assessment, shutdown time, safe distance, 3D coverage, fatality investigation (full track/window detail), manual risk clusters and statistical turbine clustering (both including the cluster-threshold sensitivity sweep, weekly time series, and per-turbine/per-cluster breakdowns), minimum individuals per bin, terrain classification, curtailment distance/speed/height by species and terrain class, and the weekly space-use pattern by terrain class.

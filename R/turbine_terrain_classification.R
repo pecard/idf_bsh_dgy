@@ -72,6 +72,7 @@
 ##   terrain_dt <- classify_terrain(terrain_dt) # ridge_proximity_m + limiares por quantil, calibrados a este parque
 ##   attr(terrain_dt, "thresholds") # ver os valores (m/graus) que os quantis deram
 ##   plot_turbine_terrain_map(wtg, terrain_dt) # confirma visualmente antes de usar
+##   summarise_terrain_class_counts(terrain_dt) # n e % de turbinas por classe (tabela do relatorio)
 ##
 ##   # comparar com o criterio original (1 buffer so'):
 ##   terrain_dt_v1 <- classify_terrain(terrain_dt, ridge_metric = "relative_elev_m")
@@ -239,7 +240,33 @@ classify_terrain <- function(turbine_terrain_dt, ridge_metric = "ridge_proximity
 }
 
 
-## 3. Mapa de confirmacao visual (turbinas coloridas pela classe) ----
+## 3. Resumo (n e % de turbinas) por classe -- tabela para o relatorio ----
+##
+## Completa classes sem nenhuma turbina com n=0/pct=0 (ex: se o parque nao
+## tiver nenhuma turbina "complex") -- mesma convencao de preenchimento
+## usada noutras seccoes deste projeto (ex: summarise_bearing_sectors(),
+## R/curtailment_bearing_sectors.R).
+
+summarise_terrain_class_counts <- function(turbine_terrain_dt) {
+
+  out <- turbine_terrain_dt[, .(n_turbines = .N), by = terrain_class]
+  out[, terrain_class := as.character(terrain_class)]
+
+  missing_classes <- setdiff(c("flat", "complex", "ridge"), out$terrain_class)
+  if (length(missing_classes) > 0) {
+    out <- data.table::rbindlist(list(
+      out, data.table::data.table(terrain_class = missing_classes, n_turbines = 0L)
+    ))
+  }
+
+  out[, terrain_class := factor(terrain_class, levels = c("flat", "complex", "ridge"))]
+  data.table::setorder(out, terrain_class)
+  out[, pct_turbines := round(100 * n_turbines / sum(n_turbines), 1)]
+  out[]
+}
+
+
+## 4. Mapa de confirmacao visual (turbinas coloridas pela classe) ----
 
 plot_turbine_terrain_map <- function(wtg_sf, turbine_terrain_dt, wtg_id_col = "InternalNa") {
 

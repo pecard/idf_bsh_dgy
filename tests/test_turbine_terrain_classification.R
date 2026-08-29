@@ -147,3 +147,17 @@ cat(sprintf(
   "Esperado: por ridge_proximity_m -> TTM_A='flat'/TTM_B='ridge'; por relative_elev_m -> invertido -- %s\n",
   if (ok_proximity && ok_relelev) "OK" else "FALHOU"
 ))
+
+
+## 5. summarise_terrain_class_counts() -- n e % de turbinas por classe -----
+## (reutiliza classified_test da seccao 1: 1 flat, 1 complex, 2 ridge)
+
+cat("\n===== summarise_terrain_class_counts(classified_test) =====\n")
+counts_test <- summarise_terrain_class_counts(classified_test)
+print(counts_test)
+cat("Esperado: flat n=1 (25%), complex n=1 (25%), ridge n=2 (50%).\n")
+
+cat("\n----- Caso-limite: nenhuma turbina 'complex' -----\n")
+counts_test3 <- summarise_terrain_class_counts(classified_test3) # so' "ridge" (secção 3)
+print(counts_test3)
+cat("Esperado: flat n=0/0%, complex n=0/0%, ridge n=3/100% (0-fill nas classes ausentes).\n")
