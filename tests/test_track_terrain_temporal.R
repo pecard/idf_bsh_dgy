@@ -1,12 +1,12 @@
 ##
 ## Teste com dados simulados para R/track_terrain_temporal.R
 ##
-## 2 turbinas sinteticas bem separadas -- "TWA1" (flat) em UTM (1000,1000) e
-## "TWB1" (ridge) em UTM (5000,5000) -- para que a atribuicao de turbina
-## mais proxima por track seja inequivoca. Tracks espalhados por 2 bins de 7
-## dias (semana 0 e semana 1, a partir do 1o dia com dados) para testar o
-## ancoramento do bin e o preenchimento de combinacoes semana x classe sem
-## dados (0 explicito).
+## 3 turbinas sinteticas bem separadas -- "TWA1"/"TWA2" (flat) e "TWB1"
+## (ridge) -- para testar a agregacao ENTRE TURBINAS da mesma classe
+## (media/mediana/desvio-padrao), nao so' 1 razao soma/contagem. flat tem 2
+## turbinas com atividades DIFERENTES (para o desvio-padrao ser > 0 e
+## calculavel a mao); ridge tem so' 1 turbina (para testar o caso-limite
+## sd = NA, n < 2). Tracks espalhados por 2 bins de 7 dias.
 ##
 ## Correr: source("tests/test_track_terrain_temporal.R")
 ##
@@ -16,40 +16,48 @@
 source("R/track_terrain_temporal.R")
 
 wtg_test <- sf::st_as_sf(
-  data.frame(InternalNa = c("TWA1", "TWB1"), x = c(1000, 5000), y = c(1000, 5000)),
+  data.frame(InternalNa = c("TWA1", "TWA2", "TWB1"), x = c(1000, 2000, 9000), y = c(1000, 1000, 9000)),
   coords = c("x", "y"), crs = 32641
 )
 
 turbine_terrain_dt_test <- data.table::data.table(
-  wtg_id = c("TWA1", "TWB1"),
-  terrain_class = factor(c("flat", "ridge"), levels = c("flat", "complex", "ridge"))
+  wtg_id = c("TWA1", "TWA2", "TWB1"),
+  terrain_class = factor(c("flat", "flat", "ridge"), levels = c("flat", "complex", "ridge"))
 )
 
 base_date <- as.Date("2026-06-01") # sera' o min_date -> week_start da semana 0
 
-## Tracks perto de TWA1 (flat): 3 na semana 0 (dias 0,1,2), 1 na semana 1 (dia 7)
 make_track_at <- function(track_id, day_offset, x, y) {
   data.table::data.table(
     track_id = track_id,
-    timestamp = as.POSIXct(base_date + day_offset, tz = "UTC") + 3600, # meio-dia-ish, irrelevante
+    timestamp = as.POSIXct(base_date + day_offset, tz = "UTC") + 3600,
     utm_x = x, utm_y = y
   )
 }
 
-tracks_flat <- data.table::rbindlist(list(
-  make_track_at("TA_W0_1", 0, 1000, 1000),
-  make_track_at("TA_W0_2", 1, 1005, 995),
-  make_track_at("TA_W0_3", 2, 995, 1005),
-  make_track_at("TA_W1_1", 7, 1000, 1000)
+## TWA1 (flat): 3 tracks na semana 0 (dias 0,1,2), 1 na semana 1 (dia 7)
+## TWA2 (flat): 1 track na semana 0 (dia 0), 0 na semana 1
+##   -> flat semana0: turbinas [3,1] -> mean=2, median=2, sd=1.41
+##   -> flat semana1: turbinas [1,0] -> mean=0.5, median=0.5, sd=0.71
+tracks_a1 <- data.table::rbindlist(list(
+  make_track_at("TA1_W0_1", 0, 1000, 1000),
+  make_track_at("TA1_W0_2", 1, 1005, 995),
+  make_track_at("TA1_W0_3", 2, 995, 1005),
+  make_track_at("TA1_W1_1", 7, 1000, 1000)
+))
+tracks_a2 <- data.table::rbindlist(list(
+  make_track_at("TA2_W0_1", 0, 2000, 1000)
 ))
 
-## Tracks perto de TWB1 (ridge): 2 na semana 0 (dias 0,3), 0 na semana 1
-tracks_ridge <- data.table::rbindlist(list(
-  make_track_at("TB_W0_1", 0, 5000, 5000),
-  make_track_at("TB_W0_2", 3, 5005, 4995)
+## TWB1 (ridge, unica turbina da classe): 2 tracks na semana 0, 0 na semana 1
+##   -> ridge semana0: turbinas [2] -> mean=2, median=2, sd=NA (n=1)
+##   -> ridge semana1: turbinas [0] -> mean=0, median=0, sd=NA (n=1)
+tracks_b1 <- data.table::rbindlist(list(
+  make_track_at("TB1_W0_1", 0, 9000, 9000),
+  make_track_at("TB1_W0_2", 3, 9005, 8995)
 ))
 
-track_dt_test <- data.table::rbindlist(list(tracks_flat, tracks_ridge))
+track_dt_test <- data.table::rbindlist(list(tracks_a1, tracks_a2, tracks_b1))
 
 
 ## 1. assign_track_terrain_class() -- turbina mais proxima + classe --------
@@ -59,16 +67,16 @@ track_terrain_test <- assign_track_terrain_class(track_dt_test, wtg_test, turbin
 print(track_terrain_test)
 
 expected_terrain <- data.table::data.table(
-  track_id = c("TA_W0_1", "TA_W0_2", "TA_W0_3", "TA_W1_1", "TB_W0_1", "TB_W0_2"),
-  expected_turbine = c("TWA1", "TWA1", "TWA1", "TWA1", "TWB1", "TWB1"),
-  expected_class   = c("flat", "flat", "flat", "flat", "ridge", "ridge")
+  track_id = c("TA1_W0_1", "TA1_W0_2", "TA1_W0_3", "TA1_W1_1", "TA2_W0_1", "TB1_W0_1", "TB1_W0_2"),
+  expected_turbine = c("TWA1", "TWA1", "TWA1", "TWA1", "TWA2", "TWB1", "TWB1"),
+  expected_class   = c("flat", "flat", "flat", "flat", "flat", "ridge", "ridge")
 )
 check1 <- merge(track_terrain_test, expected_terrain, by = "track_id")
 check1[, ok := nearest_turbine == expected_turbine & as.character(terrain_class) == expected_class]
 cat(sprintf("Resultado: %d/%d tracks com turbina/classe corretas.\n", sum(check1$ok), nrow(check1)))
 
 
-## 2. summarise_tracks_by_week_terrain() -- bins de 7 dias, 0-fill ----------
+## 2. summarise_tracks_by_week_terrain() -- media/mediana/sd ENTRE TURBINAS -
 
 cat("\n===== summarise_tracks_by_week_terrain(track_terrain_test, turbine_terrain_dt_test) =====\n")
 weekly_test <- summarise_tracks_by_week_terrain(track_terrain_test, turbine_terrain_dt_test)
@@ -77,43 +85,49 @@ print(weekly_test)
 week0 <- base_date
 week1 <- base_date + 7
 
-n_flat_w0  <- weekly_test[week_start == week0 & terrain_class == "flat", n_tracks]
-n_flat_w1  <- weekly_test[week_start == week1 & terrain_class == "flat", n_tracks]
-n_ridge_w0 <- weekly_test[week_start == week0 & terrain_class == "ridge", n_tracks]
-n_ridge_w1 <- weekly_test[week_start == week1 & terrain_class == "ridge", n_tracks]
-n_complex_w0 <- weekly_test[week_start == week0 & terrain_class == "complex", n_tracks]
+flat_w0  <- weekly_test[week_start == week0 & terrain_class == "flat"]
+flat_w1  <- weekly_test[week_start == week1 & terrain_class == "flat"]
+ridge_w0 <- weekly_test[week_start == week0 & terrain_class == "ridge"]
+ridge_w1 <- weekly_test[week_start == week1 & terrain_class == "ridge"]
 
 cat(sprintf(
-  "flat: semana0=%d (esp. 3), semana1=%d (esp. 1); ridge: semana0=%d (esp. 2), semana1=%d (esp. 0, 0-fill); complex: semana0=%d (esp. 0, 0-fill, sem turbinas 'complex')\n",
-  n_flat_w0, n_flat_w1, n_ridge_w0, n_ridge_w1, n_complex_w0
+  "flat semana0: n_turbines=%d (esp. 2), n_tracks=%d (esp. 4), mean=%.2f (esp. 2.00), median=%.2f (esp. 2.00), sd=%.2f (esp. 1.41)\n",
+  flat_w0$n_turbines, flat_w0$n_tracks, flat_w0$mean_tracks_per_turbine, flat_w0$median_tracks_per_turbine, flat_w0$sd_tracks_per_turbine
+))
+cat(sprintf(
+  "flat semana1: n_turbines=%d (esp. 2), n_tracks=%d (esp. 1), mean=%.2f (esp. 0.50), median=%.2f (esp. 0.50), sd=%.2f (esp. 0.71)\n",
+  flat_w1$n_turbines, flat_w1$n_tracks, flat_w1$mean_tracks_per_turbine, flat_w1$median_tracks_per_turbine, flat_w1$sd_tracks_per_turbine
+))
+cat(sprintf(
+  "ridge semana0: n_turbines=%d (esp. 1), n_tracks=%d (esp. 2), mean=%.2f (esp. 2.00), sd=%s (esp. NA, so' 1 turbina)\n",
+  ridge_w0$n_turbines, ridge_w0$n_tracks, ridge_w0$mean_tracks_per_turbine, as.character(ridge_w0$sd_tracks_per_turbine)
+))
+cat(sprintf(
+  "ridge semana1: n_turbines=%d (esp. 1), n_tracks=%d (esp. 0, 0-fill), mean=%.2f (esp. 0.00), sd=%s (esp. NA)\n",
+  ridge_w1$n_turbines, ridge_w1$n_tracks, ridge_w1$mean_tracks_per_turbine, as.character(ridge_w1$sd_tracks_per_turbine)
 ))
 
-n_tpt_flat_w0  <- weekly_test[week_start == week0 & terrain_class == "flat", n_tracks_per_turbine]
-n_tpt_ridge_w0 <- weekly_test[week_start == week0 & terrain_class == "ridge", n_tracks_per_turbine]
 cat(sprintf(
-  "n_tracks_per_turbine (1 turbina em cada classe aqui, por isso == n_tracks): flat semana0=%.2f (esp. 3), ridge semana0=%.2f (esp. 2)\n",
-  n_tpt_flat_w0, n_tpt_ridge_w0
+  "\nClasses presentes no resultado: %s (esperado: so' 'flat'/'ridge' -- 'complex' nao aparece, 0 turbinas dessa classe em turbine_terrain_dt_test)\n",
+  paste(sort(unique(as.character(weekly_test$terrain_class))), collapse = ", ")
 ))
-
-cat(sprintf(
-  "Linhas totais: %d (esperado: 2 semanas x 3 classes = 6)\n", nrow(weekly_test)
-))
+cat(sprintf("Linhas totais: %d (esperado: 2 semanas x 2 classes com turbinas = 4)\n", nrow(weekly_test)))
 
 
 ## 3. plot_tracks_by_week_terrain() -- smoke test ---------------------------
 
 cat("\n===== plot_tracks_by_week_terrain() -- smoke test =====\n")
-p_default <- plot_tracks_by_week_terrain(weekly_test)
-p_per_turbine <- plot_tracks_by_week_terrain(weekly_test, metric = "n_tracks_per_turbine")
-p_facet <- plot_tracks_by_week_terrain(weekly_test, facet = TRUE)
+p_mean   <- plot_tracks_by_week_terrain(weekly_test) # omissao: mean_tracks_per_turbine + banda SD
+p_total  <- plot_tracks_by_week_terrain(weekly_test, metric = "n_tracks")
+p_median <- plot_tracks_by_week_terrain(weekly_test, metric = "median_tracks_per_turbine")
+p_facet  <- plot_tracks_by_week_terrain(weekly_test, facet = TRUE)
 
 ## chamado sobre a tabela ERRADA (track_terrain_test, per-track, sem
-## 'n_tracks_per_turbine' nem sequer 'week_start') -- deve devolver NULL com
-## mensagem, nao um erro, gracas ao guard de coluna ausente
-p_missing_metric <- plot_tracks_by_week_terrain(track_terrain_test, metric = "n_tracks_per_turbine")
+## nenhuma das colunas agregadas) -- deve devolver NULL com mensagem
+p_wrong_table <- plot_tracks_by_week_terrain(track_terrain_test)
 
 cat(sprintf(
-  "3 plots gerados sem erro (nao-NULL): %s -- caso de coluna ausente devolveu NULL: %s\n",
-  if (!is.null(p_default) && !is.null(p_per_turbine) && !is.null(p_facet)) "OK" else "FALHOU",
-  is.null(p_missing_metric)
+  "4 plots gerados sem erro (nao-NULL): %s -- tabela errada devolveu NULL: %s\n",
+  if (!is.null(p_mean) && !is.null(p_total) && !is.null(p_median) && !is.null(p_facet)) "OK" else "FALHOU",
+  is.null(p_wrong_table)
 ))
