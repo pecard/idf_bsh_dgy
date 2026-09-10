@@ -24,7 +24,7 @@
 ## Ver run_monthly_report_DGY.R para o equivalente do Dzhankeldy.
 ##
 
-report_month <- "2026-06"
+report_month <- "2026-08"
 
 ## Deixar FALSE na maioria das corridas -- so' mudar para TRUE na 1a corrida
 ## a seguir a descarregar dados novos (ex: SCADA de turbinas recem-

@@ -80,10 +80,10 @@ farm_pattern <- "BSH|Bash"
 ## (ver IDF_analysis.R, logo apos o source() deste ficheiro).
 farm_code <- "BSH"
 
-trackreport_pattern  <- "TrackReport_" #"TrackReport.+csv"          # ex: TrackReport_20260201_....csv
+trackreport_pattern  <- "TrackReport_Default" #"TrackReport.+csv"          # ex: TrackReport_20260201_....csv
 curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
-scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_20260201_....csv
-heartbeats_pattern   <- "Bash_Heartbeats.+csv"          # ex: Heartbeats_20260201_....csv
+scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_BSH_20260201_....csv
+heartbeats_pattern   <- "Heartbeats_BSH.+csv"          # ex: Heartbeats_BSH_20260201_....csv
 heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11", 
                          "BSH64-04", "BSH62-05", "BSH61-06",
                          'BSH14-41', 'BSH12-40')
@@ -93,7 +93,7 @@ heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11",
 ##
 
 ini <- as.POSIXct('2025-01-01 00:00:00', tz = proj_timezone)
-end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
+end <- as.POSIXct('2026-08-30 23:59:59', tz = proj_timezone)
 
 
 ##
