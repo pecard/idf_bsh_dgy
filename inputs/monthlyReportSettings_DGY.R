@@ -93,7 +93,7 @@ farm_code <- "DGY"
 ## "DGY" aparece algures no nome de cada ficheiro, sem posicao fixa face a
 ## palavra-chave do dataset -- mesma nota completa em userSettings_DGY.R.
 trackreport_pattern  <- "(DGY.*TrackReport_|TrackReport_.*DGY)"
-curtailments_pattern <- "(DGY.*curtail_orders|curtail_orders.*DGY|DGY.*Curtailments|Curtailments.*DGY)"
+curtailments_pattern <- "^(DGY.*curtail_orders|curtail_orders.*DGY|DGY.*Curtailments|Curtailments.*DGY)" # ^ para nao apanhar um eventual "Coverage_Curtailments_DGY.csv" (mesmo bug do BSH, 2026-09)
 scada_pattern        <- "(SCADA_.*DGY.*csv|DGY.*SCADA_.+csv)"
 heartbeats_pattern   <- "(Heartbeats_.*DGY.*csv|DGY.*Heartbeats_.+csv)"
 
