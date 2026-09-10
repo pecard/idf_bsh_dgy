@@ -33,7 +33,16 @@ report_month <- "2026-08"
 ## comentario em IDF_monthly_report.R, secção "0. Import data"). Voltar a
 ## FALSE depois dessa corrida -- deixar TRUE religa sempre os ficheiros
 ## brutos, mais lento sem necessidade.
-force_reread_cache_monthly <- T
+force_reread_cache_monthly <- FALSE
+
+## Flag por dataset -- so' este dataset relê dos ficheiros brutos, os
+## outros 3 (tracks/scada/heartbeats) ficam pela cache (ver
+## force_reread_cache_monthly acima e a nota em IDF_monthly_report.R,
+## secção "0. Import data"). Util quando so' uma fonte tem ficheiros
+## novos/corrigidos -- 2026-09, curtailments corrigido depois do bug do
+## curtailments_pattern. Comentar/apagar esta linha (ou por FALSE) quando
+## ja nao for preciso.
+force_reread_curtailments <- TRUE
 
 ## TRUE por omissao (gera o .docx final). Mudar para FALSE quando estas so'
 ## a testar/depurar uma secção e queres inspecionar as tabelas/objetos
