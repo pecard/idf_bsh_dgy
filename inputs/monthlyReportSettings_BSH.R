@@ -94,11 +94,10 @@ databases_dir_alt <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-
 ## substring (em qualquer posicao do nome do ficheiro) para excluir
 ## ficheiros do DGY que estejam na mesma pasta partilhada (ver
 ## list_files_multi_dir(), R/read_utils.R, e o mesmo ajuste em
-## userSettings_BSH.R). Alternancia "BSH|Bash" -- tracks/curtailments/SCADA
-## usam o acronimo "BSH" no nome do ficheiro, mas heartbeats usa o nome
-## completo "Bash" (ver heartbeats_pattern, "Bash_Heartbeats.+csv", abaixo)
-## -- so' "BSH" deixava 0 ficheiros de heartbeats depois do filtro (bug
-## encontrado 2026-08, corrida real: "0 de 1 ficheiro(s) mantidos").
+## userSettings_BSH.R). Alternancia "BSH|Bash" mantida por precaucao (nomes
+## de ficheiro antigos com "Bash" podem continuar na pasta partilhada), mas
+## os 4 patterns abaixo (heartbeats incluido, desde a renomeacao 2026-09)
+## usam todos o acronimo "BSH".
 farm_pattern <- "BSH|Bash"
 
 ## Identificador curto do parque -- usado so' para nao colidir com o DGY
@@ -106,10 +105,10 @@ farm_pattern <- "BSH|Bash"
 ## userSettings_BSH.R, e o mesmo uso em IDF_monthly_report.R).
 farm_code <- "BSH"
 
-trackreport_pattern  <- "TrackReport_"
+trackreport_pattern  <- "TrackReport_Default" # sincronizado com userSettings_BSH.R (2026-09)
 curtailments_pattern <- "^(curtail_orders|Curtailments)" # ^ para nao apanhar "Coverage_Curtailments_BSH.csv" (erro 2026-09: readxl tenta ler esse csv como xlsx e falha a descomprimir)
 scada_pattern        <- "SCADA_.+csv"
-heartbeats_pattern   <- "Bash_Heartbeats.+csv"
+heartbeats_pattern   <- "Heartbeats_BSH.+csv" # sincronizado com userSettings_BSH.R (2026-09) -- o nome antigo "Bash_Heartbeats.+csv" deixava de bater certo depois da renomeacao dos ficheiros reais, dando 0 ficheiros e um heartb_dt vazio (erro "comparison (>=) is possible only for atomic and list types" mais a frente, ao filtrar por data)
 
 # Sem heartbeat_idf_units (subconjunto manual de userSettings_BSH.R) -- o
 # relatorio mensal usa TODAS as unidades IDF com heartbeat, sem filtro
