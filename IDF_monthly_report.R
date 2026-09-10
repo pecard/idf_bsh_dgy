@@ -209,6 +209,20 @@ folder_cache <- file.path("cache", farm_code)
 ## IDF_analysis.R, por isso essa releitura tambem beneficia esse script.
 if (!exists("force_reread_cache_monthly")) force_reread_cache_monthly <- FALSE
 
+## Flags por dataset -- por omissao seguem force_reread_cache_monthly acima
+## (o comportamento de sempre: FALSE reutiliza os 4, TRUE relê os 4), mas
+## cada uma pode ser definida individualmente (na consola, antes de correr
+## este script) para relê SO' esse dataset sem tocar nos outros 3 -- util
+## quando so' uma fonte tem ficheiros novos/corrigidos (ex: um erro de
+## leitura nas curtailments) e reler tracks/SCADA tambem (milhoes de
+## linhas) seria so' tempo perdido. Ex:
+##   force_reread_cache_monthly <- FALSE # os outros 3 ficam em cache
+##   force_reread_curtailments <- TRUE   # so' este relê
+if (!exists("force_reread_tracks"))       force_reread_tracks       <- force_reread_cache_monthly
+if (!exists("force_reread_curtailments")) force_reread_curtailments <- force_reread_cache_monthly
+if (!exists("force_reread_scada"))        force_reread_scada        <- force_reread_cache_monthly
+if (!exists("force_reread_heartbeats"))   force_reread_heartbeats   <- force_reread_cache_monthly
+
 ## generate_report: TRUE por omissao -- mesmo padrao de
 ## force_reread_cache_monthly acima (so' definir FALSE na consola, antes de
 ## correr este script) para saltar a geracao do .docx final (mais lenta,
@@ -221,31 +235,32 @@ if (!exists("generate_report")) generate_report <- TRUE
 ## memoria de uma corrida anterior NA MESMA sessao R (ex: gerar o relatorio
 ## para varios meses seguidos sem reiniciar o R), reutiliza-os sem tocar no
 ## disco -- nao dependem do report_month, so' a filtragem por mes (abaixo)
-## e' que muda a cada corrida. force_reread_cache_monthly = TRUE ignora
-## sempre a memoria e vai ao disco/ficheiros brutos.
+## e' que muda a cada corrida. force_reread_<dataset> = TRUE ignora sempre
+## a memoria e vai ao disco/ficheiros brutos para ESSE dataset -- ver flags
+## por dataset acima.
 track_dt_unfilt <- reuse_or_load_cache(
   if (exists("track_dt_unfilt")) track_dt_unfilt else NULL,
   "track_dt_unfilt", file.path(folder_cache, "track_dt_unfilt.fst"),
   function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone, farm_pattern = if (exists("farm_pattern")) farm_pattern else NULL),
-  force_reread = force_reread_cache_monthly, tz = proj_timezone
+  force_reread = force_reread_tracks, tz = proj_timezone
 )
 curtl_dt_unfilt <- reuse_or_load_cache(
   if (exists("curtl_dt_unfilt")) curtl_dt_unfilt else NULL,
   "curtl_dt_unfilt", file.path(folder_cache, "curtl_dt_unfilt.fst"),
   function() read_curtailments_data(databases_dirs, curtailments_pattern, tz = proj_timezone, farm_pattern = if (exists("farm_pattern")) farm_pattern else NULL),
-  force_reread = force_reread_cache_monthly, tz = proj_timezone
+  force_reread = force_reread_curtailments, tz = proj_timezone
 )
 scada_dt_unfilt <- reuse_or_load_cache(
   if (exists("scada_dt_unfilt")) scada_dt_unfilt else NULL,
   "scada_dt_unfilt", file.path(folder_cache, "scada_dt_unfilt.fst"),
   function() read_scada_data(databases_dirs, scada_pattern, tz = proj_timezone, farm_pattern = if (exists("farm_pattern")) farm_pattern else NULL),
-  force_reread = force_reread_cache_monthly, tz = proj_timezone
+  force_reread = force_reread_scada, tz = proj_timezone
 )
 heartb_dt_unfilt <- reuse_or_load_cache(
   if (exists("heartb_dt_unfilt")) heartb_dt_unfilt else NULL,
   "heartb_dt_unfilt", file.path(folder_cache, "heartb_dt_unfilt.fst"),
   function() read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone, farm_pattern = if (exists("farm_pattern")) farm_pattern else NULL),
-  force_reread = force_reread_cache_monthly, tz = proj_timezone
+  force_reread = force_reread_heartbeats, tz = proj_timezone
 )
 
 ## Localizacao das turbinas + matriz manual turbina<->IDF -- so' para o plot
