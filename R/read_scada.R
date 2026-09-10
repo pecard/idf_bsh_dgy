@@ -1,7 +1,7 @@
 ##
 ## Read SCADA data (RPM/estado das turbinas)
 ##
-## Depende de: data.table, R/read_utils.R
+## Depende de: data.table, R/read_utils.R (list_files_multi_dir, read_csv_files_safe)
 ##
 
 read_scada_data <- function(databases_dirs, pattern, tz = "UTC", farm_pattern = NULL) {
@@ -10,15 +10,14 @@ read_scada_data <- function(databases_dirs, pattern, tz = "UTC", farm_pattern = 
 
   if (length(files) == 0) return(NULL)
 
-  dt <- rbindlist(lapply(
+  dt <- read_csv_files_safe(
     files,
-    fread,
     sep = ",",
     header = TRUE,
     na.strings = "NULL",
     stringsAsFactors = FALSE,
     blank.lines.skip = TRUE
-  ))
+  )
 
   # Remover linhas duplicadas -- ex: mesmo ficheiro/periodo repetido entre
   # diretorios diferentes -- antes de qualquer calculo dependente da ordem

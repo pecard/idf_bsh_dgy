@@ -1,7 +1,7 @@
 ##
 ## Utilitarios partilhados pelos read_*.R (tracks, curtailments, SCADA, heartbeats)
 ##
-## Depende de: (nenhuma alem de base R)
+## Depende de: data.table (so' read_csv_files_safe(), abaixo)
 ##
 
 
@@ -54,4 +54,36 @@ list_files_multi_dir <- function(databases_dirs, pattern, farm_pattern = NULL) {
   }
 
   out
+}
+
+
+## Le varios ficheiros CSV com fread() e junta-os com rbindlist(), mas
+## ignora (com aviso, nao silenciosamente) qualquer ficheiro cujo numero de
+## colunas nao bate com a maioria dos outros -- protege contra um ficheiro
+## vazio/corrompido na pasta de dados brutos (ex: download interrompido, 0
+## bytes), que de outra forma faz rbindlist() falhar com "Item N has X
+## columns, inconsistent with item 1 which has Y columns" e perde TODO o
+## trabalho ja feito nas fontes lidas antes dele na mesma corrida (bug real,
+## 2026-09, SCADA: 1 ficheiro de 83 so' com 1 coluna em vez de 13).
+##
+## ... e' passado directamente a fread() (ex: sep, header, na.strings) --
+## mesma assinatura de read_scada_data()/read_heartbeats_data() antes desta
+## funcao existir.
+read_csv_files_safe <- function(files, ...) {
+
+  dt_list <- lapply(files, function(f) data.table::fread(f, ...))
+
+  ncols <- vapply(dt_list, ncol, integer(1))
+  expected_ncol <- as.integer(names(sort(table(ncols), decreasing = TRUE))[1])
+
+  bad <- ncols != expected_ncol
+  if (any(bad)) {
+    message(sprintf(
+      "read_csv_files_safe: %d de %d ficheiro(s) IGNORADOS -- numero de colunas nao bate com a maioria (%d colunas esperadas):\n%s",
+      sum(bad), length(files), expected_ncol,
+      paste(sprintf("  %s (%d coluna(s))", files[bad], ncols[bad]), collapse = "\n")
+    ))
+  }
+
+  data.table::rbindlist(dt_list[!bad])
 }
