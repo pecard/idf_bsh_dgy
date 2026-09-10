@@ -81,7 +81,7 @@ farm_pattern <- "BSH|Bash"
 farm_code <- "BSH"
 
 trackreport_pattern  <- "TrackReport_Default" #"TrackReport.+csv"          # ex: TrackReport_20260201_....csv
-curtailments_pattern <- "curtail_orders|Curtailments" # ex: Curtailments_20260201_....xlsx
+curtailments_pattern <- "^(curtail_orders|Curtailments)" # ex: Curtailments_20260201_....xlsx -- ^ para nao apanhar "Coverage_Curtailments_BSH.csv" (erro 2026-09: readxl tenta ler esse csv como xlsx e falha a descomprimir)
 scada_pattern        <- "SCADA_.+csv"               # ex: SCADA_BSH_20260201_....csv
 heartbeats_pattern   <- "Heartbeats_BSH.+csv"          # ex: Heartbeats_BSH_20260201_....csv
 heartbeat_idf_units <- c("BSH55-09" ,"BSH53-10", "BSH52-11", 

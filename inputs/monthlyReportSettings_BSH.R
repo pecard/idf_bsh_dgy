@@ -107,7 +107,7 @@ farm_pattern <- "BSH|Bash"
 farm_code <- "BSH"
 
 trackreport_pattern  <- "TrackReport_"
-curtailments_pattern <- "curtail_orders|Curtailments"
+curtailments_pattern <- "^(curtail_orders|Curtailments)" # ^ para nao apanhar "Coverage_Curtailments_BSH.csv" (erro 2026-09: readxl tenta ler esse csv como xlsx e falha a descomprimir)
 scada_pattern        <- "SCADA_.+csv"
 heartbeats_pattern   <- "Bash_Heartbeats.+csv"
 
