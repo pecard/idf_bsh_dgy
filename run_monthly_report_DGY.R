@@ -21,7 +21,7 @@
 
 monthly_settings_file <- "monthlyReportSettings_DGY.R"
 
-report_month <- "2026-07"
+report_month <- "2026-08"
 
 ## Deixar FALSE na maioria das corridas -- so' mudar para TRUE na 1a corrida
 ## a seguir a descarregar dados novos, para forcar a releitura dos
@@ -31,7 +31,7 @@ report_month <- "2026-07"
 ## brutos, mais lento sem necessidade. Cache do DGY fica em cache/DGY/ (nao
 ## colide com a cache/BSH/ do outro parque -- ver farm_code,
 ## monthlyReportSettings_DGY.R).
-force_reread_cache_monthly <- F
+force_reread_cache_monthly <- TRUE
 
 ## Flags por dataset -- expostas aqui (em vez de so' herdarem
 ## force_reread_cache_monthly acima) para poderes forcar a releitura de UM
@@ -40,10 +40,10 @@ force_reread_cache_monthly <- F
 ## secção "0. Import data". Deixar F na maioria das corridas -- mudar so'
 ## a flag do dataset que precisas de reler para TRUE.
 
-force_reread_curtailments <- F
-force_reread_tracks <- F
-force_reread_scada <- F
-force_reread_heartbeats <- F
+force_reread_curtailments <- FALSE
+force_reread_tracks <-       FALSE
+force_reread_scada <-        FALSE
+force_reread_heartbeats <-   FALSE
 
 ## TRUE por omissao (gera o .docx final). Mudar para FALSE quando estas so'
 ## a testar/depurar uma secção e queres inspecionar as tabelas/objetos
