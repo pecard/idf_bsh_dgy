@@ -46,7 +46,7 @@ packages <- c('purrr', 'rstudioapi',
               'flextable', 'systemfonts',
               'openxlsx', 'writexl', 'rmarkdown',
               'data.table', 'suncalc',
-              'fst')
+              'fst', 'zip')
 
 for (p in packages) {
   if (!require(p, character.only = TRUE)) install.packages(p)
@@ -1217,4 +1217,55 @@ if (isTRUE(generate_report)) {
   )
 } else {
   message("generate_report = FALSE -- .docx NAO gerado nesta ronda (tabelas/objetos continuam disponiveis no ambiente e nos xlsx de anexo).")
+}
+
+
+##
+## Zip do output mensal ----
+##
+## Pedido do Paulo, 2026-09: 1 unico ficheiro .zip por parque/mes, ao LADO
+## da propria pasta do mes (outputs/monthly/<farm_code>/), nao dentro dela
+## -- zippar folder_output para dentro de si mesma entraria num ciclo
+## infinito. Nome "<farm_code>_WWE_IDF_MonthlyReport_<report_month>.zip".
+## Fica-se com os 2: a pasta "<report_month>/" tal como sempre (docx, xlsx,
+## png soltos, para abrir/editar diretamente) e o .zip ao lado (para
+## enviar/arquivar como 1 unico ficheiro).
+##
+## zip::zip() (pacote, instalado automaticamente se preciso -- ver
+## "packages" no topo deste ficheiro) em vez de utils::zip(): este ultimo
+## depende de um executavel "zip" externo no PATH do sistema, normalmente
+## AUSENTE numa instalacao Windows tipica (falha silenciosamente ou com
+## "zip: command not found" conforme a shell) -- zip::zip() e' pure R/C,
+## sem essa dependencia.
+##
+## setwd() temporario (repor sempre no fim, mesmo em erro -- tryCatch(...,
+## finally=), NAO on.exit(): este script corre ao nivel de topo (source()),
+## nao dentro de uma funcao -- on.exit() so' tem efeito dentro de uma frame
+## de funcao, ficaria sem efeito nenhum aqui, e o working directory nunca
+## seria reposto se zip::zip() falhasse a meio) para a pasta ACIMA de
+## folder_output: zip::zip() grava os caminhos dos ficheiros tal como
+## dados; sem isto, o caminho completo ("outputs/monthly/BSH/2026-08/...")
+## ficava gravado dentro do zip, em vez de so' "2026-08/..." (a pasta do
+## mes como topo do arquivo, o que se espera ao descomprimir).
+
+zip_name <- sprintf("%s_WWE_IDF_MonthlyReport_%s.zip", farm_code, report_month)
+zip_path <- normalizePath(file.path(dirname(folder_output), zip_name), mustWork = FALSE)
+
+if (dir.exists(folder_output) && length(list.files(folder_output, recursive = TRUE)) > 0) {
+
+  # apaga um .zip de uma corrida anterior no mesmo mes antes de gravar --
+  # garante um arquivo limpo (sem ficheiros entretanto apagados/renomeados
+  # a ficarem "presos" dentro do zip), em vez de confiar no comportamento
+  # de sobrescrita por omissao de zip::zip()
+  if (file.exists(zip_path)) file.remove(zip_path)
+
+  old_wd <- getwd()
+  tryCatch({
+    setwd(dirname(folder_output))
+    zip::zip(zipfile = zip_path, files = basename(folder_output))
+    message(sprintf("Zip do relatorio mensal gravado: '%s'.", zip_path))
+  }, finally = setwd(old_wd))
+
+} else {
+  message(sprintf("Zip do relatorio mensal saltado -- '%s' nao existe ou esta vazia.", folder_output))
 }
