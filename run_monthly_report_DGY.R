@@ -33,6 +33,18 @@ report_month <- "2026-07"
 ## monthlyReportSettings_DGY.R).
 force_reread_cache_monthly <- F
 
+## Flags por dataset -- expostas aqui (em vez de so' herdarem
+## force_reread_cache_monthly acima) para poderes forcar a releitura de UM
+## SO' dataset dos ficheiros brutos, deixando os outros 3 pela cache -- ver
+## force_reread_cache_monthly acima e a nota em IDF_monthly_report.R,
+## secção "0. Import data". Deixar F na maioria das corridas -- mudar so'
+## a flag do dataset que precisas de reler para TRUE.
+
+force_reread_curtailments <- F
+force_reread_tracks <- F
+force_reread_scada <- F
+force_reread_heartbeats <- F
+
 ## TRUE por omissao (gera o .docx final). Mudar para FALSE quando estas so'
 ## a testar/depurar uma secção e queres inspecionar as tabelas/objetos
 ## diretamente no ambiente ou nos xlsx de anexo, sem esperar pelo
