@@ -46,7 +46,8 @@ packages <- c('purrr', 'rstudioapi',
               'flextable', 'systemfonts',
               'openxlsx', 'writexl', 'rmarkdown',
               'data.table', 'suncalc',
-              'fst', 'zip')
+              'fst', 'zip',
+              'svDialogs') # prompt do nome (check_username(), scripts/check_username.R) -- so' usado via svDialogs:: direto, sem isto aqui falhava com "there is no package called 'svDialogs'" (erro real, 2026-09, apos actualizar o R -- biblioteca de pacotes reiniciada, este era o unico sem guarda de auto-instalacao)
 
 for (p in packages) {
   if (!require(p, character.only = TRUE)) install.packages(p)

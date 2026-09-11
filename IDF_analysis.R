@@ -42,7 +42,8 @@ packages <- c('purrr','rstudioapi', #purrr needed for citation; rstudioapi neede
               'openxlsx','writexl','rmarkdown','flextable','systemfonts',
               'terra', 'RANN', 'plotly', #terra/RANN/plotly: coverage 3D com topografia (DEM)
               'fst', #fst: cache dos datasets grandes (ver R/data_cache.R)
-              'cluster') #cluster: silhouette() para validar clusters espaciais de turbinas (secção 10)
+              'cluster', #cluster: silhouette() para validar clusters espaciais de turbinas (secção 10)
+              'svDialogs') #svDialogs: prompt do nome (check_username(), scripts/check_username.R) -- so' usado via svDialogs:: direto, sem isto aqui falhava com "there is no package called 'svDialogs'" (erro real, 2026-09, apos actualizar o R -- biblioteca de pacotes reiniciada, este era o unico sem guarda de auto-instalacao)
 
 ##Check and install packages that are missing + call library()
 for (p in packages) {
