@@ -327,7 +327,7 @@ if (!is.null(params$techsum_no_response_n)) {
 
 if (!is.null(params$techsum_unnecessary_n)) {
   cat(sprintf(
-    "- **Unnecessary Curtailments**: a P to NP (unnecessary curtailment) is a curtailment triggered while classified as a priority species, but the track's final classification was non-priority; %.0f curtailment(s) (%.1f%% of all curtailments this month) fall in this category (see Risk by Direction, section 8.1).\n",
+    "- **Unnecessary Curtailments**: a P to NP (unnecessary curtailment) is a curtailment triggered while classified as a priority species, but the track's final classification was non-priority -- section 8.1 (Risk by Direction) counts the tracks in this category; counting instead the individual curtailment events they triggered (a single track can trigger more than one), %.0f curtailment(s) (%.1f%% of all curtailments this month) fall in this category.\n",
     params$techsum_unnecessary_n, params$techsum_unnecessary_pct
   ))
 }
