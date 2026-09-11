@@ -31,7 +31,7 @@ report_month <- "2026-08"
 ## brutos, mais lento sem necessidade. Cache do DGY fica em cache/DGY/ (nao
 ## colide com a cache/BSH/ do outro parque -- ver farm_code,
 ## monthlyReportSettings_DGY.R).
-force_reread_cache_monthly <- TRUE
+force_reread_cache_monthly <- F
 
 ## Flags por dataset -- expostas aqui (em vez de so' herdarem
 ## force_reread_cache_monthly acima) para poderes forcar a releitura de UM
