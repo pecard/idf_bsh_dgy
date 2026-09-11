@@ -284,6 +284,12 @@ plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vultu
       expand = c(0, 0)
     ) +
     expand_limits(y = 0) + # cada painel (scales="free_y") comeca em 0, mesmo com free_y
+    # breaks_width(1) -- pedido do Paulo, 2026-09: max_individuals e' sempre
+    # inteiro (contagem), mas com scales="free_y" e um range pequeno num
+    # painel (ex: 0-2), o ggplot por omissao podia escolher marcas a meio
+    # (0, 0.5, 1, 1.5, 2) sem sentido para uma contagem -- breaks_width(1),
+    # ancorado em 0 por omissao, garante sempre marcas inteiras (0, 1, 2, ...)
+    scale_y_continuous(breaks = scales::breaks_width(1)) +
     labs(
       x = "Date",
       y = "Daily peak (max individuals in any 2-min bin)",
@@ -296,7 +302,10 @@ plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vultu
         vjust = 0.5,   # Alinha o texto ao centro da marca do eixo
         hjust = 1,     # Ajusta a extremidade ao eixo
         size = 8       # Tamanho da fonte (reduzido)
-      )
+      ),
+      # tamanho reduzido -- pedido do Paulo, 2026-09, mesma razao do
+      # axis.text.x acima (varios paineis empilhados, scales="free_y")
+      axis.text.y = element_text(size = 6)
     )
 }
 

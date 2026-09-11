@@ -184,7 +184,11 @@ plot_flight_metrics_distribution <- function(flight_base_dt, risk_height_lower =
 
   ggplot2::ggplot(long_dt, ggplot2::aes(value)) +
     ggplot2::geom_histogram(bins = 30, fill = "steelblue", color = "black") +
-    ggplot2::facet_grid(spec_abbr ~ metric, scales = "free_x") +
+    # scales = "free" (nao so' "free_x") -- pedido do Paulo, 2026-09: com
+    # varias especies prioritarias empilhadas (1 linha de facet por
+    # especie), uma especie muito mais comum que as outras achatava as
+    # restantes no mesmo eixo Y partilhado, quase invisiveis
+    ggplot2::facet_grid(spec_abbr ~ metric, scales = "free") +
     ggplot2::geom_rect(
       data = risk_zone,
       ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
@@ -197,5 +201,9 @@ plot_flight_metrics_distribution <- function(flight_base_dt, risk_height_lower =
         risk_height_lower, risk_height_upper
       )
     ) +
-    ggplot2::theme_minimal()
+    ggplot2::theme_minimal() +
+    # axis.text.y menor -- pedido do Paulo, 2026-09: com scales="free" cada
+    # linha (especie) ganha o seu proprio eixo Y, valores/marcas a
+    # sobrepor-se ficavam ilegiveis ao tamanho de letra por omissao
+    ggplot2::theme(axis.text.y = ggplot2::element_text(size = 6))
 }

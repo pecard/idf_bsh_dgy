@@ -238,12 +238,11 @@ plot_availability_calendar <- function(daylight_availability_dt, by_idf_summary,
       panel.grid = element_blank(),
       strip.background = element_rect(fill = "grey95", color = NA),
       strip.text = element_text(face = "bold"),
-      # rotacao vertical (nao encolher o texto) -- com muitos meses lado a
-      # lado (facet_grid ~ ym), cada painel fica demasiado estreito para 7
-      # rotulos horizontais ("M T W T. F S S."); na vertical cada rotulo so'
-      # precisa da largura de 1 caracter, nao do texto todo (mesma correcao
-      # ja aplicada ao eixo X das leituras SCADA, R/curtailment_forensic_trace.R)
-      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 6),
+      # horizontal -- pedido do Paulo, 2026-09 (o rotulo de 1 so' caracter,
+      # "M T W T. F S S.", ja' cabe na largura estreita de cada painel
+      # mesmo na horizontal, ao contrario de um rotulo de data completo --
+      # a rotacao vertical anterior deixou de ser necessaria)
+      axis.text.x = element_text(angle = 0, size = 6),
       axis.ticks = element_blank()
     )
 }
