@@ -42,7 +42,11 @@ force_reread_cache_monthly <- FALSE
 ## novos/corrigidos -- 2026-09, curtailments corrigido depois do bug do
 ## curtailments_pattern. Comentar/apagar esta linha (ou por FALSE) quando
 ## ja nao for preciso.
-force_reread_curtailments <- TRUE
+
+force_reread_curtailments <- F
+force_reread_tracks <- F
+force_reread_scada <- F
+force_reread_heartbeats <- F
 
 ## TRUE por omissao (gera o .docx final). Mudar para FALSE quando estas so'
 ## a testar/depurar uma secção e queres inspecionar as tabelas/objetos
