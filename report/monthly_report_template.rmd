@@ -11,6 +11,21 @@ params:
   username: ""
   code_version: ""
 
+  techsum_daylight_mins_total: !r NULL
+  techsum_offline_mins_total: !r NULL
+  techsum_offline_pct: !r NULL
+  techsum_curtl_priority_n: !r NULL
+  techsum_curtl_priority_pct: !r NULL
+  techsum_curtl_nonpriority_n: !r NULL
+  techsum_curtl_nonpriority_pct: !r NULL
+  techsum_latency_mean_sec: !r NULL
+  techsum_no_response_n: !r NULL
+  techsum_no_response_pct: !r NULL
+  techsum_shutdown_mean_sec: !r NULL
+  techsum_shutdown_max_sec: !r NULL
+  techsum_unnecessary_n: !r NULL
+  techsum_unnecessary_pct: !r NULL
+
   data_summary: !r NULL
   coverage_summary: !r NULL
   coverage_plot: !r NULL
@@ -253,6 +268,70 @@ Responsible: `r params$username`
 Code version: `r params$code_version`
 
 This report is descriptive and fully automated, generated end-to-end by an R code pipeline. It presents the metrics produced by the IDF analysis pipeline for the month above, without further interpretation, except where an explicit threshold (e.g. the KNE safe-distance reference line, shutdown-time bands) is already part of the pre-defined methodology.
+
+---
+
+<!--
+Technical Summary -- secção pedida pelo Paulo (2026-09) SEM numeração, por
+isso texto em negrito (**...**), nao um heading (#/##) -- este documento so'
+tem numeracao automatica de secções porque o reference_docx usado
+(rmarkdown::render(), R/report.R) liga os estilos "Heading 1"/"Heading 2" a
+uma lista numerada do Word; texto em negrito normal fica fora dessa lista,
+tal como o bloco de metadados acima. Cada frase e' omitida (nao "NA"/vazia)
+se a secção de origem estivesse desligada ou sem dados este mes -- ver os
+techsum_* == NULL abaixo, IDF_monthly_report.R secção 9 e
+R/monthly_technical_summary.R. As referencias "secção N.M" abaixo apontam
+para os headings numerados mais a frente neste mesmo documento -- se a
+ordem/contagem de secções acima mudar, conferir que ainda batem certo.
+-->
+```{r technical-summary, results='asis'}
+cat("**Technical Summary**\n\n")
+
+if (!is.null(params$techsum_daylight_mins_total)) {
+  cat(sprintf(
+    "- **Overall IDF Availability**: this month, the farm's IDF units had %s total minutes of daylight monitoring time, of which %s minutes (%.1f%%) were offline (see System Availability, section 2).\n",
+    format(round(params$techsum_daylight_mins_total), big.mark = ","),
+    format(round(params$techsum_offline_mins_total), big.mark = ","),
+    params$techsum_offline_pct
+  ))
+}
+
+if (!is.null(params$techsum_curtl_priority_n)) {
+  cat(sprintf(
+    "- **Curtailments**: of the curtailment events triggered this month, %.0f (%.1f%%) were triggered by priority species and %.0f (%.1f%%) by non-priority species (see Curtailments by Priority Group, section 4.2).\n",
+    params$techsum_curtl_priority_n, params$techsum_curtl_priority_pct,
+    params$techsum_curtl_nonpriority_n, params$techsum_curtl_nonpriority_pct
+  ))
+}
+
+if (!is.null(params$techsum_latency_mean_sec)) {
+  cat(sprintf(
+    "- **Response Latency**: response latency is the time from the curtailment signal to the first SCADA-recorded RPM decline of at least %s%%; the overall mean this month was %.1f s (see Response Latency, section 6.1).\n",
+    params$curtailment_latency_decline_pct * 100, params$techsum_latency_mean_sec
+  ))
+}
+
+if (!is.null(params$techsum_shutdown_mean_sec)) {
+  cat(sprintf(
+    "- **Shutdown Time**: shutdown time is the time from the curtailment signal to the turbine's RPM falling below %s (the \"stopped\" threshold); the overall mean this month was %.1f s, with the longest recorded shutdown taking %.1f s (see Shutdown Time, section 6.2).\n",
+    params$safe_shutdown_rpm, params$techsum_shutdown_mean_sec, params$techsum_shutdown_max_sec
+  ))
+}
+
+if (!is.null(params$techsum_no_response_n)) {
+  cat(sprintf(
+    "- **No-Response / Missed Curtailments**: %.0f curtailment(s) (%.1f%% of those evaluated) showed no detected response this month (see No-Response Events, section 6.3).\n",
+    params$techsum_no_response_n, params$techsum_no_response_pct
+  ))
+}
+
+if (!is.null(params$techsum_unnecessary_n)) {
+  cat(sprintf(
+    "- **Unnecessary Curtailments**: a P to NP (unnecessary curtailment) is a curtailment triggered while classified as a priority species, but the track's final classification was non-priority; %.0f curtailment(s) (%.1f%% of all curtailments this month) fall in this category (see Risk by Direction, section 8.1).\n",
+    params$techsum_unnecessary_n, params$techsum_unnecessary_pct
+  ))
+}
+```
 
 ---
 

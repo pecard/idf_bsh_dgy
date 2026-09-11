@@ -1018,6 +1018,48 @@ if (exists("track_dt") && isTRUE(run_sections_monthly$min_individuals)) {
 } else {message("track_dt nao disponivel ou run_sections_monthly$min_individuals = FALSE -- 8 (min individuals) saltada nesta ronda.")}
 
 
+## 9. Technical Summary (secção sem numeração, topo do relatorio -- ver
+## report/monthly_report_template.rmd) ----
+##
+## Pedido do Paulo (2026-09): 6 frases de contexto antes do relatorio
+## detalhado, cada uma cruzando um objeto JA calculado numa secção acima --
+## nenhum calculo novo sobre os dados brutos aqui, so' agregados farm-wide
+## (ver R/monthly_technical_summary.R). Cada bloco fica com valores NA/0
+## (guardado por exists()) se a secção de origem estiver desligada
+## (run_sections_monthly) ou sem dados este mes -- o Rmd omite a frase
+## correspondente nesse caso.
+
+source("R/monthly_technical_summary.R")
+
+if (exists("idf_availability_summary")) {
+  techsum_availability <- summarise_availability_overall(idf_availability_summary$by_idf)
+} else {
+  techsum_availability <- NULL
+}
+
+if (exists("monthly_species_curt_by_group_dt")) {
+  techsum_curtl_split <- summarise_curtailment_priority_split(monthly_species_curt_by_group_dt)
+} else {
+  techsum_curtl_split <- NULL
+}
+
+# summary_latency (secção 5) ja e' 1 linha farm-wide com mean_latency_sec/
+# n_no_response/pct_no_response -- sem agregacao propria a fazer aqui
+techsum_latency <- if (exists("summary_latency")) summary_latency else NULL
+
+if (exists("tt_dt")) {
+  techsum_shutdown <- summarise_shutdown_overall(tt_dt, stopped_threshold = safe_shutdown_rpm)
+} else {
+  techsum_shutdown <- NULL
+}
+
+if (exists("monthly_id_risk_summary")) {
+  techsum_unnecessary <- summarise_unnecessary_curtailments(monthly_id_risk_summary$pnp_curtailments)
+} else {
+  techsum_unnecessary <- NULL
+}
+
+
 ##
 ## Export monthly report (Word, via Rmd) ----
 ##
@@ -1033,6 +1075,29 @@ monthly_report_params <- list(
   analysis_date = format(Sys.time(), "%Y-%m-%d"),
   username      = username,
   code_version  = code_version,
+
+  # Technical Summary (secção sem numeração, topo do relatorio) -- valores
+  # escalares extraidos dos objetos techsum_* calculados na secção 9 acima
+  # (cada um NULL se a secção de origem estivesse desligada/sem dados este
+  # mes -- o Rmd omite so' a frase correspondente, nao o resto da secção)
+  techsum_daylight_mins_total = if (!is.null(techsum_availability)) techsum_availability$daylight_mins_total else NULL,
+  techsum_offline_mins_total  = if (!is.null(techsum_availability)) techsum_availability$offline_mins_total else NULL,
+  techsum_offline_pct         = if (!is.null(techsum_availability)) techsum_availability$offline_pct else NULL,
+
+  techsum_curtl_priority_n      = if (!is.null(techsum_curtl_split)) techsum_curtl_split$priority_n else NULL,
+  techsum_curtl_priority_pct    = if (!is.null(techsum_curtl_split)) techsum_curtl_split$priority_pct else NULL,
+  techsum_curtl_nonpriority_n   = if (!is.null(techsum_curtl_split)) techsum_curtl_split$nonpriority_n else NULL,
+  techsum_curtl_nonpriority_pct = if (!is.null(techsum_curtl_split)) techsum_curtl_split$nonpriority_pct else NULL,
+
+  techsum_latency_mean_sec = if (!is.null(techsum_latency)) techsum_latency$mean_latency_sec else NULL,
+  techsum_no_response_n    = if (!is.null(techsum_latency)) techsum_latency$n_no_response else NULL,
+  techsum_no_response_pct  = if (!is.null(techsum_latency)) techsum_latency$pct_no_response else NULL,
+
+  techsum_shutdown_mean_sec = if (!is.null(techsum_shutdown)) techsum_shutdown$mean_time_sec else NULL,
+  techsum_shutdown_max_sec  = if (!is.null(techsum_shutdown)) techsum_shutdown$max_time_sec else NULL,
+
+  techsum_unnecessary_n   = if (!is.null(techsum_unnecessary)) techsum_unnecessary$n else NULL,
+  techsum_unnecessary_pct = if (!is.null(techsum_unnecessary)) techsum_unnecessary$pct_of_total else NULL,
 
   data_summary = if (exists("monthly_data_summary_dt")) monthly_data_summary_dt else NULL,
   coverage_summary = if (exists("monthly_coverage_summary_dt")) monthly_coverage_summary_dt else NULL,
