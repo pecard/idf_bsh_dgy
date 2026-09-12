@@ -14,12 +14,14 @@ params:
   availability_plot_cal: !r NULL
   availability_plot_freq: !r NULL
   availability_cal_report_months: !r NULL
+  availability_cal_body_top_n: !r NULL
   availability_cal_full_filename: !r NULL
   idf_availability_top_n: !r NULL
 
   offline_evidence_by_idf: !r NULL
   offline_evidence_overall: !r NULL
   offline_evidence_scope_note: !r NULL
+  net_availability_overall: !r NULL
 
   coverage_turbine_summary: !r NULL
   coverage_idf_summary: !r NULL
@@ -336,7 +338,7 @@ annex_note(params$xlsx_availability)
 
 ## Availability Calendar
 
-Every daylight time slot, laid out as a calendar (date on the horizontal axis, time of day on the vertical axis) for the `r params$idf_availability_top_n` units with the most offline time over the full project history, for the last `r params$availability_cal_report_months` months only. A slot without a heartbeat is classified by the evidence available for that period, rather than shown only as a percentage: whether a curtailment was triggered by the turbine(s) associated with that IDF unit during the gap, whether SCADA still recorded RPM readings from those turbines, both, or neither. Night-time slots are shown separately, since bird protection is only evaluated during daylight hours.
+Every daylight time slot, laid out as a calendar (date on the horizontal axis, time of day on the vertical axis) for the `r params$availability_cal_body_top_n` units with the most offline time over the full project history, for the last `r params$availability_cal_report_months` months only -- kept to a small number of units here so that each panel's time-of-day axis stays legible; the accompanying full calendar (every IDF unit, full project history) is available as a separate image, referenced below. A slot without a heartbeat is classified by the evidence available for that period, rather than shown only as a percentage: whether a curtailment was triggered by the turbine(s) associated with that IDF unit during the gap, whether SCADA still recorded RPM readings from those turbines, both, or neither. Night-time slots are shown separately, since bird protection is only evaluated during daylight hours.
 
 Each slot is colored by one of six statuses:
 
@@ -361,8 +363,28 @@ if (!is.null(params$availability_cal_full_filename)) {
 
 Breakdown of every offline interval (a gap between heartbeats of at least `r params$heartbeat_offline_gap_min` minutes) by the evidence available for that period, over the full project history to date -- see the Availability Calendar above for the same classification laid out over time. "IDF unit communication failure" means a curtailment was triggered during the gap (the unit was actively deciding/acting; a missing heartbeat is then attributable to a communication fault, not to bird protection being off). "Turbine operational, no detection" means no curtailment was triggered, but SCADA still recorded RPM readings from the turbine(s) (mechanically operational, simply with no bird triggering a response). "No evidence" means neither signal is available and requires manual review -- it can reflect a genuine gap in bird-protection coverage, or a data gap that happens to affect heartbeat and SCADA at the same time.
 
+### Unavailability Summary
+
+Three related but distinct numbers are relevant when assessing IDF unavailability, since they answer different questions and carry different implications where unavailability has contract consequences:
+
+- **Raw offline**: any heartbeat gap of at least `r params$heartbeat_offline_gap_min` minutes, regardless of what else was observed during it -- the number a contract that defines availability strictly by heartbeat presence would measure against.
+- **Net / confirmed offline**: the raw offline percentage minus the minutes classified as "IDF unit communication failure" in the breakdown below -- gaps during which a curtailment was actually triggered, proving the detection/decision system was operating even though the heartbeat itself failed to report it. Excluding this time avoids penalizing the system for a communication fault it did not actually have.
+- **No evidence, pending manual review**: the share of monitoring time for which neither a curtailment nor a SCADA RPM reading was recorded during the gap -- the genuinely ambiguous case. This is already included within the net offline percentage above, not an additional deduction from it; it is shown separately because it requires manual, case-by-case review rather than being resolved automatically in either direction.
+
+```{r net-availability-table}
+if (!is.null(params$net_availability_overall)) {
+  x <- params$net_availability_overall
+  report_table(data.frame(
+    Metric = c("Raw offline", "Net / confirmed offline", "No evidence (pending review; included in net offline above)"),
+    `Minutes` = c(x$raw_offline_mins, x$net_offline_mins, x$no_evidence_mins),
+    `% of Daylight Monitoring Time` = c(x$raw_offline_pct, x$net_offline_pct, x$no_evidence_pct),
+    check.names = FALSE
+  ))
+}
+```
+
 ```{r offline-evidence-heading-overall, results='asis'}
-if (!is.null(params$offline_evidence_overall) && nrow(params$offline_evidence_overall) > 0) cat("**Farm-wide**\n")
+if (!is.null(params$offline_evidence_overall) && nrow(params$offline_evidence_overall) > 0) cat("\n\n**Farm-wide**\n")
 ```
 
 <!-- Source: summarise_offline_evidence()$overall, R/offline_curtailment_check.R -->

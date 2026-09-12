@@ -38,7 +38,13 @@
 ##   curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, idf_turbines_dt)
 ##   scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, idf_turbines_dt)
 ##   combined_dt <- classify_offline_evidence(curtl_checked_dt, scada_checked_dt)
-##   summarise_offline_evidence(combined_dt)
+##   offline_evidence_summary <- summarise_offline_evidence(combined_dt)
+##
+##   ## disponibilidade "para efeitos de contrato" -- raw vs. net/confirmado
+##   ## vs. sem evidencia (ver 5b abaixo); availability_overall vem de
+##   ## summarise_availability_overall(), R/monthly_technical_summary.R
+##   ## (funcao generica, apesar do nome do ficheiro):
+##   summarise_net_availability(availability_overall, offline_evidence_summary$overall)
 ##
 
 
@@ -313,6 +319,70 @@ summarise_offline_evidence <- function(combined_dt) {
   data.table::setorder(overall, classification)
 
   list(by_idf = by_idf[], overall = overall[])
+}
+
+
+## 5b. Disponibilidade "para efeitos de contrato" -- raw vs. net/confirmado
+## vs. sem evidencia (pendente revisao manual), farm-wide -- pedido do
+## Paulo, 2026-09, apos discussao sobre qual metrica reportar como mais
+## fiavel de indisponibilidade quando ha implicacoes contratuais.
+##
+## 3 numeros, TODOS em % do MESMO denominador (daylight_mins_total,
+## minutos totais de monitorizacao diurna) -- nao confundir com
+## summarise_offline_evidence()$overall$pct_of_total, que e' % do tempo
+## OFFLINE (as 3 classificacoes somam 100% entre si), nao % do tempo de
+## monitorizacao total:
+##   - raw_offline_pct: qualquer gap de heartbeat >= heartbeat_offline_gap_min,
+##     independentemente do que mais se observou -- o numero que um
+##     contrato que define disponibilidade so' por presenca de heartbeat
+##     mediria.
+##   - net_offline_pct: raw_offline_pct MENOS os minutos classificados "IDF
+##     unit communication failure" -- gaps em que um curtailment foi mesmo
+##     disparado, prova de que o sistema de deteção/decisao estava
+##     operacional apesar do heartbeat em si ter falhado a reportar.
+##     Exclui-los evita penalizar o sistema por uma falha de comunicação
+##     que na realidade nao teve.
+##   - no_evidence_pct: minutos classificados "No evidence (heartbeat and
+##     SCADA both missing)" -- o caso genuinamente ambiguo. NAO e'
+##     subtraido de net_offline_pct (fica incluido nele) -- e' mostrado a
+##     parte por precisar de revisao manual caso a caso, nao por dever ser
+##     resolvido automaticamente numa direcao ou noutra.
+##
+## availability_overall: summarise_availability_overall(idf_availability_summary$by_idf),
+## R/monthly_technical_summary.R -- daylight_mins_total, offline_mins_total, offline_pct
+## (funcao generica, apesar do nome do ficheiro -- reutilizada tambem pelo
+## relatorio anual so' para este calculo).
+## offline_evidence_overall: summarise_offline_evidence(combined_dt)$overall
+## (funcao 5 acima) -- classification, n_intervals, total_mins, pct_of_total
+
+summarise_net_availability <- function(availability_overall, offline_evidence_overall) {
+
+  get_mins <- function(cls) {
+    v <- offline_evidence_overall[classification == cls, total_mins]
+    if (length(v) == 0L) 0 else sum(v)
+  }
+
+  daylight_mins_total <- availability_overall$daylight_mins_total
+  raw_offline_mins    <- availability_overall$offline_mins_total
+  comm_failure_mins   <- get_mins("IDF unit communication failure")
+  no_evidence_mins    <- get_mins("No evidence (heartbeat and SCADA both missing)")
+  net_offline_mins    <- raw_offline_mins - comm_failure_mins
+
+  pct_of_daylight <- function(mins) {
+    if (daylight_mins_total == 0) NA_real_ else round(100 * mins / daylight_mins_total, 1)
+  }
+
+  data.table::data.table(
+    daylight_mins_total = daylight_mins_total,
+    raw_offline_mins     = raw_offline_mins,
+    raw_offline_pct      = pct_of_daylight(raw_offline_mins),
+    comm_failure_mins    = comm_failure_mins,
+    comm_failure_pct     = pct_of_daylight(comm_failure_mins),
+    net_offline_mins     = net_offline_mins,
+    net_offline_pct      = pct_of_daylight(net_offline_mins),
+    no_evidence_mins     = no_evidence_mins,
+    no_evidence_pct      = pct_of_daylight(no_evidence_mins)
+  )
 }
 
 

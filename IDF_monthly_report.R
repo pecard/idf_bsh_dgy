@@ -565,20 +565,62 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   ## geom_tile() com o aviso "Removed N rows containing missing values").
   ## as.Date(ini, tz=proj_timezone) reproduz a mesma conversao tz-aware.
   offline_evidence_cal_start <- as.Date(ini, tz = proj_timezone)
+  n_report_days_monthly <- as.numeric(report_end - offline_evidence_cal_start) + 1
+
+  ## Corpo do relatorio -- so' as availability_cal_body_top_n (5) unidades
+  ## com mais tempo offline, NAO idf_sel (top idf_availability_top_n, ex:
+  ## 10 no BSH) -- com o novo calendario categorico por slot (em vez do
+  ## antigo gradiente de % por dia), cada painel de unidade precisa de
+  ## altura suficiente para o eixo de horas (0-24h) ficar legivel; mais do
+  ## que ~5 paineis no corpo do docx (altura de pagina fixa) esmaga esse
+  ## eixo -- confirmado no BSH, 2026-09 (10 unidades, rotulos do eixo Y
+  ## ilegiveis). Um 2o calendario "extended" com idf_sel (todas as top N
+  ## configuradas) e' gravado como imagem avulsa, NAO embutida no docx (ver
+  ## abaixo) -- pedido do Paulo, 2026-09.
+  availability_cal_body_top_n <- 5L
+  idf_sel_cal_body <- idf_availability_summary$by_idf[
+    order(-offline_mins_total)][seq_len(min(availability_cal_body_top_n, .N)), idf]
+
   offline_evidence_slots_dt <- offline_evidence_slot_grid(
     daylight_cal, proj_timezone, offline_evidence_cal_start, report_end,
-    offline_evidence_dt, idf_sel = idf_sel, slot_mins = heartbeat_interval_min
+    offline_evidence_dt, idf_sel = idf_sel_cal_body, slot_mins = heartbeat_interval_min
   )
-  n_report_days_monthly <- as.numeric(report_end - offline_evidence_cal_start) + 1
   p_availability_cal <- plot_offline_evidence_slots(
     offline_evidence_slots_dt, slot_mins = heartbeat_interval_min, date_breaks = "2 days"
   )
   ggsave(
     file.path(folder_output, sprintf("idf_availability_calendar_%s.png", report_month)),
     plot = p_availability_cal,
-    width = max(180, n_report_days_monthly * 5), height = max(60, length(idf_sel) * 40),
+    width = max(180, n_report_days_monthly * 5), height = max(60, length(idf_sel_cal_body) * 40),
     units = "mm", dpi = 300, bg = "white", limitsize = FALSE
   )
+
+  ## Calendario "extended" (anexo, NAO embutido no docx -- so' gravado no
+  ## output folder) -- as top idf_availability_top_n unidades (idf_sel,
+  ## inalterado), para quem quiser ver alem das 5 do corpo do relatorio.
+  ## Sem a limitacao de altura de pagina do docx, mais paineis aqui nao
+  ## esmagam o eixo de horas (a imagem cresce em altura em vez de
+  ## encolher cada painel). So' vale a pena gravar quando idf_sel tem mais
+  ## unidades do que ja' mostradas no corpo -- ex: DGY (so' 4 unidades no
+  ## total) nunca precisa desta imagem extra, seria identica ao corpo.
+  if (length(idf_sel) > length(idf_sel_cal_body)) {
+    availability_cal_extended_filename <- sprintf("idf_availability_calendar_extended_%s.png", report_month)
+    offline_evidence_slots_extended_dt <- offline_evidence_slot_grid(
+      daylight_cal, proj_timezone, offline_evidence_cal_start, report_end,
+      offline_evidence_dt, idf_sel = idf_sel, slot_mins = heartbeat_interval_min
+    )
+    p_availability_cal_extended <- plot_offline_evidence_slots(
+      offline_evidence_slots_extended_dt, slot_mins = heartbeat_interval_min, date_breaks = "2 days"
+    )
+    ggsave(
+      file.path(folder_output, availability_cal_extended_filename),
+      plot = p_availability_cal_extended,
+      width = max(180, n_report_days_monthly * 5), height = max(60, length(idf_sel) * 40),
+      units = "mm", dpi = 300, bg = "white", limitsize = FALSE
+    )
+  } else {
+    availability_cal_extended_filename <- NULL
+  }
 
   p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
   ggsave(
@@ -1110,6 +1152,16 @@ if (exists("idf_availability_summary")) {
   techsum_availability <- NULL
 }
 
+## Disponibilidade "para efeitos de contrato" -- raw vs. net/confirmado vs.
+## sem evidencia (pendente revisao manual), farm-wide -- summarise_net_availability(),
+## R/offline_curtailment_check.R (ja sourced na secção "1. System
+## availability" acima). offline_evidence_summary tambem vem dessa secção.
+if (!is.null(techsum_availability) && exists("offline_evidence_summary")) {
+  net_availability_overall <- summarise_net_availability(techsum_availability, offline_evidence_summary$overall)
+} else {
+  net_availability_overall <- NULL
+}
+
 if (exists("monthly_species_curt_by_group_dt")) {
   techsum_curtl_split <- summarise_curtailment_priority_split(monthly_species_curt_by_group_dt)
 } else {
@@ -1156,6 +1208,7 @@ monthly_report_params <- list(
   techsum_daylight_mins_total = if (!is.null(techsum_availability)) techsum_availability$daylight_mins_total else NULL,
   techsum_offline_mins_total  = if (!is.null(techsum_availability)) techsum_availability$offline_mins_total else NULL,
   techsum_offline_pct         = if (!is.null(techsum_availability)) techsum_availability$offline_pct else NULL,
+  net_availability_overall    = net_availability_overall,
 
   techsum_curtl_priority_n      = if (!is.null(techsum_curtl_split)) techsum_curtl_split$priority_n else NULL,
   techsum_curtl_priority_pct    = if (!is.null(techsum_curtl_split)) techsum_curtl_split$priority_pct else NULL,
@@ -1244,6 +1297,8 @@ monthly_report_params <- list(
   heartbeat_interval_min    = heartbeat_interval_min,
   heartbeat_offline_gap_min = heartbeat_offline_gap_min,
   idf_availability_top_n    = idf_availability_top_n,
+  availability_cal_body_top_n = if (exists("availability_cal_body_top_n")) availability_cal_body_top_n else NULL,
+  availability_cal_extended_filename = if (exists("availability_cal_extended_filename")) availability_cal_extended_filename else NULL,
 
   shorttrack_min_points   = shorttrack_min_points,
   shorttrack_eval_range_m = shorttrack_eval_range,

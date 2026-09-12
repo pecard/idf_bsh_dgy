@@ -752,6 +752,16 @@ if (exists("heartb_dt")) {
   offline_evidence_dt      <- classify_offline_evidence(offline_curtl_checked_dt, offline_scada_checked_dt)
   offline_evidence_summary <- summarise_offline_evidence(offline_evidence_dt)
 
+  ## Disponibilidade "para efeitos de contrato" -- raw vs. net/confirmado
+  ## vs. sem evidencia (pendente revisao manual), farm-wide -- pedido do
+  ## Paulo, 2026-09 (ver summarise_net_availability(), R/offline_curtailment_check.R,
+  ## para a logica completa). summarise_availability_overall() e' generica
+  ## apesar de estar em R/monthly_technical_summary.R (so' agrega
+  ## idf_availability_summary$by_idf a 1 linha farm-wide).
+  source("R/monthly_technical_summary.R")
+  availability_overall     <- summarise_availability_overall(idf_availability_summary$by_idf)
+  net_availability_overall <- summarise_net_availability(availability_overall, offline_evidence_summary$overall)
+
   offline_evidence_sheets <- list(
     All_offline_intervals    = offline_evidence_dt,
     Comm_failure_confirmed   = offline_evidence_dt[classification == "IDF unit communication failure"],
@@ -806,18 +816,31 @@ if (exists("heartb_dt")) {
     units = "mm", dpi = 300, bg = "white", limitsize = FALSE
   )
 
-  ## Calendario do corpo do relatorio -- mesmas top N unidades de idf_sel
-  ## (ranking pelo historico completo, inalterado), mas so' os ultimos 6
-  ## meses do periodo -- o historico completo, com muitos meses lado a
-  ## lado, fica demasiado apertado/ilegivel na largura do corpo do docx
-  ## (ver o anexo acima para o periodo completo). Pedido do Paulo, 2026-08.
+  ## Calendario do corpo do relatorio -- so' os ultimos 6 meses do periodo
+  ## (o historico completo, com muitos meses lado a lado, fica demasiado
+  ## apertado/ilegivel na largura do corpo do docx -- ver o anexo acima
+  ## para o periodo completo). Pedido do Paulo, 2026-08.
+  ##
+  ## Unidades: top availability_cal_body_top_n (5), NAO idf_sel (top
+  ## idf_availability_top_n, ex: 10-12) -- com o novo calendario categorico
+  ## por slot (em vez do antigo gradiente de % por dia), cada painel de
+  ## unidade precisa de altura suficiente para o eixo de horas (0-24h)
+  ## ficar legivel; mais do que ~5 paineis no corpo do docx (altura de
+  ## pagina fixa) esmaga esse eixo. O anexo "full" acima ja mostra TODAS as
+  ## unidades sem essa limitacao (imagem avulsa, sem restricao de altura de
+  ## pagina) -- pedido do Paulo, 2026-09, apos ver o corpo do relatorio com
+  ## 10 unidades.
   availability_cal_report_months <- 6
   availability_cal_report_from   <- seq(report_end, length.out = 2, by = sprintf("-%d months", availability_cal_report_months))[2]
   body_report_days <- as.numeric(report_end - availability_cal_report_from) + 1
 
+  availability_cal_body_top_n <- 5L
+  idf_sel_cal_body <- idf_availability_summary$by_idf[
+    order(-offline_mins_total)][seq_len(min(availability_cal_body_top_n, .N)), idf]
+
   offline_evidence_slots_dt <- offline_evidence_slot_grid(
     daylight_cal, proj_timezone, availability_cal_report_from, report_end,
-    offline_evidence_dt, idf_sel = idf_sel, slot_mins = heartbeat_interval_min
+    offline_evidence_dt, idf_sel = idf_sel_cal_body, slot_mins = heartbeat_interval_min
   )
   p_availability_cal <- plot_offline_evidence_slots(
     offline_evidence_slots_dt, slot_mins = heartbeat_interval_min,
@@ -826,7 +849,7 @@ if (exists("heartb_dt")) {
   ggsave(
     file.path(folder_output, paste0("idf_availability_calendar_", report_start, "to", report_end, ".png")),
     plot = p_availability_cal,
-    width = max(200, body_report_days * 3), height = max(90, length(idf_sel) * 40),
+    width = max(200, body_report_days * 3), height = max(90, length(idf_sel_cal_body) * 40),
     units = "mm", dpi = 300, bg = "white", limitsize = FALSE
   )
 
@@ -2510,12 +2533,14 @@ report_params <- list(
   availability_plot_cal  = if (exists("p_availability_cal")) p_availability_cal else NULL,
   availability_plot_freq = if (exists("p_availability_freq")) p_availability_freq else NULL,
   availability_cal_report_months = if (exists("availability_cal_report_months")) availability_cal_report_months else NULL,
+  availability_cal_body_top_n = if (exists("availability_cal_body_top_n")) availability_cal_body_top_n else NULL,
   availability_cal_full_filename = if (exists("availability_cal_full_filename")) availability_cal_full_filename else NULL,
   idf_availability_top_n          = if (exists("idf_availability_top_n")) idf_availability_top_n else NULL,
 
   offline_evidence_by_idf   = if (exists("offline_evidence_summary")) offline_evidence_summary$by_idf else NULL,
   offline_evidence_overall  = if (exists("offline_evidence_summary")) offline_evidence_summary$overall else NULL,
   offline_evidence_scope_note = if (exists("offline_evidence_turbines_res") && isTRUE(offline_evidence_turbines_res$used_geometric_fallback)) OFFLINE_EVIDENCE_SCOPE_NOTE else NULL,
+  net_availability_overall = if (exists("net_availability_overall")) net_availability_overall else NULL,
   
   coverage_turbine_summary = if (exists("coverage_turbine_summary")) coverage_turbine_summary else NULL,
   coverage_idf_summary     = if (exists("coverage_idf_summary")) coverage_idf_summary else NULL,
