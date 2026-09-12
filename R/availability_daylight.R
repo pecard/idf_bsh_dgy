@@ -418,7 +418,15 @@ offline_evidence_slot_grid <- function(daylight_cal, tz, start_date, end_date,
   ]
   res <- unique(res, by = c("idf", "slot")) # defensivo -- intervalos offline nao se sobrepoem por construcao
 
+  # is.na(daylight) e' testado PRIMEIRO -- fica sempre "No data" mesmo que
+  # classification tenha por coincidencia um valor (a data desse slot nao
+  # existe em daylight_cal, ex: um gap na serie de sunrise/sunset -- nao
+  # confundir com um slot diurno normal sem evidencia offline, que fica
+  # "Online"). Nao deve acontecer em condicoes normais (daylight_cal e' o
+  # mesmo periodo start_date..end_date do caller), mas ao contrario de
+  # deixar cair para um NA silencioso no plot, fica um 6o estado explicito.
   res[, slot_status := fcase(
+    is.na(daylight),                  "No data",
     !daylight,                        "Night",
     daylight & is.na(classification), "Online",
     default = classification
@@ -429,24 +437,29 @@ offline_evidence_slot_grid <- function(daylight_cal, tz, start_date, end_date,
               "IDF unit communication failure",
               "Turbine operational, no detection",
               "No evidence (heartbeat and SCADA both missing)",
-              "Night")
+              "Night",
+              "No data")
   )]
 
   res[]
 }
 
 
-## 9c. Plot da grelha de evidencia offline (Night/Online/3 categorias), por
-## unidade IDF -- mesmo layout/eixos de plot_heartbeat_slots() (funcao 9),
-## so' com a paleta categorica de 5 estados em vez de 4. Cores conforme
-## R/references do dataviz skill: ordem categorica fixa para os 3 estados
-## de evidencia (azul, laranja, aqua), "No evidence" com a cor mais
+## 9c. Plot da grelha de evidencia offline (Night/Online/3 categorias/No
+## data), por unidade IDF -- mesmo layout/eixos de plot_heartbeat_slots()
+## (funcao 9), so' com a paleta categorica de 6 estados em vez de 4. Cores
+## conforme R/references do dataviz skill: ordem categorica fixa para os 3
+## estados de evidencia (azul, laranja, aqua), "No evidence" com a cor mais
 ## distinta (vermelho) por ser o caso mais ambiguo (requer revisao manual),
-## "Night" com um azul-marinho escuro deliberadamente FORA do conjunto
-## categorico (significa "fora de ambito", nao uma categoria de evidencia).
-## slot_mins: mesmo valor usado em offline_evidence_slot_grid() -- define a
-## altura do tile no eixo de horas (nao hardcoded, para acompanhar
-## heartbeat_interval_min se algum dia mudar).
+## "Night" com um azul-marinho escuro e "No data" com um cinzento neutro,
+## ambos deliberadamente FORA do conjunto categorico (significam "fora de
+## ambito"/"sem dados", nao uma categoria de evidencia). slot_mins: mesmo
+## valor usado em offline_evidence_slot_grid() -- define a altura do tile
+## no eixo de horas (nao hardcoded, para acompanhar heartbeat_interval_min
+## se algum dia mudar). Legenda forcada em 3 linhas (guide_legend(nrow=3))
+## e eixo de datas na vertical, com letra ligeiramente mais pequena --
+## pedido do Paulo, 2026-09, apos a 1a versao do calendario ter categorias
+## dificeis de distinguir numa unica linha de legenda apertada.
 
 plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_breaks = "2 days", title = NULL) {
 
@@ -470,10 +483,12 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
         "IDF unit communication failure"                  = "#eb6834",
         "Turbine operational, no detection"                = "#1baf7a",
         "No evidence (heartbeat and SCADA both missing)"   = "#e34948",
-        "Night"                                            = "#0d366b"
+        "Night"                                            = "#0d366b",
+        "No data"                                          = "#9e9e9e"
       ),
       drop = FALSE
     ) +
+    guides(fill = guide_legend(nrow = 3, byrow = TRUE)) +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
     scale_y_continuous(
       limits = c(0, 24),
@@ -490,7 +505,7 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
     theme(
       panel.grid = element_blank(),
       strip.text = element_text(face = "bold"),
-      axis.text.x = element_text(size = 8),
+      axis.text.x = element_text(size = 6.5, angle = 90, hjust = 1, vjust = 0.5),
       legend.position = "bottom"
     )
 }

@@ -293,10 +293,12 @@ cat("**Technical Summary**\n\n")
 
 if (!is.null(params$techsum_daylight_mins_total)) {
   cat(sprintf(
-    "- **Overall IDF Availability**: this month, the farm's IDF units had %s total minutes of daylight monitoring time, of which %s minutes (%.1f%%) were offline (see System Availability, section 2).\n",
+    "- **Overall IDF Availability**: this month, the farm's IDF units had %s total minutes of daylight monitoring time, of which %s minutes (%.1f%%) were offline (see System Availability, section 2). Offline time only starts counting once a heartbeat gap exceeds %s minutes (at least 2 consecutive heartbeats missed), and even then the first %s minutes of that gap are still counted as online -- a single missed heartbeat, on its own, never registers as offline time.\n",
     format(round(params$techsum_daylight_mins_total), big.mark = ","),
     format(round(params$techsum_offline_mins_total), big.mark = ","),
-    params$techsum_offline_pct
+    params$techsum_offline_pct,
+    params$heartbeat_offline_gap_min,
+    params$heartbeat_interval_min
   ))
 }
 
@@ -383,14 +385,14 @@ if (!is.null(params$coverage_plot)) print(params$coverage_plot)
 
 # System Availability (Heartbeats)
 
-Heartbeats are expected every `r params$heartbeat_interval_min` minutes; an IDF unit is considered offline once the gap since its last heartbeat exceeds `r params$heartbeat_offline_gap_min` minutes (at least 2 consecutive heartbeats missed).
+Heartbeats are expected every `r params$heartbeat_interval_min` minutes; an IDF unit is considered offline once the gap since its last heartbeat exceeds `r params$heartbeat_offline_gap_min` minutes (at least 2 consecutive heartbeats missed). Even then, the first `r params$heartbeat_interval_min` minutes of that gap are still counted as online, not offline -- a single missed heartbeat, on its own, never registers as offline time.
 
 ## Availability by IDF Unit
 
 ```{r availability-text, results='asis'}
 if (!is.null(params$availability_by_idf) && nrow(params$availability_by_idf) > 0) {
   cat(sprintf(
-    "This month covered %d day(s) of monitoring, %s total minutes of daylight monitoring time per IDF unit (same calendar for every unit, so not repeated per row below). Offline (%%) and category, per IDF unit:\n\n",
+    "This month covered %d day(s) of monitoring, %s total minutes of daylight monitoring time per IDF unit (same calendar for every unit, so not repeated per row below). The table below lists, per IDF unit, the percentage of that monitoring time it was offline, and an availability category grouping the corresponding availability percentage (100%% minus offline%%) into bands: <60%%, 60-80%%, 80-90%%, 90-96%%, and >96%%.\n\n",
     params$availability_by_idf$days_covered[1],
     format(params$availability_by_idf$daylight_mins_total[1], big.mark = ",")
   ))
@@ -410,6 +412,15 @@ if (!is.null(params$availability_by_idf)) {
 ## Availability Calendar
 
 Every daylight time slot this month, laid out as a calendar (date on the horizontal axis, time of day on the vertical axis) -- restricted to the top `r params$idf_availability_top_n` units by offline time, to stay legible. The table in 2.1 above has every IDF unit. A slot without a heartbeat is classified by the evidence available for that period, rather than shown only as a percentage: whether a curtailment was triggered by the turbine(s) associated with that IDF unit during the gap, whether SCADA still recorded RPM readings from those turbines, both, or neither. Night-time slots are shown separately, since bird protection is only evaluated during daylight hours.
+
+Each slot is colored by one of six statuses:
+
+- **Online**: a heartbeat was received for this slot.
+- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered by the associated turbine(s) during the gap -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.
+- **Turbine operational, no detection**: no heartbeat and no curtailment, but SCADA still recorded RPM readings from the turbine(s) -- mechanically operational, simply with no bird triggering a response.
+- **No evidence (heartbeat and SCADA both missing)**: neither signal is available for this slot; requires manual review, since it can reflect a genuine gap in bird-protection coverage or a data gap affecting heartbeat and SCADA at the same time.
+- **Night**: outside daylight hours, when bird protection is not evaluated.
+- **No data**: no underlying calendar data available for this slot, independent of the evidence check above.
 
 <!-- Source: offline_evidence_slot_grid()/plot_offline_evidence_slots(), R/availability_daylight.R; classification from classify_offline_evidence(), R/offline_curtailment_check.R -->
 ```{r availability-cal, fig.width=6.30, fig.height=6.30}
@@ -435,7 +446,7 @@ if (!is.null(params$offline_evidence_overall) && nrow(params$offline_evidence_ov
 ```
 
 ```{r offline-evidence-heading-by-idf, results='asis'}
-if (!is.null(params$offline_evidence_by_idf) && nrow(params$offline_evidence_by_idf) > 0) cat("**By IDF Unit**\n")
+if (!is.null(params$offline_evidence_by_idf) && nrow(params$offline_evidence_by_idf) > 0) cat("\n\n**By IDF Unit**\n")
 ```
 
 <!-- Source: summarise_offline_evidence()$by_idf, R/offline_curtailment_check.R -->
@@ -457,7 +468,7 @@ if (!is.null(params$offline_evidence_scope_note)) cat(sprintf("\n*%s*\n", params
 
 ## Availability Frequency
 
-Count of IDF units per daylight-availability category.
+Count of IDF units per daylight-availability category. Daylight availability is 100% minus the percentage of an IDF unit's daylight monitoring time it was offline this month (see Availability by IDF Unit, section 2.1, for the offline-time methodology and the category bands).
 
 <!-- Source: plot_availability_frequency(), R/availability_daylight.R -->
 ```{r availability-freq, fig.width=6, fig.height=3}
@@ -466,7 +477,7 @@ if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq
 
 ## Spatial Distribution of Unavailability
 
-Spatial distribution of unavailability, by turbine (point size = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit).
+Spatial distribution of unavailability, by turbine (point size = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit). Daylight availability (100% minus this offline percentage) follows the same monthly heartbeat-based methodology described in Availability by IDF Unit (section 2.1).
 
 <!-- Source: turbine_availability_dt <- join_availability_to_turbine(); plot_availability_spatial(), both R/availability_daylight.R -->
 ```{r availability-spatial, fig.width=6.30, fig.height=4.72}
