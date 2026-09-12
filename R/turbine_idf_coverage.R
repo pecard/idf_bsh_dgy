@@ -126,6 +126,35 @@ top_turbines_by_idf <- function(coverage_dt, n = 2) {
 }
 
 
+## 2c. Turbinas por unidade IDF, por limiar de cobertura (%) -- em vez de
+## um numero fixo (top_turbines_by_idf() acima) ---------------------------
+##
+## Decisao do Paulo, 2026-09, apos rever o caso da DZH62-04: uma unidade
+## IDF pode ser genuinamente primaria para mais do que 1 turbina (numero
+## VARIAVEL, nao fixo), e nem sempre a mesma contagem entre unidades ou
+## entre parques -- um Top-N fixo (top_turbines_by_idf()) tanto pode
+## deixar de fora uma turbina genuina (Top-1, caso a unidade cubra bem 2)
+## como incluir uma turbina de cobertura fraca so' porque calhou ser a
+## 2a melhor (Top-2, caso da DZH64-03/DZH63). Um limiar de % deixa a
+## contagem variar naturalmente por unidade: mantem TODAS as turbinas cuja
+## sobreposicao de buffer com essa unidade for >= min_pct_coverage, sejam
+## 0, 1 ou varias. So' usado quando NAO existe matriz manual (Primary IDF)
+## disponivel para essa unidade -- ver idf_turbines_from_coverage(),
+## R/offline_curtailment_check.R, que agora prefere sempre a matriz manual
+## quando o ficheiro existe.
+
+turbines_by_idf_threshold <- function(coverage_dt, min_pct_coverage = 20) {
+
+  if (nrow(coverage_dt) == 0L) {
+    return(data.table::data.table(idf = character(), turbine = character(), pct_coverage = numeric()))
+  }
+
+  dt <- coverage_dt[pct_coverage >= min_pct_coverage, .(idf, turbine, pct_coverage)]
+  data.table::setorder(dt, idf, -pct_coverage)
+  dt[]
+}
+
+
 ## 3. Comparacao com a matriz manual (ACWA_IDF_Coverage_Matrix.xlsx) ----
 ##
 ## manual_dt: lido diretamente do xlsx (colunas Site, `Turbine ID`, `Primary

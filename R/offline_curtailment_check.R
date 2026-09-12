@@ -23,16 +23,17 @@
 ##
 ## Uso:
 ##   source("R/availability_daylight.R")   # compute_offline_intervals()
-##   source("R/turbine_idf_coverage.R")    # top_turbines_by_idf() (opcional, ver abaixo)
+##   source("R/turbine_idf_coverage.R")    # turbines_by_idf_threshold() (fallback, ver abaixo)
 ##   source("R/offline_curtailment_check.R")
 ##
 ##   offline_dt <- compute_offline_intervals(heartb_dt, offline_gap_min, online_grace_min)
 ##
-##   ## turbina(s) a verificar por unidade IDF -- 2 fontes possiveis:
-##   idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt) # preferida (pedido do Paulo) -- n=1 (Top-1) por omissao
-##   # OU, se turbine_idf_coverage_dt nao existir nesta sessao (so' calculada
-##   # em IDF_analysis.R, secção 0 -- ver nota no explore_offline_curtailment_check.R):
+##   ## turbina(s) a verificar por unidade IDF -- 2 fontes possiveis, matriz
+##   ## manual e' SEMPRE preferida quando existir (ver 1a abaixo):
 ##   idf_turbines_dt <- idf_turbines_from_manual_matrix(turbine_idf_manual_dt)
+##   # OU, so' se nao houver ficheiro de matriz manual identificado para
+##   # este parque (turbine_idf_manual_dt inexistente/NULL):
+##   idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt)
 ##
 ##   curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, idf_turbines_dt)
 ##   scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, idf_turbines_dt)
@@ -43,32 +44,14 @@
 
 ## 1. Turbina(s) a verificar por unidade IDF -- 2 formas de as obter --------
 
-## 1a. A partir da cobertura geometrica 2D (top_turbines_by_idf(),
-## R/turbine_idf_coverage.R) -- preferida (pedido do Paulo, 2026-09): a(s)
-## turbina(s) com maior % de sobreposicao de buffer com essa unidade IDF,
-## em vez so' da atribuicao manual 1-turbina-1-unidade.
-##
-## n = 1 (so' a turbina Top-1/primaria) por omissao -- decisao do Paulo,
-## 2026-09, depois de um caso real (DGY) em que n=2 atribuia a mesma
-## turbina (DZH63) a 2 unidades IDF vizinhas com deteção sobreposta
-## (DZH62-04 e DZH64-03, ~600m de distancia), fazendo a atividade SCADA da
-## DZH63 contar como "evidencia" para a DZH64-03 mesmo quando a turbina
-## PROPRIA dessa unidade (DZH64) estava confirmadamente sem sinal (SCADA
-## no portal IDF) -- ver OFFLINE_EVIDENCE_SCOPE_NOTE abaixo. n=1 evita essa
-## ambiguidade por simplicidade, dado que esta analise se baseia so' nas
-## posicoes disponiveis no export do portal IDF, sem verificacao adicional
-## (ex: orientacao/alcance real de cada camara).
-idf_turbines_from_coverage <- function(coverage_dt, n = 1) {
-  top_turbines_by_idf(coverage_dt, n = n)[, .(idf, turbine)]
-}
-
-## 1b. A partir da matriz manual (Turbine ID -> Primary IDF) -- fallback
-## quando a cobertura geometrica (turbine_idf_coverage_dt) nao esta
-## disponivel nesta sessao (so' calculada em IDF_analysis.R, nao em
-## IDF_monthly_report.R -- ver nota no explore_offline_curtailment_check.R).
-## So' a atribuicao Primary conta (colunas "Turbine ID"/"Primary IDF", ou
-## ja' renomeadas "turbine"/"primary_idf") -- mesma fonte de
-## join_availability_to_turbine(), R/availability_daylight.R.
+## 1a. A partir da matriz manual (Turbine ID -> Primary IDF) -- fonte
+## PREFERIDA sempre que o ficheiro existir para o parque (decisao do
+## Paulo, 2026-09, apos rever o caso da DZH62-04, primaria genuina de 2
+## turbinas, DZH62 E DZH63 -- reflete conhecimento operacional real, que
+## nenhum metodo geometrico consegue replicar sozinho). So' a atribuicao
+## Primary conta (colunas "Turbine ID"/"Primary IDF", ou ja' renomeadas
+## "turbine"/"primary_idf") -- mesma fonte de join_availability_to_turbine(),
+## R/availability_daylight.R.
 idf_turbines_from_manual_matrix <- function(turbine_idf_manual_dt) {
   manual_dt <- data.table::as.data.table(turbine_idf_manual_dt)
   data.table::setnames(
@@ -78,6 +61,26 @@ idf_turbines_from_manual_matrix <- function(turbine_idf_manual_dt) {
     skip_absent = TRUE
   )
   unique(manual_dt[!is.na(primary_idf), .(idf = primary_idf, turbine)])
+}
+
+## 1b. A partir da cobertura geometrica 2D (turbines_by_idf_threshold(),
+## R/turbine_idf_coverage.R) -- fallback, so' usado quando NAO existe
+## ficheiro de matriz manual identificado para este parque (turbine_idf_manual_dt
+## inexistente/NULL) -- ver explore_offline_curtailment_check.R para a
+## logica de escolha entre 1a/1b.
+##
+## min_pct_coverage (limiar de %, NAO um numero fixo de turbinas) --
+## decisao do Paulo, 2026-09: uma unidade IDF pode ser genuinamente
+## primaria para mais do que 1 turbina, em numero VARIAVEL (nem sempre o
+## mesmo entre unidades/parques) -- um Top-N fixo tanto podia deixar de
+## fora uma turbina genuina como incluir uma de cobertura fraca so' por
+## calhar ser a 2a melhor (caso real, DGY: DZH63 atribuida tanto a
+## DZH62-04 como a DZH64-03 com Top-2, mesmo a DZH64 -- a turbina PROPRIA
+## da DZH64-03 -- estando confirmadamente sem sinal SCADA nesse periodo).
+## Ver OFFLINE_EVIDENCE_SCOPE_NOTE abaixo para a salvaguarda a incluir no
+## relatorio sempre que este fallback for usado.
+idf_turbines_from_coverage <- function(coverage_dt, min_pct_coverage = 20) {
+  turbines_by_idf_threshold(coverage_dt, min_pct_coverage = min_pct_coverage)[, .(idf, turbine)]
 }
 
 
@@ -217,24 +220,6 @@ classify_offline_evidence <- function(curtl_checked_dt, scada_checked_dt) {
 }
 
 
-## 6. Nota metodologica -- a incluir no relatorio (mensal e anual) quando
-## esta analise for formalizada numa secção propria (pedido do Paulo,
-## 2026-09) -- em ingles, ja pronta para reutilizar no texto do relatorio
-## ou como sheet de metodologia num xlsx exploratorio como este. Documenta
-## a simplificacao Top-1 de idf_turbines_from_coverage() acima -- ver essa
-## funcao para o caso real que a motivou.
-
-OFFLINE_EVIDENCE_SCOPE_NOTE <- paste(
-  "The turbine associated with each IDF unit in this analysis is the single most-covered turbine",
-  "by 2D geometric proximity (based only on turbine and IDF-unit positions available from the IDF",
-  "portal export), not a verified camera orientation or detection range. Where two IDF units have",
-  "overlapping detection ranges, evidence attributed to one unit could in principle reflect a",
-  "neighbouring unit's turbine instead. This simplification (using the single closest turbine,",
-  "rather than every turbine within range) was adopted because this analysis relies solely on data",
-  "available from the IDF portal export, without independent field verification."
-)
-
-
 ## 5. Resumo -- minutos offline por classificacao, por unidade IDF e
 ## farm-wide ------------------------------------------------------------
 
@@ -258,3 +243,26 @@ summarise_offline_evidence <- function(combined_dt) {
 
   list(by_idf = by_idf[], overall = overall[])
 }
+
+
+## 6. Nota metodologica -- a incluir no relatorio (mensal e anual) quando
+## esta analise for formalizada numa secção propria (pedido do Paulo,
+## 2026-09) -- em ingles, ja pronta para reutilizar no texto do relatorio
+## ou como sheet de metodologia num xlsx exploratorio como este.
+##
+## So' se aplica quando idf_turbines_dt veio do FALLBACK geometrico
+## (idf_turbines_from_coverage(), secção 1b acima) -- nao da matriz manual
+## (secção 1a, a fonte preferida, que reflete atribuicao operacional real
+## e nao tem esta limitacao). O caller (ex: explore_offline_curtailment_check.R)
+## decide qual das duas fontes foi usada e so' inclui esta nota nesse caso.
+
+OFFLINE_EVIDENCE_SCOPE_NOTE <- paste(
+  "No operational turbine<->IDF-unit matrix (Primary IDF) was identified for this analysis, so",
+  "turbine coverage per IDF unit was instead estimated from 2D geometric proximity -- every",
+  "turbine whose detection buffer overlaps that IDF unit's buffer by at least the configured",
+  "threshold, based only on turbine and IDF-unit positions available from the IDF portal export,",
+  "not a verified camera orientation or detection range. Where two IDF units have overlapping",
+  "detection ranges, evidence attributed to one unit could in principle reflect a neighbouring",
+  "unit's turbine instead. This is a fallback only: wherever an operational matrix is available,",
+  "it is used in preference to this geometric estimate."
+)

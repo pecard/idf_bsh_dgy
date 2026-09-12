@@ -1,6 +1,7 @@
 ##
-## Teste com dados simulados para R/offline_curtailment_check.R e a nova
-## funcao top_turbines_by_idf(), R/turbine_idf_coverage.R.
+## Teste com dados simulados para R/offline_curtailment_check.R e as
+## funcoes de cobertura geometrica em R/turbine_idf_coverage.R
+## (top_turbines_by_idf(), turbines_by_idf_threshold()).
 ##
 ## Correr: source("tests/test_offline_curtailment_check.R")
 ##
@@ -11,8 +12,7 @@ source("R/turbine_idf_coverage.R")
 source("R/offline_curtailment_check.R")
 
 ## Cobertura geometrica sintetica -- IDF-1 cobre 3 turbinas (90%/70%/20%),
-## IDF-2 so' 1 (95%) -- top_turbines_by_idf(n=2) deve manter so' as 2
-## melhores de IDF-1 (excluir TOC_A3, 20%)
+## IDF-2 so' 1 (95%)
 coverage_dt_test <- data.table::data.table(
   turbine = c("TOC_A1", "TOC_A2", "TOC_A3", "TOC_B1"),
   idf     = c("IDF-1", "IDF-1", "IDF-1", "IDF-2"),
@@ -27,18 +27,36 @@ cat(sprintf(
   nrow(top2_test), "TOC_A3" %in% top2_test$turbine
 ))
 
-idf_turbines_geo_test <- idf_turbines_from_coverage(coverage_dt_test, n = 2)
+## turbines_by_idf_threshold() -- limiar de %, NAO um numero fixo de
+## turbinas (decisao do Paulo, 2026-09: uma unidade pode ser primaria para
+## um numero VARIAVEL de turbinas -- caso real DZH62-04, primaria de 2)
+cat("\n===== turbines_by_idf_threshold(coverage_dt_test, min_pct_coverage = 50) =====\n")
+thresh_test <- turbines_by_idf_threshold(coverage_dt_test, min_pct_coverage = 50)
+print(thresh_test)
 cat(sprintf(
-  "idf_turbines_from_coverage(n=2): %d linha(s), so' colunas idf/turbine: %s\n",
+  "Esperado: 3 linhas (IDF-1/TOC_A1, IDF-1/TOC_A2, IDF-2/TOC_B1), TOC_A3 (20%%) EXCLUIDO (< 50%%) -- obtido: %d linha(s), TOC_A3 presente: %s\n",
+  nrow(thresh_test), "TOC_A3" %in% thresh_test$turbine
+))
+
+cat("\n----- Caso-limite: fronteira exata (pct_coverage == min_pct_coverage) e' incluida -----\n")
+boundary_test <- turbines_by_idf_threshold(coverage_dt_test, min_pct_coverage = 20)
+cat(sprintf(
+  "Esperado: TOC_A3 (exatamente 20%%) incluido com limiar=20 (>=, fronteira inclusive) -- obtido: %s\n",
+  "TOC_A3" %in% boundary_test$turbine
+))
+
+idf_turbines_geo_test <- idf_turbines_from_coverage(coverage_dt_test, min_pct_coverage = 50)
+cat(sprintf(
+  "idf_turbines_from_coverage(min_pct_coverage=50): %d linha(s), so' colunas idf/turbine: %s\n",
   nrow(idf_turbines_geo_test), identical(names(idf_turbines_geo_test), c("idf", "turbine"))
 ))
 
-## omissao (n=1, Top-1) -- decisao do Paulo, 2026-09, ver a nota completa em
+## omissao (min_pct_coverage=20) -- ver a nota completa em
 ## idf_turbines_from_coverage(), R/offline_curtailment_check.R
 idf_turbines_geo_default_test <- idf_turbines_from_coverage(coverage_dt_test)
 cat(sprintf(
-  "idf_turbines_from_coverage() omissao (n=1): %d linha(s) (1 por unidade IDF) -- obtido: %d\n",
-  data.table::uniqueN(coverage_dt_test$idf), nrow(idf_turbines_geo_default_test)
+  "idf_turbines_from_coverage() omissao (min_pct_coverage=20): %d linha(s) (todas as 4, TOC_A3 na fronteira) -- obtido: %d\n",
+  4, nrow(idf_turbines_geo_default_test)
 ))
 
 

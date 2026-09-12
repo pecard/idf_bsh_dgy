@@ -24,79 +24,87 @@
 ## Pre-requisitos (correr isto DEPOIS de uma corrida normal de
 ## IDF_analysis.R OU IDF_monthly_report.R, na mesma sessao) -- objetos ja
 ## tem de existir: heartb_dt, curtl_dt, scada_dt, heartbeat_offline_gap_min,
-## heartbeat_interval_min. Turbina(s) por unidade IDF -- 2 fontes possiveis
-## (ver secção 1 abaixo), a preferida (cobertura geometrica 2D) so' fica
-## disponivel se turbine_idf_coverage_dt ja tiver sido calculada (so'
-## acontece em IDF_analysis.R, secção 0 -- NAO em IDF_monthly_report.R, que
-## nao le o shapefile das unidades IDF nem idf_op_detection_range). Se so'
-## correste o relatorio mensal nesta sessao, o script usa a matriz manual
-## como alternativa, com um aviso.
+## heartbeat_interval_min. Turbina(s) por unidade IDF -- ver secção 1
+## abaixo: a matriz manual (Primary IDF) e' SEMPRE preferida quando
+## identificada para o parque (turbine_idf_manual_dt); so' cai para a
+## cobertura geometrica (limiar de %, numero de turbinas variavel por
+## unidade) quando nao ha ficheiro de matriz manual.
 ##
 ## Correr: source("explore_offline_curtailment_check.R")
 ##
 
 source("R/availability_daylight.R") # compute_offline_intervals()
-source("R/turbine_idf_coverage.R")  # top_turbines_by_idf() (cobertura geometrica)
+source("R/turbine_idf_coverage.R")  # turbines_by_idf_threshold() (fallback geometrico)
 source("R/offline_curtailment_check.R")
 
-## 1. Turbina(s) a verificar por unidade IDF -- preferencia: cobertura
-## geometrica 2D, so' a turbina Top-1 (mais coberta) por unidade, pedido
-## do Paulo, 2026-09 -- ver a nota em idf_turbines_from_coverage(),
-## R/offline_curtailment_check.R, sobre o caso real (DZH62-04/DZH64-03,
-## turbinas vizinhas ~600m, deteção sobreposta) que motivou usar so' a
-## Top-1 em vez de Top-2. 3 niveis de fallback, do mais ao menos preferido
-## -- so' cai para a matriz manual se nao houver mesmo forma de calcular a
-## geometria ---------
+## 1. Turbina(s) a verificar por unidade IDF -- decisao do Paulo, 2026-09,
+## apos o caso real da DZH62-04 (primaria genuina de 2 turbinas, DZH62 E
+## DZH63): a matriz manual e' SEMPRE preferida quando existir um ficheiro
+## operacional identificado para o parque, porque reflete conhecimento
+## real que nenhum metodo geometrico reproduz sozinho. So' cai para a
+## cobertura geometrica (limiar de % de sobreposicao, NAO um numero fixo
+## de turbinas -- ver turbines_by_idf_threshold(), R/turbine_idf_coverage.R)
+## quando NAO ha matriz manual identificada -- ver
+## OFFLINE_EVIDENCE_SCOPE_NOTE, R/offline_curtailment_check.R, para a
+## salvaguarda que acompanha esse fallback -----------------------------
 
-n_top_turbines <- 1L
+min_pct_coverage <- 20
 idf_turbines_dt <- NULL
+used_geometric_fallback <- FALSE
 
-if (exists("turbine_idf_coverage_dt")) {
-  cat(sprintf("\nA usar cobertura geometrica 2D ja calculada nesta sessao (top %d turbina(s) por unidade IDF).\n", n_top_turbines))
-  idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt, n = n_top_turbines)
+if (exists("turbine_idf_manual_dt") && !is.null(turbine_idf_manual_dt)) {
 
-} else if (exists("wtg") && exists("idf_op_detection_range") && exists("idf_filename") &&
-           exists("folder_input") && exists("crs_projection_plannar")) {
+  cat("\nA usar a matriz manual (Primary IDF) -- fonte preferida (ficheiro operacional identificado para este parque).\n")
+  idf_turbines_dt <- idf_turbines_from_manual_matrix(turbine_idf_manual_dt)
 
-  cat(sprintf(
-    "\nturbine_idf_coverage_dt nao existia -- a ler '%s' e calcular agora (top %d turbina(s) por unidade IDF).\n",
-    idf_filename, n_top_turbines
+} else {
+
+  message(sprintf(
+    "Nenhuma matriz manual (turbine_idf_manual_dt) identificada para este parque -- a usar cobertura geometrica 2D como fallback (turbinas com >= %d%% de sobreposicao de buffer).",
+    min_pct_coverage
   ))
+  used_geometric_fallback <- TRUE
 
-  # mesma normalizacao de coluna de ID que IDF_analysis.R aplica (secção
-  # "0. Import data") antes de compute_turbine_idf_coverage() -- BSH ja'
-  # tem "imaging_he" nativamente, DGY so' tem "Name" (idf_source_id_col,
-  # ver monthlyReportSettings_DGY.R). NAO reproduz o filtro de
-  # idf_installed_units do IDF_analysis.R (exclui 2 registos "DZH-23"
-  # fantasma, sem geometria de turbina distinta) -- inofensivo aqui, esses
-  # registos nunca aparecem em heartb_dt$idf, por isso nunca fazem match
-  # em offline_dt.
-  if (!exists("idf")) {
-    idf <- sf::read_sf(file.path(folder_input, idf_filename))
-    idf <- sf::st_transform(idf, crs_projection_plannar)
-    idf_source_id_col <- if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"
-    idf$imaging_he <- idf[[idf_source_id_col]]
+  if (exists("turbine_idf_coverage_dt")) {
+    cat("Cobertura geometrica ja calculada nesta sessao.\n")
+
+  } else if (exists("wtg") && exists("idf_op_detection_range") && exists("idf_filename") &&
+             exists("folder_input") && exists("crs_projection_plannar")) {
+
+    cat(sprintf("turbine_idf_coverage_dt nao existia -- a ler '%s' e calcular agora.\n", idf_filename))
+
+    # mesma normalizacao de coluna de ID que IDF_analysis.R aplica (secção
+    # "0. Import data") antes de compute_turbine_idf_coverage() -- BSH ja'
+    # tem "imaging_he" nativamente, DGY so' tem "Name" (idf_source_id_col,
+    # ver monthlyReportSettings_DGY.R). NAO reproduz o filtro de
+    # idf_installed_units do IDF_analysis.R (exclui 2 registos "DZH-23"
+    # fantasma, sem geometria de turbina distinta) -- inofensivo aqui, esses
+    # registos nunca aparecem em heartb_dt$idf, por isso nunca fazem match
+    # em offline_dt.
+    if (!exists("idf")) {
+      idf <- sf::read_sf(file.path(folder_input, idf_filename))
+      idf <- sf::st_transform(idf, crs_projection_plannar)
+      idf_source_id_col <- if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"
+      idf$imaging_he <- idf[[idf_source_id_col]]
+    }
+
+    turbine_idf_coverage_dt <- compute_turbine_idf_coverage(
+      wtg, idf, buffer_m = idf_op_detection_range,
+      wtg_id_col = "InternalNa", idf_id_col = "imaging_he"
+    )
+
+  } else {
+    stop("Nem turbine_idf_manual_dt nem cobertura geometrica (turbine_idf_coverage_dt, ou wtg+idf_filename+idf_op_detection_range para a calcular) disponiveis -- impossivel saber que turbina(s) verificar por unidade IDF.")
   }
 
-  turbine_idf_coverage_dt <- compute_turbine_idf_coverage(
-    wtg, idf, buffer_m = idf_op_detection_range,
-    wtg_id_col = "InternalNa", idf_id_col = "imaging_he"
-  )
-  idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt, n = n_top_turbines)
-}
+  idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt, min_pct_coverage = min_pct_coverage)
 
-if (is.null(idf_turbines_dt)) {
-  if (exists("turbine_idf_manual_dt") && !is.null(turbine_idf_manual_dt)) {
-    message(
-      "turbine_idf_coverage_dt indisponivel nesta sessao, e faltam wtg/idf_filename/idf_op_detection_range/",
-      "folder_input/crs_projection_plannar para a calcular na hora. A usar a matriz manual (Primary IDF) como ",
-      "alternativa -- para a cobertura geometrica (o metodo preferido), confirma que correste o relatorio ",
-      "mensal ate' a secção que le wtg, e que idf_filename/idf_op_detection_range estao definidos em ",
-      "monthlyReportSettings_BSH.R/_DGY.R (adicionados 2026-09)."
-    )
-    idf_turbines_dt <- idf_turbines_from_manual_matrix(turbine_idf_manual_dt)
-  } else {
-    stop("Nem cobertura geometrica (turbine_idf_coverage_dt, ou wtg+idf_filename+idf_op_detection_range para a calcular) nem turbine_idf_manual_dt disponiveis -- impossivel saber que turbina(s) verificar por unidade IDF.")
+  n_no_turbine <- data.table::uniqueN(turbine_idf_coverage_dt$idf) - data.table::uniqueN(idf_turbines_dt$idf)
+  if (n_no_turbine > 0) {
+    message(sprintf(
+      "Aviso: %d unidade(s) IDF sem nenhuma turbina >= %d%% de cobertura -- ficam sem verificacao possivel (has_curtailment/has_scada_rpm = FALSE sempre).",
+      n_no_turbine, min_pct_coverage
+    ))
   }
 }
 
@@ -143,22 +151,26 @@ if (exists("write_xlsx_local") && exists("folder_output")) {
 
   # xlsx partilhado com a equipa IDF e o cliente (pedido do Paulo, 2026-09)
   # -- conteudo integralmente em ingles (nomes de sheet, colunas e valores
-  # de classificacao), incluindo uma sheet de metodologia com
-  # OFFLINE_EVIDENCE_SCOPE_NOTE (R/offline_curtailment_check.R), a
-  # salvaguarda sobre a simplificacao Top-1/fonte de dados so' do portal.
-  methodology_note_dt <- data.table::data.table(Methodology_Note = OFFLINE_EVIDENCE_SCOPE_NOTE)
-
-  write_xlsx_local(
-    list(
-      Methodology_Note         = methodology_note_dt,
-      All_offline_intervals    = combined_dt,
-      Comm_failure_confirmed   = combined_dt[classification == "IDF unit communication failure"],
-      Operational_no_detection = combined_dt[classification == "Turbine operational, no detection"],
-      No_evidence_review       = combined_dt[classification == "No evidence (heartbeat and SCADA both missing)"],
-      Summary_by_idf           = summary_offline$by_idf,
-      Summary_overall          = summary_offline$overall
-    ),
-    file.path(folder_output, "offline_curtailment_overlap_check.xlsx")
+  # de classificacao). Sheet de metodologia (OFFLINE_EVIDENCE_SCOPE_NOTE,
+  # R/offline_curtailment_check.R) so' incluida quando o fallback
+  # geometrico foi mesmo usado -- a matriz manual (fonte preferida) nao
+  # tem esta limitacao, nao precisa da salvaguarda.
+  sheets <- list(
+    All_offline_intervals    = combined_dt,
+    Comm_failure_confirmed   = combined_dt[classification == "IDF unit communication failure"],
+    Operational_no_detection = combined_dt[classification == "Turbine operational, no detection"],
+    No_evidence_review       = combined_dt[classification == "No evidence (heartbeat and SCADA both missing)"],
+    Summary_by_idf           = summary_offline$by_idf,
+    Summary_overall          = summary_offline$overall
   )
+
+  if (used_geometric_fallback) {
+    sheets <- c(
+      list(Methodology_Note = data.table::data.table(Methodology_Note = OFFLINE_EVIDENCE_SCOPE_NOTE)),
+      sheets
+    )
+  }
+
+  write_xlsx_local(sheets, file.path(folder_output, "offline_curtailment_overlap_check.xlsx"))
   cat(sprintf("\nGravado: '%s'\n", file.path(folder_output, "offline_curtailment_overlap_check.xlsx")))
 }
