@@ -46,13 +46,20 @@ run_sections_monthly <- list(
 ## Project inputs
 ##
 ## So' os literais realmente usados pelas seccoes acima -- mesma nota de
-## monthlyReportSettings_BSH.R (nao inclui idf_filename/tier*_filename).
+## monthlyReportSettings_BSH.R (nao inclui tier*_filename).
+## idf_filename/idf_op_detection_range (2026-09): idem, mesma nota de
+## monthlyReportSettings_BSH.R -- so' para explore_offline_curtailment_check.R
+## calcular a cobertura geometrica turbina<->IDF sem correr o IDF_analysis.R
+## inteiro; mesmos valores de userSettings_DGY.R.
 ##
 
 project_ref <- "Dzhankeldy WPP"
 
 wtg_filename                <- "DZH_Turbines_Sergey_20250401_UTM.shp"
 turbine_idf_matrix_filename <- "ACWA_IDF_Coverage_Matrix_DGY.xlsx"
+idf_filename                <- "IDF_DZH.shp"
+idf_op_detection_range      <- 1000
+idf_source_id_col           <- "Name" # mesma nota de userSettings_DGY.R -- IDF_DZH.shp so' tem "Name", sem "imaging_he"
 
 ## Nome da coluna de ID no shapefile de turbinas -- ver a nota completa em
 ## userSettings_DGY.R e IDF_monthly_report.R, secção "0. Import data"

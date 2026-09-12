@@ -62,16 +62,24 @@ run_sections_monthly <- list(
 ## Project inputs
 ##
 ## So os literais realmente usados pelas seccoes acima -- NAO inclui
-## idf_filename/tier*_filename (nenhuma seccao do relatorio mensal usa o
-## poligono IDF ou os esquemas de tier). wtg_filename e
-## turbine_idf_matrix_filename SAO usados (secção 1, plot espacial de
-## disponibilidade -- ver IDF_monthly_report.R, seccao "0. Import data").
+## tier*_filename (nenhuma secção do relatorio mensal usa os esquemas de
+## tier). wtg_filename e turbine_idf_matrix_filename SAO usados (secção 1,
+## plot espacial de disponibilidade -- ver IDF_monthly_report.R, seccao "0.
+## Import data"). idf_filename/idf_op_detection_range (2026-09): nenhuma
+## secção do relatorio mensal em si os usa, mas
+## explore_offline_curtailment_check.R precisa deles para calcular a
+## cobertura geometrica turbina<->IDF (top-N turbinas por unidade) sem
+## teres de correr o IDF_analysis.R inteiro so' para isso -- mesmos valores
+## de userSettings_BSH.R (metodologia farm-independente, nao um parametro
+## novo).
 ##
 
 project_ref <- "Bash WPP"
 
 wtg_filename                <- "Bash_Turbines_UTM.shp"
 turbine_idf_matrix_filename <- "ACWA_IDF_Coverage_Matrix.xlsx"
+idf_filename                <- "Bash_IDF_coord.shp"
+idf_op_detection_range      <- 1000 # em metros
 
 proj_lat      <- 40.65
 proj_lon      <- 64.67
