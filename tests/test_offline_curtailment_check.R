@@ -29,8 +29,16 @@ cat(sprintf(
 
 idf_turbines_geo_test <- idf_turbines_from_coverage(coverage_dt_test, n = 2)
 cat(sprintf(
-  "idf_turbines_from_coverage(): %d linha(s), so' colunas idf/turbine: %s\n",
+  "idf_turbines_from_coverage(n=2): %d linha(s), so' colunas idf/turbine: %s\n",
   nrow(idf_turbines_geo_test), identical(names(idf_turbines_geo_test), c("idf", "turbine"))
+))
+
+## omissao (n=1, Top-1) -- decisao do Paulo, 2026-09, ver a nota completa em
+## idf_turbines_from_coverage(), R/offline_curtailment_check.R
+idf_turbines_geo_default_test <- idf_turbines_from_coverage(coverage_dt_test)
+cat(sprintf(
+  "idf_turbines_from_coverage() omissao (n=1): %d linha(s) (1 por unidade IDF) -- obtido: %d\n",
+  data.table::uniqueN(coverage_dt_test$idf), nrow(idf_turbines_geo_default_test)
 ))
 
 
@@ -49,11 +57,11 @@ cat(sprintf(
 
 
 ## 5 intervalos offline sinteticos, cobrindo os casos relevantes:
-##   OFF1 (IDF-1, 10:00-11:00) -- curtailment em TOC_A2 as 10:30 (DENTRO), sem SCADA -> "Falha de comunicação"
-##   OFF2 (IDF-1, 12:00-13:00) -- sem curtailment, SCADA com RPM em TOC_A1 as 12:30 -> "Turbina operacional sem deteção"
-##   OFF3 (IDF-2, 14:00-15:00) -- curtailment na fronteira off_start (14:00) -> "Falha de comunicação"
-##   OFF4 (IDF-2, 16:00-17:00) -- curtailment na fronteira off_end (17:00)   -> "Falha de comunicação"
-##   OFF5 (IDF-3, 18:00-19:00) -- unidade sem turbina mapeada, sem curtailment nem SCADA -> "Sem evidência"
+##   OFF1 (IDF-1, 10:00-11:00) -- curtailment em TOC_A2 as 10:30 (DENTRO), sem SCADA -> "IDF unit communication failure"
+##   OFF2 (IDF-1, 12:00-13:00) -- sem curtailment, SCADA com RPM em TOC_A1 as 12:30 -> "Turbine operational, no detection"
+##   OFF3 (IDF-2, 14:00-15:00) -- curtailment na fronteira off_start (14:00) -> "IDF unit communication failure"
+##   OFF4 (IDF-2, 16:00-17:00) -- curtailment na fronteira off_end (17:00)   -> "IDF unit communication failure"
+##   OFF5 (IDF-3, 18:00-19:00) -- unidade sem turbina mapeada, sem curtailment nem SCADA -> "No evidence"
 offline_dt_test <- data.table::data.table(
   idf       = c("IDF-1", "IDF-1", "IDF-2", "IDF-2", "IDF-3"),
   off_start = as.POSIXct(c("2026-06-01 10:00:00", "2026-06-01 12:00:00", "2026-06-01 14:00:00", "2026-06-01 16:00:00", "2026-06-01 18:00:00"), tz = "UTC"),
@@ -97,12 +105,14 @@ cat(sprintf(
 cat("\n===== classify_offline_evidence() =====\n")
 combined_test <- classify_offline_evidence(curtl_checked_test, scada_checked_test)
 print(combined_test[, .(idf, off_start, has_curtailment, has_scada_rpm, classification)])
+## valores em ingles de proposito -- ver nota em classify_offline_evidence(),
+## R/offline_curtailment_check.R (xlsx partilhados com o cliente/equipa IDF)
 expected_classification <- c(
-  "Falha de comunicação da unidade IDF",   # OFF1 -- curtailment, mesmo sem SCADA
-  "Turbina operacional sem deteção",       # OFF2 -- so' SCADA
-  "Falha de comunicação da unidade IDF",   # OFF3
-  "Falha de comunicação da unidade IDF",   # OFF4
-  "Sem evidência (heartbeat e SCADA em falta)" # OFF5 -- nenhum sinal
+  "IDF unit communication failure",                 # OFF1 -- curtailment, mesmo sem SCADA
+  "Turbine operational, no detection",               # OFF2 -- so' SCADA
+  "IDF unit communication failure",                  # OFF3
+  "IDF unit communication failure",                  # OFF4
+  "No evidence (heartbeat and SCADA both missing)"   # OFF5 -- nenhum sinal
 )
 cat(sprintf(
   "Resultado: %d/%d classificacoes corretas.\n",
@@ -115,4 +125,4 @@ cat("-- by_idf --\n")
 print(summary_test$by_idf)
 cat("-- overall --\n")
 print(summary_test$overall)
-cat("Esperado (overall, 60 min por intervalo): 'Falha de comunicação da unidade IDF' n=3/180min, 'Turbina operacional sem deteção' n=1/60min, 'Sem evidência (heartbeat e SCADA em falta)' n=1/60min\n")
+cat("Esperado (overall, 60 min por intervalo): 'IDF unit communication failure' n=3/180min, 'Turbine operational, no detection' n=1/60min, 'No evidence (heartbeat and SCADA both missing)' n=1/60min\n")

@@ -40,11 +40,15 @@ source("R/turbine_idf_coverage.R")  # top_turbines_by_idf() (cobertura geometric
 source("R/offline_curtailment_check.R")
 
 ## 1. Turbina(s) a verificar por unidade IDF -- preferencia: cobertura
-## geometrica 2D (top 2 turbinas por unidade), pedido do Paulo, 2026-09.
-## 3 niveis de fallback, do mais ao menos preferido -- so' cai para a
-## matriz manual se nao houver mesmo forma de calcular a geometria ---------
+## geometrica 2D, so' a turbina Top-1 (mais coberta) por unidade, pedido
+## do Paulo, 2026-09 -- ver a nota em idf_turbines_from_coverage(),
+## R/offline_curtailment_check.R, sobre o caso real (DZH62-04/DZH64-03,
+## turbinas vizinhas ~600m, deteção sobreposta) que motivou usar so' a
+## Top-1 em vez de Top-2. 3 niveis de fallback, do mais ao menos preferido
+## -- so' cai para a matriz manual se nao houver mesmo forma de calcular a
+## geometria ---------
 
-n_top_turbines <- 2L
+n_top_turbines <- 1L
 idf_turbines_dt <- NULL
 
 if (exists("turbine_idf_coverage_dt")) {
@@ -136,12 +140,21 @@ detail_dt <- combined_dt[order(classification, idf, off_start)]
 print(detail_dt[, .(idf, off_start, off_end, n_curtailments_during_offline, has_scada_rpm, classification)])
 
 if (exists("write_xlsx_local") && exists("folder_output")) {
+
+  # xlsx partilhado com a equipa IDF e o cliente (pedido do Paulo, 2026-09)
+  # -- conteudo integralmente em ingles (nomes de sheet, colunas e valores
+  # de classificacao), incluindo uma sheet de metodologia com
+  # OFFLINE_EVIDENCE_SCOPE_NOTE (R/offline_curtailment_check.R), a
+  # salvaguarda sobre a simplificacao Top-1/fonte de dados so' do portal.
+  methodology_note_dt <- data.table::data.table(Methodology_Note = OFFLINE_EVIDENCE_SCOPE_NOTE)
+
   write_xlsx_local(
     list(
+      Methodology_Note         = methodology_note_dt,
       All_offline_intervals    = combined_dt,
-      Comm_failure_confirmed   = combined_dt[classification == "Falha de comunicação da unidade IDF"],
-      Operational_no_detection = combined_dt[classification == "Turbina operacional sem deteção"],
-      No_evidence_review       = combined_dt[classification == "Sem evidência (heartbeat e SCADA em falta)"],
+      Comm_failure_confirmed   = combined_dt[classification == "IDF unit communication failure"],
+      Operational_no_detection = combined_dt[classification == "Turbine operational, no detection"],
+      No_evidence_review       = combined_dt[classification == "No evidence (heartbeat and SCADA both missing)"],
       Summary_by_idf           = summary_offline$by_idf,
       Summary_overall          = summary_offline$overall
     ),

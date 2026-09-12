@@ -29,14 +29,14 @@
 ##   offline_dt <- compute_offline_intervals(heartb_dt, offline_gap_min, online_grace_min)
 ##
 ##   ## turbina(s) a verificar por unidade IDF -- 2 fontes possiveis:
-##   idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt, n = 2) # preferida (pedido do Paulo)
+##   idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt) # preferida (pedido do Paulo) -- n=1 (Top-1) por omissao
 ##   # OU, se turbine_idf_coverage_dt nao existir nesta sessao (so' calculada
 ##   # em IDF_analysis.R, secção 0 -- ver nota no explore_offline_curtailment_check.R):
 ##   idf_turbines_dt <- idf_turbines_from_manual_matrix(turbine_idf_manual_dt)
 ##
 ##   curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, idf_turbines_dt)
 ##   scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, idf_turbines_dt)
-##   combined_dt <- combine_offline_evidence(curtl_checked_dt, scada_checked_dt)
+##   combined_dt <- classify_offline_evidence(curtl_checked_dt, scada_checked_dt)
 ##   summarise_offline_evidence(combined_dt)
 ##
 
@@ -44,10 +44,21 @@
 ## 1. Turbina(s) a verificar por unidade IDF -- 2 formas de as obter --------
 
 ## 1a. A partir da cobertura geometrica 2D (top_turbines_by_idf(),
-## R/turbine_idf_coverage.R) -- preferida (pedido do Paulo, 2026-09): as N
-## turbinas com maior % de sobreposicao de buffer com essa unidade IDF, em
-## vez so' da atribuicao manual 1-turbina-1-unidade.
-idf_turbines_from_coverage <- function(coverage_dt, n = 2) {
+## R/turbine_idf_coverage.R) -- preferida (pedido do Paulo, 2026-09): a(s)
+## turbina(s) com maior % de sobreposicao de buffer com essa unidade IDF,
+## em vez so' da atribuicao manual 1-turbina-1-unidade.
+##
+## n = 1 (so' a turbina Top-1/primaria) por omissao -- decisao do Paulo,
+## 2026-09, depois de um caso real (DGY) em que n=2 atribuia a mesma
+## turbina (DZH63) a 2 unidades IDF vizinhas com deteção sobreposta
+## (DZH62-04 e DZH64-03, ~600m de distancia), fazendo a atividade SCADA da
+## DZH63 contar como "evidencia" para a DZH64-03 mesmo quando a turbina
+## PROPRIA dessa unidade (DZH64) estava confirmadamente sem sinal (SCADA
+## no portal IDF) -- ver OFFLINE_EVIDENCE_SCOPE_NOTE abaixo. n=1 evita essa
+## ambiguidade por simplicidade, dado que esta analise se baseia so' nas
+## posicoes disponiveis no export do portal IDF, sem verificacao adicional
+## (ex: orientacao/alcance real de cada camara).
+idf_turbines_from_coverage <- function(coverage_dt, n = 1) {
   top_turbines_by_idf(coverage_dt, n = n)[, .(idf, turbine)]
 }
 
@@ -168,19 +179,25 @@ check_offline_scada_presence <- function(offline_dt, scada_dt, idf_turbines_dt) 
 ## classification, por ordem de prioridade (caso real que motivou esta
 ## distincao, DGY 2026-07: um sub-periodo sem heartbeat NEM SCADA, mas
 ## com curtailments a disparar -- a evidencia mais forte, o curtailment,
-## decide, mesmo quando o SCADA tambem esta em falha):
-##   "Falha de comunicação da unidade IDF" -- has_curtailment = TRUE
-##     (a unidade estava mesmo a decidir/atuar; SCADA em falha ao mesmo
-##     tempo so' mostra que o SCADA tem a sua propria falha de comunicação
+## decide, mesmo quando o SCADA tambem esta em falha).
+##
+## Valores em INGLES de proposito (nao traduzir) -- este resultado vai
+## para xlsx partilhados com a equipa IDF e o cliente dono do parque
+## (pedido do Paulo, 2026-09: todos os xlsx produzidos pelo pipeline
+## devem ficar integralmente em ingles, ver CLAUDE.md):
+##   "IDF unit communication failure" -- has_curtailment = TRUE (a unidade
+##     estava mesmo a decidir/atuar; SCADA em falha ao mesmo tempo so'
+##     mostra que o SCADA tem a sua propria falha de comunicação
 ##     independente, nao que o sistema de protecao estivesse parado)
-##   "Turbina operacional sem deteção" -- has_curtailment = FALSE E
+##   "Turbine operational, no detection" -- has_curtailment = FALSE E
 ##     has_scada_rpm = TRUE (SCADA confirma a turbina a reportar
 ##     normalmente; sem curtailment so' porque nao passou nenhuma ave)
-##   "Sem evidência (heartbeat e SCADA em falta)" -- nenhum dos 2 sinais --
-##     o caso mais ambiguo: pode ser indisponibilidade genuina da protecao,
-##     ou so' um gap de dados que afeta heartbeat E SCADA em simultaneo
-##     (ex: ficheiros brutos em falta para esse periodo) -- requer
-##     confirmacao manual, nao assumir nenhuma das duas leituras sozinha
+##   "No evidence (heartbeat and SCADA both missing)" -- nenhum dos 2
+##     sinais -- o caso mais ambiguo: pode ser indisponibilidade genuina da
+##     protecao, ou so' um gap de dados que afeta heartbeat E SCADA em
+##     simultaneo (ex: ficheiros brutos em falta para esse periodo) --
+##     requer confirmacao manual, nao assumir nenhuma das duas leituras
+##     sozinha
 
 classify_offline_evidence <- function(curtl_checked_dt, scada_checked_dt) {
 
@@ -191,13 +208,31 @@ classify_offline_evidence <- function(curtl_checked_dt, scada_checked_dt) {
   )
 
   combined[, classification := data.table::fcase(
-    has_curtailment,                     "Falha de comunicação da unidade IDF",
-    !has_curtailment & has_scada_rpm,     "Turbina operacional sem deteção",
-    default = "Sem evidência (heartbeat e SCADA em falta)"
+    has_curtailment,                     "IDF unit communication failure",
+    !has_curtailment & has_scada_rpm,     "Turbine operational, no detection",
+    default = "No evidence (heartbeat and SCADA both missing)"
   )]
 
   combined[]
 }
+
+
+## 6. Nota metodologica -- a incluir no relatorio (mensal e anual) quando
+## esta analise for formalizada numa secção propria (pedido do Paulo,
+## 2026-09) -- em ingles, ja pronta para reutilizar no texto do relatorio
+## ou como sheet de metodologia num xlsx exploratorio como este. Documenta
+## a simplificacao Top-1 de idf_turbines_from_coverage() acima -- ver essa
+## funcao para o caso real que a motivou.
+
+OFFLINE_EVIDENCE_SCOPE_NOTE <- paste(
+  "The turbine associated with each IDF unit in this analysis is the single most-covered turbine",
+  "by 2D geometric proximity (based only on turbine and IDF-unit positions available from the IDF",
+  "portal export), not a verified camera orientation or detection range. Where two IDF units have",
+  "overlapping detection ranges, evidence attributed to one unit could in principle reflect a",
+  "neighbouring unit's turbine instead. This simplification (using the single closest turbine,",
+  "rather than every turbine within range) was adopted because this analysis relies solely on data",
+  "available from the IDF portal export, without independent field verification."
+)
 
 
 ## 5. Resumo -- minutos offline por classificacao, por unidade IDF e

@@ -31,6 +31,22 @@
   (8 days by default in the reports so far; may need to be longer for other
   cases, since survey frequency and carcass detectability vary).
 
+## Language of xlsx exports
+
+- Every xlsx produced by the pipeline (annexes, exploratory workbooks like
+  offline_curtailment_overlap_check.xlsx, anything else written via
+  write_xlsx_local()/writexl/openxlsx) must be entirely in English — sheet
+  names, column headers, and any text VALUES inside cells (e.g. a
+  classification/category column), not just the structure. These files
+  circulate to the client and other stakeholders beyond Paulo, unlike the
+  Portuguese working conversation and code comments. This mirrors the
+  report .docx templates (report/*.rmd), which are already English-only —
+  the xlsx side needs the same deliberate check, since it doesn't get the
+  same template-level review.
+- Code comments and console messages/warnings stay in Portuguese as
+  everywhere else in this codebase — this rule is about what ends up
+  inside a delivered xlsx file, not about the R source itself.
+
 ## Communicating about this project (emails, messages)
 
 - All exchanges with Shahin, or about this project generally (emails,
