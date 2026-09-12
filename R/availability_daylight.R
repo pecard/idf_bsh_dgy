@@ -361,6 +361,141 @@ plot_heartbeat_slots <- function(slot_grid_dt, date_breaks = "2 days", title = N
 }
 
 
+## 9b. Grelha de slots (ex: 30 min) classificada por evidencia offline
+## (Night/Online/3 categorias) -- substitui plot_availability_calendar()
+## (funcao 6, calendario de % gradiente) como o calendario do corpo do
+## relatorio, pedido do Paulo, 2026-09: 3 categorias discretas de evidencia
+## nao cabem num gradiente continuo de %, por isso passa a um "punch card"
+## categorico de slot (dia x hora do dia), reaproveitando a mesma estrutura
+## de grelha de heartbeat_slot_grid() (funcao 8) em vez de recalcular
+## presenca/ausencia de heartbeat por slot.
+##
+## Slots noturnos ficam sempre "Night", independentemente do
+## heartbeat -- a protecao de aves so' e' avaliada durante o dia (mesma
+## logica de compute_daylight_offline(), funcao 3). Slots diurnos SEM
+## nenhum intervalo offline classificado a cobrir o seu ponto medio --
+## incluindo os que caem dentro da "margem" de online_grace_min, que
+## compute_offline_intervals() ja conta como online -- ficam "Online".
+## Os restantes slots diurnos herdam a classification do intervalo offline
+## correspondente (classify_offline_evidence(), R/offline_curtailment_check.R).
+##
+## offline_evidence_dt: classify_offline_evidence(...), com colunas idf,
+## off_start, off_end, classification -- NAO precisa de
+## R/offline_curtailment_check.R estar sourced aqui, so' consome o formato
+## ja devolvido por essa funcao.
+
+offline_evidence_slot_grid <- function(daylight_cal, tz, start_date, end_date,
+                                       offline_evidence_dt, idf_sel = NULL, slot_mins = 30) {
+
+  all_idf <- if (is.null(idf_sel)) sort(unique(offline_evidence_dt$idf)) else idf_sel
+
+  start_dt <- as.POSIXct(paste(as.Date(start_date), "00:00:00"), tz = tz)
+  end_dt   <- as.POSIXct(paste(as.Date(end_date) + 1, "00:00:00"), tz = tz)
+
+  slots <- seq(start_dt, end_dt - minutes(slot_mins), by = paste(slot_mins, "min"))
+
+  grid <- CJ(idf = all_idf, slot = slots)
+  grid[, date := as.Date(slot, tz = tz)]
+  grid[, time_decimal := lubridate::hour(slot) + lubridate::minute(slot) / 60]
+  grid[, slot_midpoint := slot + minutes(slot_mins / 2)]
+
+  # dia/noite: mesmo criterio da funcao 8 (heartbeat_slot_grid)
+  grid <- daylight_cal[, .(date, sunrise, sunset)][grid, on = "date"]
+  grid[, daylight := slot_midpoint >= sunrise & slot_midpoint < sunset]
+
+  ev <- offline_evidence_dt[idf %in% all_idf, .(idf, off_start, off_end, classification)]
+
+  # mesmo padrao de interval join de check_offline_curtailment_overlap()/
+  # check_offline_scada_presence() (R/offline_curtailment_check.R) -- ev e'
+  # "x", grid e' "i", fronteiras inclusive. Devolve 1 linha por linha de
+  # grid (classification = NA quando nenhum intervalo offline cobre esse slot).
+  res <- ev[
+    grid,
+    on = .(idf, off_start <= slot_midpoint, off_end >= slot_midpoint),
+    allow.cartesian = TRUE,
+    .(idf = i.idf, slot = i.slot, date = i.date, time_decimal = i.time_decimal,
+      daylight = i.daylight, classification = x.classification)
+  ]
+  res <- unique(res, by = c("idf", "slot")) # defensivo -- intervalos offline nao se sobrepoem por construcao
+
+  res[, slot_status := fcase(
+    !daylight,                        "Night",
+    daylight & is.na(classification), "Online",
+    default = classification
+  )]
+  res[, slot_status := factor(
+    slot_status,
+    levels = c("Online",
+              "IDF unit communication failure",
+              "Turbine operational, no detection",
+              "No evidence (heartbeat and SCADA both missing)",
+              "Night")
+  )]
+
+  res[]
+}
+
+
+## 9c. Plot da grelha de evidencia offline (Night/Online/3 categorias), por
+## unidade IDF -- mesmo layout/eixos de plot_heartbeat_slots() (funcao 9),
+## so' com a paleta categorica de 5 estados em vez de 4. Cores conforme
+## R/references do dataviz skill: ordem categorica fixa para os 3 estados
+## de evidencia (azul, laranja, aqua), "No evidence" com a cor mais
+## distinta (vermelho) por ser o caso mais ambiguo (requer revisao manual),
+## "Night" com um azul-marinho escuro deliberadamente FORA do conjunto
+## categorico (significa "fora de ambito", nao uma categoria de evidencia).
+## slot_mins: mesmo valor usado em offline_evidence_slot_grid() -- define a
+## altura do tile no eixo de horas (nao hardcoded, para acompanhar
+## heartbeat_interval_min se algum dia mudar).
+
+plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_breaks = "2 days", title = NULL) {
+
+  if (is.null(title)) {
+    title <- sprintf(
+      "IdentiFlight offline evidence (%s to %s)",
+      format(min(slot_grid_dt$date), "%d %b %Y"),
+      format(max(slot_grid_dt$date), "%d %b %Y")
+    )
+  }
+
+  tile_height <- (slot_mins / 60) * 0.96
+
+  ggplot(slot_grid_dt, aes(x = date, y = time_decimal, fill = slot_status)) +
+    geom_tile(width = 0.95, height = tile_height) +
+    facet_wrap(~idf, ncol = 1) +
+    scale_fill_manual(
+      name = "Slot status",
+      values = c(
+        "Online"                                          = "#2a78d6",
+        "IDF unit communication failure"                  = "#eb6834",
+        "Turbine operational, no detection"                = "#1baf7a",
+        "No evidence (heartbeat and SCADA both missing)"   = "#e34948",
+        "Night"                                            = "#0d366b"
+      ),
+      drop = FALSE
+    ) +
+    scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
+    scale_y_continuous(
+      limits = c(0, 24),
+      breaks = seq(0, 24, 3),
+      labels = function(x) sprintf("%02d:00", x),
+      expand = c(0, 0)
+    ) +
+    labs(
+      x = "Date", y = "Local time",
+      title = title,
+      subtitle = "Daylight offline periods classified by evidence of continued operation; night shown separately"
+    ) +
+    theme_minimal(base_size = 9) +
+    theme(
+      panel.grid = element_blank(),
+      strip.text = element_text(face = "bold"),
+      axis.text.x = element_text(size = 8),
+      legend.position = "bottom"
+    )
+}
+
+
 ## 10. Cruzar disponibilidade por unidade IDF com a localizacao das turbinas
 ##     (matriz manual turbina<->IDF, Primary IDF) ----
 ##

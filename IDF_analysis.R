@@ -729,20 +729,74 @@ if (exists("heartb_dt")) {
   idf_sel <- idf_availability_summary$by_idf[
     order(-offline_mins_total)][seq_len(min(idf_availability_top_n, .N)), idf]
   
+  ## Evidencia offline (curtailment/SCADA durante os intervalos sem
+  ## heartbeat) -- classifica cada intervalo offline entre falha de
+  ## comunicacao da unidade IDF, turbina operacional sem deteção, ou sem
+  ## evidencia (revisao manual), para alimentar o novo calendario
+  ## categorico abaixo -- pedido do Paulo, 2026-09 (metodologia completa em
+  ## R/offline_curtailment_check.R). turbine_idf_coverage_dt vem sempre
+  ## calculada da secção "0. Import data" acima -- resolve_idf_turbines()
+  ## so' a usa se turbine_idf_manual_dt nao existir para este parque.
+  source("R/offline_curtailment_check.R")
+
+  offline_evidence_turbines_res <- resolve_idf_turbines(
+    turbine_idf_manual_dt   = if (exists("turbine_idf_manual_dt")) turbine_idf_manual_dt else NULL,
+    turbine_idf_coverage_dt = turbine_idf_coverage_dt
+  )
+
+  offline_dt <- compute_offline_intervals(
+    heartb_dt, offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min
+  )
+  offline_curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, offline_evidence_turbines_res$idf_turbines_dt)
+  offline_scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, offline_evidence_turbines_res$idf_turbines_dt)
+  offline_evidence_dt      <- classify_offline_evidence(offline_curtl_checked_dt, offline_scada_checked_dt)
+  offline_evidence_summary <- summarise_offline_evidence(offline_evidence_dt)
+
+  offline_evidence_sheets <- list(
+    All_offline_intervals    = offline_evidence_dt,
+    Comm_failure_confirmed   = offline_evidence_dt[classification == "IDF unit communication failure"],
+    Operational_no_detection = offline_evidence_dt[classification == "Turbine operational, no detection"],
+    No_evidence_review       = offline_evidence_dt[classification == "No evidence (heartbeat and SCADA both missing)"],
+    Summary_by_idf           = offline_evidence_summary$by_idf,
+    Summary_overall          = offline_evidence_summary$overall
+  )
+  if (offline_evidence_turbines_res$used_geometric_fallback) {
+    offline_evidence_sheets <- c(
+      list(Methodology_Note = data.table::data.table(Methodology_Note = OFFLINE_EVIDENCE_SCOPE_NOTE)),
+      offline_evidence_sheets
+    )
+  }
+  write_xlsx_local(
+    offline_evidence_sheets,
+    file.path(folder_output, paste0("offline_evidence_detail_", report_start, "to", report_end, ".xlsx"))
+  )
+
   ## Calendario completo (anexo) -- TODAS as unidades IDF, historico
-  ## completo do projeto, PNG maior (35x30cm) -- pedido do Paulo (2026-08)
-  ## para quem quiser investigar qualquer unidade/periodo fora das top N/
-  ## ultimos 6 meses mostrados no corpo do relatorio abaixo.
+  ## completo do projeto -- pedido do Paulo (2026-08) para quem quiser
+  ## investigar qualquer unidade/periodo fora das top N/ultimos 6 meses
+  ## mostrados no corpo do relatorio abaixo. Substitui
+  ## plot_availability_calendar() (gradiente continuo de %) por um "punch
+  ## card" categorico de slot (data x hora do dia) -- as 3 categorias de
+  ## evidencia offline nao cabem num gradiente continuo -- pedido do Paulo,
+  ## 2026-09.
   availability_cal_full_filename <- paste0("idf_availability_calendar_full_", report_start, "to", report_end, ".png")
-  p_availability_cal_full <- plot_availability_calendar(
-    idf_availability_dt, idf_availability_summary$by_idf,
-    idf_sel = unique(idf_availability_dt$idf), top_n = uniqueN(idf_availability_dt$idf)
+  n_report_days <- as.numeric(report_end - report_start) + 1
+  slot_date_breaks <- if (n_report_days <= 31) "2 days" else if (n_report_days <= 92) "1 week" else "1 month"
+
+  offline_evidence_slots_full_dt <- offline_evidence_slot_grid(
+    daylight_cal, proj_timezone, report_start, report_end,
+    offline_evidence_dt, idf_sel = unique(idf_availability_dt$idf), slot_mins = heartbeat_interval_min
+  )
+  p_availability_cal_full <- plot_offline_evidence_slots(
+    offline_evidence_slots_full_dt, slot_mins = heartbeat_interval_min, date_breaks = slot_date_breaks
   )
   ggsave(
     file.path(folder_output, availability_cal_full_filename),
-    plot = p_availability_cal_full, width = 350, height = 300, units = "mm", dpi = 300, bg = "white"
+    plot = p_availability_cal_full,
+    width = max(300, n_report_days * 3), height = max(120, uniqueN(offline_evidence_slots_full_dt$idf) * 40),
+    units = "mm", dpi = 300, bg = "white", limitsize = FALSE
   )
-  
+
   ## Calendario do corpo do relatorio -- mesmas top N unidades de idf_sel
   ## (ranking pelo historico completo, inalterado), mas so' os ultimos 6
   ## meses do periodo -- o historico completo, com muitos meses lado a
@@ -750,15 +804,23 @@ if (exists("heartb_dt")) {
   ## (ver o anexo acima para o periodo completo). Pedido do Paulo, 2026-08.
   availability_cal_report_months <- 6
   availability_cal_report_from   <- seq(report_end, length.out = 2, by = sprintf("-%d months", availability_cal_report_months))[2]
-  p_availability_cal <- plot_availability_calendar(
-    idf_availability_dt[date >= availability_cal_report_from], idf_availability_summary$by_idf,
-    idf_sel = idf_sel, top_n = idf_availability_top_n
+  body_report_days <- as.numeric(report_end - availability_cal_report_from) + 1
+
+  offline_evidence_slots_dt <- offline_evidence_slot_grid(
+    daylight_cal, proj_timezone, availability_cal_report_from, report_end,
+    offline_evidence_dt, idf_sel = idf_sel, slot_mins = heartbeat_interval_min
+  )
+  p_availability_cal <- plot_offline_evidence_slots(
+    offline_evidence_slots_dt, slot_mins = heartbeat_interval_min,
+    date_breaks = if (body_report_days <= 31) "2 days" else "1 week"
   )
   ggsave(
     file.path(folder_output, paste0("idf_availability_calendar_", report_start, "to", report_end, ".png")),
-    plot = p_availability_cal, width = 200, height = 90, units = "mm", dpi = 300, bg = "white"
+    plot = p_availability_cal,
+    width = max(200, body_report_days * 3), height = max(90, length(idf_sel) * 40),
+    units = "mm", dpi = 300, bg = "white", limitsize = FALSE
   )
-  
+
   p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
   ggsave(
     file.path(folder_output, paste0("idf_availability_frequency_", report_start, "to", report_end, ".png")),
@@ -772,10 +834,9 @@ if (exists("heartb_dt")) {
     start_date = report_start, end_date = report_end,
     idf_sel = idf_sel, slot_mins = heartbeat_interval_min
   )
-  
-  n_report_days <- as.numeric(report_end - report_start) + 1
-  slot_date_breaks <- if (n_report_days <= 31) "2 days" else if (n_report_days <= 92) "1 week" else "1 month"
-  
+
+  # n_report_days/slot_date_breaks ja calculados acima, para o calendario
+  # de evidencia offline (mesmo periodo report_start..report_end)
   p_heartbeat_slots <- plot_heartbeat_slots(heartbeat_slots_dt, date_breaks = slot_date_breaks)
   ggsave(
     file.path(folder_output, paste0("idf_heartbeat_slots_", report_start, "to", report_end, ".png")),
@@ -2442,6 +2503,10 @@ report_params <- list(
   availability_cal_report_months = if (exists("availability_cal_report_months")) availability_cal_report_months else NULL,
   availability_cal_full_filename = if (exists("availability_cal_full_filename")) availability_cal_full_filename else NULL,
   idf_availability_top_n          = if (exists("idf_availability_top_n")) idf_availability_top_n else NULL,
+
+  offline_evidence_by_idf   = if (exists("offline_evidence_summary")) offline_evidence_summary$by_idf else NULL,
+  offline_evidence_overall  = if (exists("offline_evidence_summary")) offline_evidence_summary$overall else NULL,
+  offline_evidence_scope_note = if (exists("offline_evidence_turbines_res") && isTRUE(offline_evidence_turbines_res$used_geometric_fallback)) OFFLINE_EVIDENCE_SCOPE_NOTE else NULL,
   
   coverage_turbine_summary = if (exists("coverage_turbine_summary")) coverage_turbine_summary else NULL,
   coverage_idf_summary     = if (exists("coverage_idf_summary")) coverage_idf_summary else NULL,

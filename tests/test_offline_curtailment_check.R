@@ -137,6 +137,35 @@ cat(sprintf(
   sum(combined_test$classification == expected_classification), nrow(combined_test)
 ))
 
+## resolve_idf_turbines() -- helper que decide entre a matriz manual e o
+## fallback geometrico, extraido do if/else que estava duplicado em
+## explore_offline_curtailment_check.R/IDF_analysis.R/IDF_monthly_report.R
+cat("\n===== resolve_idf_turbines() =====\n")
+
+resolve_manual_test <- resolve_idf_turbines(turbine_idf_manual_dt = turbine_idf_manual_test)
+cat(sprintf(
+  "Com matriz manual: used_geometric_fallback = %s (esperado FALSE), %d linha(s) (esperado 3, igual a idf_turbines_from_manual_matrix()), turbine_idf_coverage_dt NULL: %s (esperado TRUE)\n",
+  resolve_manual_test$used_geometric_fallback, nrow(resolve_manual_test$idf_turbines_dt),
+  is.null(resolve_manual_test$turbine_idf_coverage_dt)
+))
+
+resolve_coverage_test <- resolve_idf_turbines(turbine_idf_coverage_dt = coverage_dt_test, min_pct_coverage = 50)
+cat(sprintf(
+  "Sem matriz manual, coverage_dt ja' calculada: used_geometric_fallback = %s (esperado TRUE), %d linha(s) (esperado 3, igual a idf_turbines_from_coverage(min_pct_coverage=50)), reaproveita a mesma coverage_dt (nao recalcula): %s (esperado TRUE)\n",
+  resolve_coverage_test$used_geometric_fallback, nrow(resolve_coverage_test$idf_turbines_dt),
+  identical(resolve_coverage_test$turbine_idf_coverage_dt, coverage_dt_test)
+))
+
+resolve_error_test <- tryCatch({
+  resolve_idf_turbines()
+  "no_error"
+}, error = function(e) "error")
+cat(sprintf(
+  "Sem matriz manual NEM coverage_dt NEM wtg/idf_sf/buffer_m para a calcular: %s (esperado 'error')\n",
+  resolve_error_test
+))
+
+
 cat("\n===== summarise_offline_evidence() =====\n")
 summary_test <- summarise_offline_evidence(combined_test)
 cat("-- by_idf --\n")

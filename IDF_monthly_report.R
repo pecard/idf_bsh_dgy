@@ -499,13 +499,74 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   idf_sel <- idf_availability_summary$by_idf[
     order(-offline_mins_total)][seq_len(min(idf_availability_top_n, .N)), idf]
 
-  p_availability_cal <- plot_availability_calendar(
-    idf_availability_dt, idf_availability_summary$by_idf,
-    idf_sel = idf_sel, top_n = idf_availability_top_n
+  ## Evidencia offline (curtailment/SCADA durante os intervalos sem
+  ## heartbeat) -- classifica cada intervalo offline entre falha de
+  ## comunicacao da unidade IDF, turbina operacional sem deteção, ou sem
+  ## evidencia (revisao manual), para alimentar o novo calendario
+  ## categorico abaixo -- pedido do Paulo, 2026-09 (metodologia completa em
+  ## R/offline_curtailment_check.R). turbine_idf_manual_dt (se existir) ja
+  ## vem da secção "0. Import data" acima; so' calcula cobertura geometrica
+  ## na hora (idf_filename/idf_op_detection_range, monthlyReportSettings_*.R)
+  ## se essa matriz nao existir para este parque.
+  source("R/turbine_idf_coverage.R")
+  source("R/offline_curtailment_check.R")
+
+  if (!is.null(turbine_idf_manual_dt)) {
+    offline_evidence_turbines_res <- resolve_idf_turbines(turbine_idf_manual_dt = turbine_idf_manual_dt)
+  } else {
+    idf_sf_offline_evidence <- sf::read_sf(file.path(folder_input, idf_filename))
+    idf_sf_offline_evidence <- sf::st_transform(idf_sf_offline_evidence, crs_projection_plannar)
+    idf_sf_offline_evidence$imaging_he <- idf_sf_offline_evidence[[if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"]]
+    offline_evidence_turbines_res <- resolve_idf_turbines(
+      wtg = wtg, idf_sf = idf_sf_offline_evidence, buffer_m = idf_op_detection_range,
+      wtg_id_col = "InternalNa", idf_id_col = "imaging_he"
+    )
+  }
+
+  offline_dt <- compute_offline_intervals(
+    heartb_dt, offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min
+  )
+  offline_curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, offline_evidence_turbines_res$idf_turbines_dt)
+  offline_scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, offline_evidence_turbines_res$idf_turbines_dt)
+  offline_evidence_dt      <- classify_offline_evidence(offline_curtl_checked_dt, offline_scada_checked_dt)
+  offline_evidence_summary <- summarise_offline_evidence(offline_evidence_dt)
+
+  offline_evidence_sheets <- list(
+    All_offline_intervals    = offline_evidence_dt,
+    Comm_failure_confirmed   = offline_evidence_dt[classification == "IDF unit communication failure"],
+    Operational_no_detection = offline_evidence_dt[classification == "Turbine operational, no detection"],
+    No_evidence_review       = offline_evidence_dt[classification == "No evidence (heartbeat and SCADA both missing)"],
+    Summary_by_idf           = offline_evidence_summary$by_idf,
+    Summary_overall          = offline_evidence_summary$overall
+  )
+  if (offline_evidence_turbines_res$used_geometric_fallback) {
+    offline_evidence_sheets <- c(
+      list(Methodology_Note = data.table::data.table(Methodology_Note = OFFLINE_EVIDENCE_SCOPE_NOTE)),
+      offline_evidence_sheets
+    )
+  }
+  write_xlsx_local(
+    offline_evidence_sheets,
+    file.path(folder_output, sprintf("offline_evidence_detail_%s.xlsx", report_month))
+  )
+
+  ## Calendario -- substitui plot_availability_calendar() (gradiente
+  ## continuo de %) por um "punch card" categorico de slot (data x hora do
+  ## dia) -- as 3 categorias de evidencia offline nao cabem num gradiente
+  ## continuo -- pedido do Paulo, 2026-09.
+  offline_evidence_slots_dt <- offline_evidence_slot_grid(
+    daylight_cal, proj_timezone, report_start, report_end,
+    offline_evidence_dt, idf_sel = idf_sel, slot_mins = heartbeat_interval_min
+  )
+  n_report_days_monthly <- as.numeric(report_end - report_start) + 1
+  p_availability_cal <- plot_offline_evidence_slots(
+    offline_evidence_slots_dt, slot_mins = heartbeat_interval_min, date_breaks = "2 days"
   )
   ggsave(
     file.path(folder_output, sprintf("idf_availability_calendar_%s.png", report_month)),
-    plot = p_availability_cal, width = 16, height = 16, units = "cm", dpi = 300, bg = "white"
+    plot = p_availability_cal,
+    width = max(180, n_report_days_monthly * 5), height = max(60, length(idf_sel) * 40),
+    units = "mm", dpi = 300, bg = "white", limitsize = FALSE
   )
 
   p_availability_freq <- plot_availability_frequency(idf_availability_summary$by_idf)
@@ -1110,6 +1171,10 @@ monthly_report_params <- list(
   availability_plot_cal = if (exists("p_availability_cal")) p_availability_cal else NULL,
   availability_plot_freq = if (exists("p_availability_freq")) p_availability_freq else NULL,
   availability_plot_spatial = if (exists("p_availability_spatial")) p_availability_spatial else NULL,
+
+  offline_evidence_by_idf   = if (exists("offline_evidence_summary")) offline_evidence_summary$by_idf else NULL,
+  offline_evidence_overall  = if (exists("offline_evidence_summary")) offline_evidence_summary$overall else NULL,
+  offline_evidence_scope_note = if (exists("offline_evidence_turbines_res") && isTRUE(offline_evidence_turbines_res$used_geometric_fallback)) OFFLINE_EVIDENCE_SCOPE_NOTE else NULL,
 
   richness_dt         = if (exists("monthly_richness_summary")) monthly_richness_summary$by_n_species else NULL,
   entropy_plot        = if (exists("p_monthly_entropy")) p_monthly_entropy else NULL,

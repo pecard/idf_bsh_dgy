@@ -46,67 +46,49 @@ source("R/offline_curtailment_check.R")
 ## de turbinas -- ver turbines_by_idf_threshold(), R/turbine_idf_coverage.R)
 ## quando NAO ha matriz manual identificada -- ver
 ## OFFLINE_EVIDENCE_SCOPE_NOTE, R/offline_curtailment_check.R, para a
-## salvaguarda que acompanha esse fallback -----------------------------
+## salvaguarda que acompanha esse fallback. resolve_idf_turbines()
+## (R/offline_curtailment_check.R) centraliza esta decisao -- os scripts de
+## producao (IDF_analysis.R, IDF_monthly_report.R) chamam a mesma funcao. --
 
 min_pct_coverage <- 20
-idf_turbines_dt <- NULL
-used_geometric_fallback <- FALSE
 
-if (exists("turbine_idf_manual_dt") && !is.null(turbine_idf_manual_dt)) {
+# mesma normalizacao de coluna de ID que IDF_analysis.R aplica (secção "0.
+# Import data") antes de compute_turbine_idf_coverage() -- BSH ja' tem
+# "imaging_he" nativamente, DGY so' tem "Name" (idf_source_id_col, ver
+# monthlyReportSettings_DGY.R). Le' o shapefile so' se o fallback
+# geometrico for mesmo precisar dele (nem turbine_idf_manual_dt nem
+# turbine_idf_coverage_dt disponiveis) -- NAO reproduz o filtro de
+# idf_installed_units do IDF_analysis.R (exclui 2 registos "DZH-23"
+# fantasma, sem geometria de turbina distinta) -- inofensivo aqui, esses
+# registos nunca aparecem em heartb_dt$idf, por isso nunca fazem match em
+# offline_dt.
+idf_sf_for_fallback <- NULL
+manual_dt_for_resolve <- if (exists("turbine_idf_manual_dt")) turbine_idf_manual_dt else NULL
+coverage_dt_for_resolve <- if (exists("turbine_idf_coverage_dt")) turbine_idf_coverage_dt else NULL
 
-  cat("\nA usar a matriz manual (Primary IDF) -- fonte preferida (ficheiro operacional identificado para este parque).\n")
-  idf_turbines_dt <- idf_turbines_from_manual_matrix(turbine_idf_manual_dt)
-
-} else {
-
-  message(sprintf(
-    "Nenhuma matriz manual (turbine_idf_manual_dt) identificada para este parque -- a usar cobertura geometrica 2D como fallback (turbinas com >= %d%% de sobreposicao de buffer).",
-    min_pct_coverage
-  ))
-  used_geometric_fallback <- TRUE
-
-  if (exists("turbine_idf_coverage_dt")) {
-    cat("Cobertura geometrica ja calculada nesta sessao.\n")
-
-  } else if (exists("wtg") && exists("idf_op_detection_range") && exists("idf_filename") &&
-             exists("folder_input") && exists("crs_projection_plannar")) {
-
-    cat(sprintf("turbine_idf_coverage_dt nao existia -- a ler '%s' e calcular agora.\n", idf_filename))
-
-    # mesma normalizacao de coluna de ID que IDF_analysis.R aplica (secção
-    # "0. Import data") antes de compute_turbine_idf_coverage() -- BSH ja'
-    # tem "imaging_he" nativamente, DGY so' tem "Name" (idf_source_id_col,
-    # ver monthlyReportSettings_DGY.R). NAO reproduz o filtro de
-    # idf_installed_units do IDF_analysis.R (exclui 2 registos "DZH-23"
-    # fantasma, sem geometria de turbina distinta) -- inofensivo aqui, esses
-    # registos nunca aparecem em heartb_dt$idf, por isso nunca fazem match
-    # em offline_dt.
-    if (!exists("idf")) {
-      idf <- sf::read_sf(file.path(folder_input, idf_filename))
-      idf <- sf::st_transform(idf, crs_projection_plannar)
-      idf_source_id_col <- if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"
-      idf$imaging_he <- idf[[idf_source_id_col]]
-    }
-
-    turbine_idf_coverage_dt <- compute_turbine_idf_coverage(
-      wtg, idf, buffer_m = idf_op_detection_range,
-      wtg_id_col = "InternalNa", idf_id_col = "imaging_he"
-    )
-
-  } else {
+if (is.null(manual_dt_for_resolve) && is.null(coverage_dt_for_resolve)) {
+  if (!exists("wtg") || !exists("idf_op_detection_range") || !exists("idf_filename") ||
+      !exists("folder_input") || !exists("crs_projection_plannar")) {
     stop("Nem turbine_idf_manual_dt nem cobertura geometrica (turbine_idf_coverage_dt, ou wtg+idf_filename+idf_op_detection_range para a calcular) disponiveis -- impossivel saber que turbina(s) verificar por unidade IDF.")
   }
-
-  idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt, min_pct_coverage = min_pct_coverage)
-
-  n_no_turbine <- data.table::uniqueN(turbine_idf_coverage_dt$idf) - data.table::uniqueN(idf_turbines_dt$idf)
-  if (n_no_turbine > 0) {
-    message(sprintf(
-      "Aviso: %d unidade(s) IDF sem nenhuma turbina >= %d%% de cobertura -- ficam sem verificacao possivel (has_curtailment/has_scada_rpm = FALSE sempre).",
-      n_no_turbine, min_pct_coverage
-    ))
-  }
+  cat(sprintf("turbine_idf_coverage_dt nao existia -- a ler '%s' e calcular agora.\n", idf_filename))
+  idf_sf_for_fallback <- if (exists("idf")) idf else sf::read_sf(file.path(folder_input, idf_filename))
+  idf_sf_for_fallback <- sf::st_transform(idf_sf_for_fallback, crs_projection_plannar)
+  idf_source_id_col <- if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"
+  idf_sf_for_fallback$imaging_he <- idf_sf_for_fallback[[idf_source_id_col]]
 }
+
+idf_turbines_res <- resolve_idf_turbines(
+  turbine_idf_manual_dt   = manual_dt_for_resolve,
+  turbine_idf_coverage_dt = coverage_dt_for_resolve,
+  wtg = if (exists("wtg")) wtg else NULL,
+  idf_sf = idf_sf_for_fallback,
+  buffer_m = if (exists("idf_op_detection_range")) idf_op_detection_range else NULL,
+  min_pct_coverage = min_pct_coverage
+)
+
+idf_turbines_dt <- idf_turbines_res$idf_turbines_dt
+used_geometric_fallback <- idf_turbines_res$used_geometric_fallback
 
 cat(sprintf("Turbina(s) por unidade IDF a verificar (%d unidade(s)):\n", data.table::uniqueN(idf_turbines_dt$idf)))
 print(idf_turbines_dt[order(idf)])

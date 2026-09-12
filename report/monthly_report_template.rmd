@@ -37,6 +37,10 @@ params:
   availability_plot_freq: !r NULL
   availability_plot_spatial: !r NULL
 
+  offline_evidence_by_idf: !r NULL
+  offline_evidence_overall: !r NULL
+  offline_evidence_scope_note: !r NULL
+
   richness_dt: !r NULL
   entropy_plot: !r NULL
 
@@ -405,11 +409,50 @@ if (!is.null(params$availability_by_idf)) {
 
 ## Availability Calendar
 
-Daily offline percentage per IDF unit, laid out as a calendar -- restricted to the top `r params$idf_availability_top_n` units by offline time, to stay legible. The table in 2.1 above has every IDF unit.
+Every daylight time slot this month, laid out as a calendar (date on the horizontal axis, time of day on the vertical axis) -- restricted to the top `r params$idf_availability_top_n` units by offline time, to stay legible. The table in 2.1 above has every IDF unit. A slot without a heartbeat is classified by the evidence available for that period, rather than shown only as a percentage: whether a curtailment was triggered by the turbine(s) associated with that IDF unit during the gap, whether SCADA still recorded RPM readings from those turbines, both, or neither. Night-time slots are shown separately, since bird protection is only evaluated during daylight hours.
 
-<!-- Source: plot_availability_calendar(), R/availability_daylight.R -->
+<!-- Source: offline_evidence_slot_grid()/plot_offline_evidence_slots(), R/availability_daylight.R; classification from classify_offline_evidence(), R/offline_curtailment_check.R -->
 ```{r availability-cal, fig.width=6.30, fig.height=6.30}
 if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
+```
+
+## Offline Evidence
+
+Breakdown of every offline interval (a gap between heartbeats of at least `r params$heartbeat_offline_gap_min` minutes) by the evidence available for that period, this month -- see the Availability Calendar above for the same classification laid out over time. "IDF unit communication failure" means a curtailment was triggered during the gap (the unit was actively deciding/acting; a missing heartbeat is then attributable to a communication fault, not to bird protection being off). "Turbine operational, no detection" means no curtailment was triggered, but SCADA still recorded RPM readings from the turbine(s) (mechanically operational, simply with no bird triggering a response). "No evidence" means neither signal is available and requires manual review -- it can reflect a genuine gap in bird-protection coverage, or a data gap that happens to affect heartbeat and SCADA at the same time.
+
+```{r offline-evidence-heading-overall, results='asis'}
+if (!is.null(params$offline_evidence_overall) && nrow(params$offline_evidence_overall) > 0) cat("**Farm-wide**\n")
+```
+
+<!-- Source: summarise_offline_evidence()$overall, R/offline_curtailment_check.R -->
+```{r offline-evidence-table-overall}
+if (!is.null(params$offline_evidence_overall) && nrow(params$offline_evidence_overall) > 0) {
+  report_table(rename_display(
+    params$offline_evidence_overall,
+    c(classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)", pct_of_total = "% of Total")
+  ))
+}
+```
+
+```{r offline-evidence-heading-by-idf, results='asis'}
+if (!is.null(params$offline_evidence_by_idf) && nrow(params$offline_evidence_by_idf) > 0) cat("**By IDF Unit**\n")
+```
+
+<!-- Source: summarise_offline_evidence()$by_idf, R/offline_curtailment_check.R -->
+```{r offline-evidence-table-by-idf}
+if (!is.null(params$offline_evidence_by_idf) && nrow(params$offline_evidence_by_idf) > 0) {
+  report_table(
+    rename_display(
+      params$offline_evidence_by_idf,
+      c(idf = "IDF Unit", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
+    ),
+    max_col_width_cm = 4
+  )
+}
+```
+
+```{r offline-evidence-scope-note, results='asis'}
+if (!is.null(params$offline_evidence_scope_note)) cat(sprintf("\n*%s*\n", params$offline_evidence_scope_note))
 ```
 
 ## Availability Frequency

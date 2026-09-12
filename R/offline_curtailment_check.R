@@ -83,6 +83,77 @@ idf_turbines_from_coverage <- function(coverage_dt, min_pct_coverage = 20) {
   turbines_by_idf_threshold(coverage_dt, min_pct_coverage = min_pct_coverage)[, .(idf, turbine)]
 }
 
+## 1c. resolve_idf_turbines() -- decide entre 1a/1b (matriz manual SEMPRE
+## preferida quando existir; fallback geometrico so' quando nao existir),
+## calculando a cobertura geometrica na hora se ainda nao existir na
+## sessao. Extraido do if/else que estava duplicado em
+## explore_offline_curtailment_check.R, IDF_analysis.R e
+## IDF_monthly_report.R -- os 3 devem chamar esta funcao em vez de
+## repetirem a logica.
+##
+## turbine_idf_manual_dt: NULL/inexistente se nao houver ficheiro de matriz
+## manual identificado para o parque -- nesse caso ativa o fallback.
+## turbine_idf_coverage_dt: cobertura geometrica ja calculada nesta sessao
+## (compute_turbine_idf_coverage(), R/turbine_idf_coverage.R), se existir --
+## poupa recalcular. So' usada/exigida quando o fallback for necessario.
+## wtg/idf_sf/buffer_m/wtg_id_col/idf_id_col: so' usados para calcular
+## turbine_idf_coverage_dt quando esta ainda nao existir E o fallback for
+## necessario -- idf_sf ja' deve estar projetado no CRS planar e com a
+## coluna idf_id_col preparada (mesma normalizacao de IDF_analysis.R,
+## secção "0. Import data").
+##
+## Devolve list(idf_turbines_dt, used_geometric_fallback,
+## turbine_idf_coverage_dt) -- este ultimo NULL quando a matriz manual foi
+## usada (nao ha' cobertura geometrica a devolver), ou a tabela calculada/
+## reutilizada quando o fallback foi ativado (para reuso a jusante, ex:
+## escrever num xlsx de validacao).
+
+resolve_idf_turbines <- function(turbine_idf_manual_dt = NULL,
+                                 turbine_idf_coverage_dt = NULL,
+                                 wtg = NULL, idf_sf = NULL,
+                                 wtg_id_col = "InternalNa", idf_id_col = "imaging_he",
+                                 buffer_m = NULL,
+                                 min_pct_coverage = 20) {
+
+  if (!is.null(turbine_idf_manual_dt)) {
+    return(list(
+      idf_turbines_dt = idf_turbines_from_manual_matrix(turbine_idf_manual_dt),
+      used_geometric_fallback = FALSE,
+      turbine_idf_coverage_dt = NULL
+    ))
+  }
+
+  message(sprintf(
+    "Nenhuma matriz manual (turbine_idf_manual_dt) identificada para este parque -- a usar cobertura geometrica 2D como fallback (turbinas com >= %d%% de sobreposicao de buffer).",
+    min_pct_coverage
+  ))
+
+  if (is.null(turbine_idf_coverage_dt)) {
+    if (is.null(wtg) || is.null(idf_sf) || is.null(buffer_m)) {
+      stop("resolve_idf_turbines(): nem turbine_idf_manual_dt nem turbine_idf_coverage_dt disponiveis, e faltam wtg/idf_sf/buffer_m para a calcular.")
+    }
+    turbine_idf_coverage_dt <- compute_turbine_idf_coverage(
+      wtg, idf_sf, buffer_m = buffer_m, wtg_id_col = wtg_id_col, idf_id_col = idf_id_col
+    )
+  }
+
+  idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt, min_pct_coverage = min_pct_coverage)
+
+  n_no_turbine <- data.table::uniqueN(turbine_idf_coverage_dt$idf) - data.table::uniqueN(idf_turbines_dt$idf)
+  if (n_no_turbine > 0) {
+    message(sprintf(
+      "Aviso: %d unidade(s) IDF sem nenhuma turbina >= %d%% de cobertura -- ficam sem verificacao possivel (has_curtailment/has_scada_rpm = FALSE sempre).",
+      n_no_turbine, min_pct_coverage
+    ))
+  }
+
+  list(
+    idf_turbines_dt = idf_turbines_dt,
+    used_geometric_fallback = TRUE,
+    turbine_idf_coverage_dt = turbine_idf_coverage_dt
+  )
+}
+
 
 ## 2. Curtailments disparados DENTRO do intervalo offline, pelas turbinas
 ## de idf_turbines_dt -------------------------------------------------------
