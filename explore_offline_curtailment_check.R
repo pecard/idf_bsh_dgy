@@ -1,38 +1,77 @@
 ##
-## Script de consola para verificar se os intervalos "offline" (heartbeats)
-## de uma unidade IDF tinham, apesar de tudo, curtailments a ser disparados
-## pelas turbinas cobertas por essa unidade -- pedido do Paulo, 2026-09.
+## Script de consola para cruzar intervalos "offline" (heartbeats) de uma
+## unidade IDF com evidencia de que o sistema continuava operacional --
+## pedido do Paulo, 2026-09.
 ##
 ## Um intervalo offline (sem heartbeat) e' assumido, por omissao, como a
 ## protecao das aves desligada nesse periodo. Mas pode ser so' uma falha de
-## comunicacao do PROPRIO heartbeat, com o sistema de deteção/curtailment a
-## continuar operacional. Se encontrarmos curtailments disparados DENTRO de
-## um intervalo offline, isso e' evidencia de que o sistema estava mesmo
-## operacional -- esse intervalo deveria ser reclassificado como "Falha de
-## comunicação da unidade IDF", nao indisponibilidade genuina.
+## comunicacao do PROPRIO heartbeat. 2 fontes de evidencia cruzadas:
+##   - curtailment disparado pela turbina DENTRO do intervalo (evidencia
+##     forte -- a unidade IDF estava mesmo a decidir/atuar)
+##   - leitura SCADA de RPM da turbina DENTRO do intervalo (evidencia de
+##     que a turbina/SCADA estava a reportar normalmente)
+## Um caso real (DGY, 2026-07, revisto manualmente pelo Paulo) mostrou
+## heartbeat E SCADA ausentes num sub-periodo, mas com curtailments a
+## disparar na mesma -- por isso os 2 sinais sao mantidos distintos em vez
+## de fundidos num so' boolean (ver classify_offline_evidence(),
+## R/offline_curtailment_check.R, para os 3 rotulos possiveis e a ordem de
+## prioridade entre os 2 sinais).
 ##
-## NAO faz parte do pipeline de producao (IDF_analysis.R/IDF_monthly_report.R
-## nunca o chamam, nao escreve nada em outputs/ exceto o xlsx de revisao
-## abaixo) -- e' so' para explorar/confirmar a hipotese antes de decidir se
-## vale a pena formalizar isto numa secção do relatorio.
+## NAO faz parte do pipeline de producao -- e' so' para explorar/confirmar
+## a hipotese antes de decidir se vale a pena formalizar isto numa secção
+## do relatorio.
 ##
 ## Pre-requisitos (correr isto DEPOIS de uma corrida normal de
 ## IDF_analysis.R OU IDF_monthly_report.R, na mesma sessao) -- objetos ja
-## tem de existir: heartb_dt, curtl_dt, turbine_idf_manual_dt,
-## heartbeat_offline_gap_min, heartbeat_interval_min (todos ja calculados/
-## lidos pelo script principal -- ver esses ficheiros se algum faltar).
+## tem de existir: heartb_dt, curtl_dt, scada_dt, heartbeat_offline_gap_min,
+## heartbeat_interval_min. Turbina(s) por unidade IDF -- 2 fontes possiveis
+## (ver secção 1 abaixo), a preferida (cobertura geometrica 2D) so' fica
+## disponivel se turbine_idf_coverage_dt ja tiver sido calculada (so'
+## acontece em IDF_analysis.R, secção 0 -- NAO em IDF_monthly_report.R, que
+## nao le o shapefile das unidades IDF nem idf_op_detection_range). Se so'
+## correste o relatorio mensal nesta sessao, o script usa a matriz manual
+## como alternativa, com um aviso.
 ##
 ## Correr: source("explore_offline_curtailment_check.R")
 ##
 
 source("R/availability_daylight.R") # compute_offline_intervals()
+source("R/turbine_idf_coverage.R")  # top_turbines_by_idf() (cobertura geometrica)
 source("R/offline_curtailment_check.R")
 
-if (is.null(turbine_idf_manual_dt)) {
-  stop("turbine_idf_manual_dt e' NULL -- confirma se a matriz manual (turbine_idf_matrix_filename) existe em inputs/ nesta corrida.")
+## 1. Turbina(s) a verificar por unidade IDF -- preferencia: cobertura
+## geometrica 2D (top 2 turbinas por unidade), pedido do Paulo, 2026-09 --
+## so' cai para a matriz manual se a cobertura geometrica nao estiver
+## disponivel nesta sessao ---------------------------------------------
+
+n_top_turbines <- 2L
+
+if (exists("turbine_idf_coverage_dt")) {
+  cat(sprintf("\nA usar cobertura geometrica 2D ja calculada nesta sessao (top %d turbina(s) por unidade IDF).\n", n_top_turbines))
+  idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt, n = n_top_turbines)
+
+} else if (exists("wtg") && exists("idf") && exists("idf_op_detection_range")) {
+  cat(sprintf("\nturbine_idf_coverage_dt nao existia -- a calcular agora (wtg/idf/idf_op_detection_range disponiveis) -- top %d turbina(s) por unidade IDF.\n", n_top_turbines))
+  turbine_idf_coverage_dt <- compute_turbine_idf_coverage(wtg, idf, buffer_m = idf_op_detection_range)
+  idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt, n = n_top_turbines)
+
+} else if (exists("turbine_idf_manual_dt") && !is.null(turbine_idf_manual_dt)) {
+  message(
+    "turbine_idf_coverage_dt indisponivel nesta sessao (normal se so' correste o relatorio mensal -- ",
+    "IDF_monthly_report.R nao le o shapefile das unidades IDF). A usar a matriz manual (Primary IDF) como alternativa -- ",
+    "para a cobertura geometrica (2 turbinas por unidade, o metodo preferido), corre IDF_analysis.R nesta mesma sessao primeiro."
+  )
+  idf_turbines_dt <- idf_turbines_from_manual_matrix(turbine_idf_manual_dt)
+
+} else {
+  stop("Nem turbine_idf_coverage_dt/wtg+idf+idf_op_detection_range nem turbine_idf_manual_dt disponiveis -- impossivel saber que turbina(s) verificar por unidade IDF.")
 }
 
-## 1. Intervalos offline por unidade IDF, mesmos parametros do relatorio ----
+cat(sprintf("Turbina(s) por unidade IDF a verificar (%d unidade(s)):\n", data.table::uniqueN(idf_turbines_dt$idf)))
+print(idf_turbines_dt[order(idf)])
+
+
+## 2. Intervalos offline por unidade IDF, mesmos parametros do relatorio ----
 
 offline_dt <- compute_offline_intervals(
   heartb_dt,
@@ -44,31 +83,39 @@ cat(sprintf("\n===== %d intervalo(s) offline encontrado(s), %d unidade(s) IDF di
   nrow(offline_dt), data.table::uniqueN(offline_dt$idf)
 ))
 
-## 2. Cruza com curtailments -- ha algum disparado DENTRO do intervalo? ----
 
-checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, turbine_idf_manual_dt)
+## 3. Cruza com curtailments E leituras SCADA de RPM, so' nas turbinas de
+## idf_turbines_dt -----------------------------------------------------
 
-cat("\n===== Resumo: indisponibilidade genuina vs falha de comunicação =====\n")
-summary_offline <- summarise_offline_curtailment_overlap(checked_dt)
+curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, idf_turbines_dt)
+scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, idf_turbines_dt)
+combined_dt <- classify_offline_evidence(curtl_checked_dt, scada_checked_dt)
+
+cat("\n===== Resumo: classificação por evidência =====\n")
+summary_offline <- summarise_offline_evidence(combined_dt)
 cat("-- Farm-wide --\n")
 print(summary_offline$overall)
 cat("\n-- Por unidade IDF --\n")
 print(summary_offline$by_idf)
 
-## 3. Detalhe dos intervalos reclassificados -- para revisao manual do Paulo
-## (confirmar caso a caso antes de assumir que e' mesmo so' falha de
-## comunicação, nao um problema real intermitente) --------------------------
 
-reclass_dt <- checked_dt[has_curtailment == TRUE]
-cat(sprintf(
-  "\n%d de %d intervalo(s) offline tinham pelo menos 1 curtailment dentro do periodo -- candidatos a 'Falha de comunicação da unidade IDF':\n",
-  nrow(reclass_dt), nrow(checked_dt)
-))
-print(reclass_dt[order(-n_curtailments_during_offline)])
+## 4. Detalhe -- para revisao manual do Paulo (confirmar caso a caso,
+## sobretudo "Sem evidência", antes de decidir a classificacao final) ------
+
+cat("\n===== Detalhe (ordenado por classificação, depois por unidade/data) =====\n")
+detail_dt <- combined_dt[order(classification, idf, off_start)]
+print(detail_dt[, .(idf, off_start, off_end, n_curtailments_during_offline, has_scada_rpm, classification)])
 
 if (exists("write_xlsx_local") && exists("folder_output")) {
   write_xlsx_local(
-    list(All_offline_intervals = checked_dt, Reclassified_comm_failure = reclass_dt),
+    list(
+      All_offline_intervals    = combined_dt,
+      Comm_failure_confirmed   = combined_dt[classification == "Falha de comunicação da unidade IDF"],
+      Operational_no_detection = combined_dt[classification == "Turbina operacional sem deteção"],
+      No_evidence_review       = combined_dt[classification == "Sem evidência (heartbeat e SCADA em falta)"],
+      Summary_by_idf           = summary_offline$by_idf,
+      Summary_overall          = summary_offline$overall
+    ),
     file.path(folder_output, "offline_curtailment_overlap_check.xlsx")
   )
   cat(sprintf("\nGravado: '%s'\n", file.path(folder_output, "offline_curtailment_overlap_check.xlsx")))

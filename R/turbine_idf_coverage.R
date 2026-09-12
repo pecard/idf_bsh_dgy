@@ -101,6 +101,31 @@ pivot_turbine_idf_coverage_wide <- function(coverage_dt) {
 }
 
 
+## 2b. Top-N turbinas por unidade IDF, por cobertura geometrica (%) --------
+##
+## Inverso de pivot_turbine_idf_coverage_wide() (que rankeia unidades IDF
+## por turbina) -- aqui rankeia-se TURBINAS por unidade IDF, para saber
+## quais turbinas uma dada unidade IDF melhor cobre geometricamente. Pedido
+## do Paulo, 2026-09, para R/offline_curtailment_check.R: ao decidir que
+## turbina(s) verificar quando uma unidade IDF fica offline, usar as N
+## turbinas com maior cobertura 2D (geometrica) em vez so' da atribuicao
+## manual "Turbine ID -> Primary IDF" -- essa e' 1 unidade por turbina, nao
+## diz quantas/quais turbinas uma dada unidade cobre.
+
+top_turbines_by_idf <- function(coverage_dt, n = 2) {
+
+  if (nrow(coverage_dt) == 0L) {
+    return(data.table::data.table(idf = character(), turbine = character(), pct_coverage = numeric(), rank = integer()))
+  }
+
+  dt <- data.table::copy(coverage_dt)
+  data.table::setorder(dt, idf, -pct_coverage)
+  dt[, rank := seq_len(.N), by = idf]
+
+  dt[rank <= n, .(idf, turbine, pct_coverage, rank)]
+}
+
+
 ## 3. Comparacao com a matriz manual (ACWA_IDF_Coverage_Matrix.xlsx) ----
 ##
 ## manual_dt: lido diretamente do xlsx (colunas Site, `Turbine ID`, `Primary
