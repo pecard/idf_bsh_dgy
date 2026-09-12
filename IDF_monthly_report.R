@@ -554,11 +554,22 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   ## continuo de %) por um "punch card" categorico de slot (data x hora do
   ## dia) -- as 3 categorias de evidencia offline nao cabem num gradiente
   ## continuo -- pedido do Paulo, 2026-09.
+  ##
+  ## NAO usar report_start aqui -- e' as.Date(ini) SEM tz= (secção "0.
+  ## Import data" acima), que para um fuso positivo (Asia/Samarkand, UTC+5)
+  ## fica 1 dia ATRAS da meia-noite local (mesmo problema ja documentado em
+  ## build_daylight_calendar(), R/availability_daylight.R). daylight_cal foi
+  ## construido corretamente a partir de ini/end (tz-aware), por isso um
+  ## start_date 1 dia cedo demais nao tem correspondencia nele -- sunrise/
+  ## sunset ficam NA nesse dia extra, e o slot_status tambem (dropado pelo
+  ## geom_tile() com o aviso "Removed N rows containing missing values").
+  ## as.Date(ini, tz=proj_timezone) reproduz a mesma conversao tz-aware.
+  offline_evidence_cal_start <- as.Date(ini, tz = proj_timezone)
   offline_evidence_slots_dt <- offline_evidence_slot_grid(
-    daylight_cal, proj_timezone, report_start, report_end,
+    daylight_cal, proj_timezone, offline_evidence_cal_start, report_end,
     offline_evidence_dt, idf_sel = idf_sel, slot_mins = heartbeat_interval_min
   )
-  n_report_days_monthly <- as.numeric(report_end - report_start) + 1
+  n_report_days_monthly <- as.numeric(report_end - offline_evidence_cal_start) + 1
   p_availability_cal <- plot_offline_evidence_slots(
     offline_evidence_slots_dt, slot_mins = heartbeat_interval_min, date_breaks = "2 days"
   )
@@ -1328,7 +1339,15 @@ if (dir.exists(folder_output) && length(list.files(folder_output, recursive = TR
   old_wd <- getwd()
   tryCatch({
     setwd(dirname(folder_output))
-    zip::zip(zipfile = zip_path, files = basename(folder_output))
+    # exclui ficheiros de lock temporarios do Office ("~$nome.xlsx") --
+    # criados pelo Windows/Excel enquanto um xlsx da pasta do mes fica
+    # aberto; zip::zip() falha a abrir esse ficheiro bloqueado pelo SO em
+    # vez de o ignorar (visto no DGY, 2026-09, com um xlsx aberto no
+    # Excel). Listar os ficheiros explicitamente (em vez de passar so' o
+    # nome da pasta) permite filtrar antes de chamar zip::zip().
+    zip_files <- list.files(basename(folder_output), recursive = TRUE, all.files = TRUE)
+    zip_files <- zip_files[!grepl("^~\\$", basename(zip_files))]
+    zip::zip(zipfile = zip_path, files = file.path(basename(folder_output), zip_files))
     message(sprintf("Zip do relatorio mensal gravado: '%s'.", zip_path))
   }, finally = setwd(old_wd))
 

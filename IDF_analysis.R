@@ -780,11 +780,20 @@ if (exists("heartb_dt")) {
   ## evidencia offline nao cabem num gradiente continuo -- pedido do Paulo,
   ## 2026-09.
   availability_cal_full_filename <- paste0("idf_availability_calendar_full_", report_start, "to", report_end, ".png")
-  n_report_days <- as.numeric(report_end - report_start) + 1
+  # NAO usar report_start aqui -- e' as.Date(ini) SEM tz= (secção "0.
+  # Import data" acima), que para um fuso positivo (Asia/Samarkand, UTC+5)
+  # fica 1 dia ATRAS da meia-noite local (mesmo problema ja documentado em
+  # build_daylight_calendar(), R/availability_daylight.R). daylight_cal foi
+  # construido corretamente a partir de ini/end (tz-aware); um start_date 1
+  # dia cedo demais fica sem sunrise/sunset/slot_status (NA), dropado pelo
+  # geom_tile() com o aviso "Removed N rows containing missing values" --
+  # confirmado ao correr o relatorio mensal do DGY, 2026-09.
+  offline_evidence_cal_start <- as.Date(ini, tz = proj_timezone)
+  n_report_days <- as.numeric(report_end - offline_evidence_cal_start) + 1
   slot_date_breaks <- if (n_report_days <= 31) "2 days" else if (n_report_days <= 92) "1 week" else "1 month"
 
   offline_evidence_slots_full_dt <- offline_evidence_slot_grid(
-    daylight_cal, proj_timezone, report_start, report_end,
+    daylight_cal, proj_timezone, offline_evidence_cal_start, report_end,
     offline_evidence_dt, idf_sel = unique(idf_availability_dt$idf), slot_mins = heartbeat_interval_min
   )
   p_availability_cal_full <- plot_offline_evidence_slots(
