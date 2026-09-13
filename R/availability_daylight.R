@@ -537,7 +537,12 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
       ),
       drop = FALSE
     ) +
-    guides(fill = guide_legend(nrow = 3, byrow = TRUE)) +
+    # override.aes forca alpha/colour fixos na legenda -- sem isto, uma
+    # categoria com 0 slots no periodo (comum p.ex. "IDF unit communication
+    # failure" nalguns meses/parques) pode herdar alpha NA da chave de
+    # legenda "nao usada" e ficar invisivel no PNG, mesmo com drop=FALSE
+    # a garantir que a categoria continua listada.
+    guides(fill = guide_legend(nrow = 3, byrow = TRUE, override.aes = list(alpha = 1, colour = NA))) +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
     scale_y_continuous(
       limits = c(0, 24),
