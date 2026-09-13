@@ -775,7 +775,8 @@ if (exists("heartb_dt")) {
     Operational_no_detection = offline_evidence_dt[classification == "Turbine operational, no detection"],
     No_evidence_review       = offline_evidence_dt[classification == "No evidence (heartbeat and SCADA both missing)"],
     Summary_by_idf           = offline_evidence_summary$by_idf,
-    Summary_overall          = offline_evidence_summary$overall
+    Summary_overall          = offline_evidence_summary$overall,
+    Net_availability_overall = net_availability_overall
   )
   if (offline_evidence_turbines_res$used_geometric_fallback) {
     offline_evidence_sheets <- c(
@@ -2527,6 +2528,9 @@ xlsx_terrain_classification_name <- "terrain_classification.xlsx"
 xlsx_terrain_bearing_name        <- "terrain_bearing_by_species.xlsx"
 xlsx_terrain_weekly_name         <- "terrain_weekly_space_use.xlsx"
 
+# Janela report_start/report_end (nao SCADA) -- secção "Offline Evidence"
+xlsx_offline_evidence_name <- if (exists("report_start")) paste0("offline_evidence_detail_", report_start, "to", report_end, ".xlsx") else NULL
+
 report_params <- list(
   title         = paste("IDF Analysis Report -", project_ref),
   project_ref   = project_ref,
@@ -2615,6 +2619,7 @@ report_params <- list(
   ## report_template.rmd). Fixos exceto os 3 que incluem a janela de SCADA
   ## no nome (calculados acima, antes de report_params).
   xlsx_availability        = "idf_availability_summary.xlsx",
+  xlsx_offline_evidence    = xlsx_offline_evidence_name,
   xlsx_coverage_turbine    = "data_coverage_turbine_curtailments_scada.xlsx",
   xlsx_coverage_idf        = "data_coverage_idf_heartbeats.xlsx",
   xlsx_latency             = xlsx_latency_name,

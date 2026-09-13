@@ -542,7 +542,7 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
     scale_y_continuous(
       limits = c(0, 24),
       breaks = seq(0, 24, 3),
-      labels = function(x) sprintf("%02d:00", x),
+      labels = function(x) as.character(x),
       expand = c(0, 0)
     ) +
     labs(
@@ -555,6 +555,7 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
       panel.grid = element_blank(),
       strip.text = element_text(face = "bold"),
       axis.text.x = element_text(size = 6.5, angle = 90, hjust = 1, vjust = 0.5),
+      axis.text.y = element_text(size = 6),
       legend.position = "bottom"
     )
 }
@@ -580,7 +581,7 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
 ## via turbine_idf_matrix_filename) -- colunas "Turbine ID"/"Primary IDF"
 
 join_availability_to_turbine <- function(by_idf_summary, wtg_sf, turbine_idf_manual_dt,
-                                         wtg_id_col = "InternalNa") {
+                                         wtg_id_col = "InternalNa", value_col = "monitoring_period_pct") {
 
   manual_dt <- data.table::as.data.table(turbine_idf_manual_dt)
   data.table::setnames(
@@ -601,7 +602,11 @@ join_availability_to_turbine <- function(by_idf_summary, wtg_sf, turbine_idf_man
   out <- merge(turbine_xy, manual_dt, by = "turbine", all.x = TRUE)
   out <- merge(out, by_idf_summary, by.x = "primary_idf", by.y = "idf", all.x = TRUE)
 
-  n_no_data <- out[is.na(monitoring_period_pct), .N]
+  # value_col: coluna a reportar como "disponibilidade" desta chamada --
+  # monitoring_period_pct (raw, omissao) OU net_offline_pct
+  # (summarise_net_availability_by_idf(), R/offline_curtailment_check.R,
+  # para a versao "confirmada" do plot espacial -- pedido do Paulo, 2026-09)
+  n_no_data <- out[is.na(get(value_col)), .N]
   if (n_no_data > 0) {
     message(sprintf(
       "Aviso: %d turbina(s) sem disponibilidade calculavel (sem unidade IDF primaria na matriz manual, ou sem heartbeats dessa unidade neste periodo) -- ficam \"no data\" no plot espacial.",
@@ -618,7 +623,9 @@ join_availability_to_turbine <- function(by_idf_summary, wtg_sf, turbine_idf_man
 ##     sem dados (NA) ficam com um marcador "x" cinzento, categoria
 ##     separada na legenda, nao descartadas do plot ----
 
-plot_availability_spatial <- function(turbine_availability_dt, value_col = "monitoring_period_pct") {
+plot_availability_spatial <- function(turbine_availability_dt, value_col = "monitoring_period_pct",
+                                      title = "Spatial distribution of IDF unavailability by turbine",
+                                      subtitle = "Point size = % of daylight monitoring period offline (primary IDF unit); x = no data") {
 
   dt <- data.table::copy(turbine_availability_dt)
   dt[, value := get(value_col)]
@@ -639,8 +646,8 @@ plot_availability_spatial <- function(turbine_availability_dt, value_col = "moni
     coord_equal() +
     labs(
       x = NULL, y = NULL,
-      title = "Spatial distribution of IDF unavailability by turbine",
-      subtitle = "Point size = % of daylight monitoring period offline (primary IDF unit); x = no data"
+      title = title,
+      subtitle = subtitle
     ) +
     theme_minimal(base_size = 9) +
     theme(
