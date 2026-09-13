@@ -21,7 +21,7 @@
 
 monthly_settings_file <- "monthlyReportSettings_DGY.R"
 
-report_month <- "2026-08"
+report_month <- "2026-07"
 
 ## Deixar FALSE na maioria das corridas -- so' mudar para TRUE na 1a corrida
 ## a seguir a descarregar dados novos, para forcar a releitura dos
@@ -41,9 +41,9 @@ force_reread_cache_monthly <- F
 ## a flag do dataset que precisas de reler para TRUE.
 
 force_reread_curtailments <- FALSE
-force_reread_tracks <-       FALSE
-force_reread_scada <-        FALSE
-force_reread_heartbeats <-   FALSE
+force_reread_tracks       <- FALSE
+force_reread_scada        <- FALSE
+force_reread_heartbeats   <- FALSE
 
 ## TRUE por omissao (gera o .docx final). Mudar para FALSE quando estas so'
 ## a testar/depurar uma secção e queres inspecionar as tabelas/objetos
