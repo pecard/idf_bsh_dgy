@@ -29,6 +29,7 @@ params:
   data_summary: !r NULL
   coverage_summary: !r NULL
   coverage_plot: !r NULL
+  scada_coverage_category_summary: !r NULL
   coverage_considered_turbines_text: !r NULL
   coverage_incomplete_turbines_text: !r NULL
 
@@ -355,7 +356,7 @@ if (!is.null(params$techsum_unnecessary_n)) {
 
 ## Row Counts and Date Range
 
-Row counts and date range of each dataset used in this report, restricted to the month above (SCADA row count restricted to the SCADA-availability window intersected with the month).
+Row counts and date range of each dataset used in this report, restricted to the month above (SCADA row count restricted to the SCADA-availability window intersected with the month). The SCADA row is a single farm-wide summary -- SCADA is collected and downloaded turbine by turbine, so individual turbines can have different actual coverage within that range; see the SCADA Coverage by Turbine table in 1.2 below for the per-turbine breakdown.
 
 <!-- Source: monthly_data_summary_dt <- summarise_dataset_extent(), R/dataset_summary.R (called from IDF_monthly_report.R, section "0. Data extent / quantities table") -->
 ```{r data-summary-table}
@@ -391,6 +392,20 @@ if (!is.null(params$coverage_summary)) {
 
 ```{r coverage-plot, fig.width=7, fig.height=4}
 if (!is.null(params$coverage_plot)) print(params$coverage_plot)
+```
+
+### SCADA Coverage by Turbine
+
+The plot above shows the SCADA row as a single farm-wide "any turbine reporting" signal, which can look continuous even when individual turbines stop reporting at different points -- SCADA is collected and downloaded turbine by turbine, not as one park-wide feed. The table below categorizes every turbine ever equipped with SCADA by its actual coverage this month: "Full coverage" (data every day), "Ends early" (data stops before the end of the month), "Partial (gaps within month)" (data through the end of the month, but with missing days in between), or "No SCADA this month". The full per-turbine date range and % missing is in the accompanying workbook (data_coverage\_*.xlsx, sheet SCADA_by_turbine), not reproduced here.
+
+<!-- Source: scada_coverage_by_turbine(), R/data_coverage.R (called from IDF_monthly_report.R, section "0b. Temporal coverage") -->
+```{r scada-coverage-category-table}
+if (!is.null(params$scada_coverage_category_summary)) {
+  report_table(rename_display(
+    params$scada_coverage_category_summary,
+    c(category = "Coverage Category", n_turbines = "N Turbines")
+  ))
+}
 ```
 
 # System Availability (Heartbeats)

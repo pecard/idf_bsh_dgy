@@ -389,8 +389,34 @@ scada_dt_month <- scada_dt[datetime >= scada_ini_monthly & datetime <= scada_end
 
 monthly_coverage_summary_dt <- data_coverage_summary(track_dt, curtl_dt, scada_dt_month, heartb_dt)
 
+## Cobertura de SCADA POR TURBINA, com categoria (scada_coverage_by_turbine(),
+## R/data_coverage.R) -- a linha "SCADA" de monthly_coverage_summary_dt
+## acima (e do plot mais abaixo) e' uma UNICA faixa agregada para o parque
+## inteiro; como o SCADA e' descarregado turbina a turbina, essa faixa
+## agregada nao mostra se turbinas individuais tem periodos de recolha
+## diferentes dentro do mes -- pedido do Paulo, 2026-09, apos o relatorio
+## do BSH mostrar essa faixa a parecer parar a meio do mes (na realidade
+## um scada_end desatualizado, ja corrigido em userSettings_BSH.R/
+## monthlyReportSettings_BSH.R -- ver o comentario la'). all_turbines =
+## resolve_turbinas_scada("all", scada_dt) -- "alguma vez equipadas com
+## SCADA" em TODO o historico do projeto (scada_dt aqui ainda e' o
+## scada_dt_unfilt completo, nao filtrado -- ver secção "0. Filter data"),
+## nao so' as turbinas com leitura NESTE mes, para uma turbina que ficou
+## sem NENHUM dado este mes tambem aparecer, categoria "No SCADA this month".
+scada_all_turbines <- resolve_turbinas_scada("all", scada_dt)
+scada_presence_by_turbine_dt <- daily_presence_by_turbine(scada_dt_month, "datetime", "turbinelabel", "SCADA")
+scada_coverage_by_turbine_dt <- scada_coverage_by_turbine(
+  scada_presence_by_turbine_dt, scada_all_turbines,
+  period_start = as.Date(scada_ini_monthly), period_end = as.Date(scada_end_monthly)
+)
+scada_coverage_category_summary_dt <- scada_coverage_by_turbine_dt[, .(n_turbines = .N), by = category]
+setorder(scada_coverage_category_summary_dt, category)
+
 write_xlsx_local(
-  list(Coverage_summary = monthly_coverage_summary_dt),
+  list(
+    Coverage_summary   = monthly_coverage_summary_dt,
+    SCADA_by_turbine   = scada_coverage_by_turbine_dt
+  ),
   file.path(folder_output, sprintf("data_coverage_%s.xlsx", report_month))
 )
 
@@ -526,8 +552,15 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   offline_dt <- compute_offline_intervals(
     heartb_dt, offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min
   )
-  offline_curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, offline_evidence_turbines_res$idf_turbines_dt)
-  offline_scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, offline_evidence_turbines_res$idf_turbines_dt)
+  # so' a porcao DIURNA de cada gap -- clip_offline_intervals_to_daylight(),
+  # R/availability_daylight.R -- para o total classificado (curtailment/
+  # SCADA) nunca poder exceder offline_mins_total (sempre so' diurno,
+  # summarise_availability()); sem isto, um gap que atravessa a noite era
+  # avaliado por inteiro, dando net_offline_pct negativo em
+  # summarise_net_availability() (caso real, BSH 2026-09).
+  offline_dt_daylight <- clip_offline_intervals_to_daylight(offline_dt, daylight_cal, proj_timezone)
+  offline_curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, offline_evidence_turbines_res$idf_turbines_dt)
+  offline_scada_checked_dt <- check_offline_scada_presence(offline_dt_daylight, scada_dt, offline_evidence_turbines_res$idf_turbines_dt)
   offline_evidence_dt      <- classify_offline_evidence(offline_curtl_checked_dt, offline_scada_checked_dt)
   offline_evidence_summary <- summarise_offline_evidence(offline_evidence_dt)
 
@@ -1228,6 +1261,7 @@ monthly_report_params <- list(
   data_summary = if (exists("monthly_data_summary_dt")) monthly_data_summary_dt else NULL,
   coverage_summary = if (exists("monthly_coverage_summary_dt")) monthly_coverage_summary_dt else NULL,
   coverage_plot    = if (exists("p_monthly_coverage")) p_monthly_coverage else NULL,
+  scada_coverage_category_summary = if (exists("scada_coverage_category_summary_dt")) scada_coverage_category_summary_dt else NULL,
   coverage_considered_turbines_text = if (exists("coverage_considered_turbines_text")) coverage_considered_turbines_text else NULL,
   coverage_incomplete_turbines_text = if (exists("coverage_incomplete_turbines_text")) coverage_incomplete_turbines_text else NULL,
 

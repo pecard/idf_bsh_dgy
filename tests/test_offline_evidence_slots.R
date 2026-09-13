@@ -91,3 +91,53 @@ cat(sprintf(
   "\n===== plot_offline_evidence_slots() =====\nObjeto ggplot criado: %s\n",
   class(p_offline_evidence)[1]
 ))
+
+
+## clip_offline_intervals_to_daylight() (funcao 3b) -- caso real que
+## motivou isto: um gap que atravessa a noite era avaliado por inteiro por
+## check_offline_curtailment_overlap()/check_offline_scada_presence(),
+## fazendo os minutos classificados excederem offline_mins_total (sempre
+## so' diurno) e dando net_offline_pct NEGATIVO em
+## summarise_net_availability() (BSH, 2026-09). daylight_cal_test_2d cobre
+## 2 dias (mesmo sunrise/sunset 06:00/20:00) para testar um gap que
+## atravessa a meia-noite.
+daylight_cal_test_2d <- data.table::data.table(
+  date          = as.Date(c("2026-06-01", "2026-06-02")),
+  sunrise       = as.POSIXct(c("2026-06-01 06:00:00", "2026-06-02 06:00:00"), tz = "UTC"),
+  sunset        = as.POSIXct(c("2026-06-01 20:00:00", "2026-06-02 20:00:00"), tz = "UTC"),
+  daylight_mins = c(840, 840)
+)
+
+offline_dt_clip_test <- data.table::data.table(
+  idf       = c("IDF-1", "IDF-1", "IDF-1"),
+  off_start = as.POSIXct(c("2026-06-01 10:00:00", "2026-06-01 01:00:00", "2026-06-01 22:00:00"), tz = "UTC"),
+  off_end   = as.POSIXct(c("2026-06-01 11:00:00", "2026-06-01 03:00:00", "2026-06-02 07:00:00"), tz = "UTC")
+)
+
+clipped_test <- clip_offline_intervals_to_daylight(offline_dt_clip_test, daylight_cal_test_2d, tz = "UTC")
+
+cat(sprintf(
+  "\n===== clip_offline_intervals_to_daylight(): %d linha(s) (esperado 2 -- o intervalo inteiramente noturno 01:00-03:00 e' removido) =====\n",
+  nrow(clipped_test)
+))
+print(clipped_test[order(off_start)])
+
+daytime_unchanged <- clipped_test[off_start == as.POSIXct("2026-06-01 10:00:00", tz = "UTC") &
+                                    off_end   == as.POSIXct("2026-06-01 11:00:00", tz = "UTC")]
+cat(sprintf(
+  "Intervalo inteiramente diurno (10:00-11:00): inalterado -- obtido: %s (esperado TRUE)\n",
+  nrow(daytime_unchanged) == 1L
+))
+
+night_removed <- nrow(clipped_test[off_start == as.POSIXct("2026-06-01 01:00:00", tz = "UTC")]) == 0L
+cat(sprintf(
+  "Intervalo inteiramente noturno (01:00-03:00): removido -- obtido: %s (esperado TRUE)\n",
+  night_removed
+))
+
+overnight_clipped <- clipped_test[off_start == as.POSIXct("2026-06-02 06:00:00", tz = "UTC") &
+                                    off_end   == as.POSIXct("2026-06-02 07:00:00", tz = "UTC")]
+cat(sprintf(
+  "Intervalo atravessando a meia-noite (22:00 dia1 - 07:00 dia2): recortado para so' a porcao diurna (06:00-07:00 dia2) -- obtido: %s (esperado TRUE)\n",
+  nrow(overnight_clipped) == 1L
+))

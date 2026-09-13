@@ -28,6 +28,14 @@
 ##
 ##   offline_dt <- compute_offline_intervals(heartb_dt, offline_gap_min, online_grace_min)
 ##
+##   ## so' a porcao DIURNA de cada gap (clip_offline_intervals_to_daylight(),
+##   ## R/availability_daylight.R) -- OBRIGATORIO passar isto (nao offline_dt
+##   ## diretamente) aos 2 checks abaixo, senao os minutos classificados
+##   ## podem exceder offline_mins_total (sempre so' diurno,
+##   ## summarise_availability()), dando net_offline_pct negativo em
+##   ## summarise_net_availability() (ver 5b abaixo):
+##   offline_dt_daylight <- clip_offline_intervals_to_daylight(offline_dt, daylight_cal, tz)
+##
 ##   ## turbina(s) a verificar por unidade IDF -- 2 fontes possiveis, matriz
 ##   ## manual e' SEMPRE preferida quando existir (ver 1a abaixo):
 ##   idf_turbines_dt <- idf_turbines_from_manual_matrix(turbine_idf_manual_dt)
@@ -35,8 +43,8 @@
 ##   # este parque (turbine_idf_manual_dt inexistente/NULL):
 ##   idf_turbines_dt <- idf_turbines_from_coverage(turbine_idf_coverage_dt)
 ##
-##   curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, idf_turbines_dt)
-##   scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, idf_turbines_dt)
+##   curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, idf_turbines_dt)
+##   scada_checked_dt <- check_offline_scada_presence(offline_dt_daylight, scada_dt, idf_turbines_dt)
 ##   combined_dt <- classify_offline_evidence(curtl_checked_dt, scada_checked_dt)
 ##   offline_evidence_summary <- summarise_offline_evidence(combined_dt)
 ##
@@ -366,7 +374,16 @@ summarise_net_availability <- function(availability_overall, offline_evidence_ov
   raw_offline_mins    <- availability_overall$offline_mins_total
   comm_failure_mins   <- get_mins("IDF unit communication failure")
   no_evidence_mins    <- get_mins("No evidence (heartbeat and SCADA both missing)")
-  net_offline_mins    <- raw_offline_mins - comm_failure_mins
+  # raw_offline_mins (summarise_availability(), sempre so' diurno) e
+  # comm_failure_mins (summarise_offline_evidence(), agora tambem so'
+  # diurno desde que o caller recorta offline_dt com
+  # clip_offline_intervals_to_daylight() ANTES de classify_offline_evidence())
+  # vem de 2 pipelines de recorte diurno SEPARADOS -- pmax(0, ...) e' so'
+  # uma salvaguarda aritmetica contra um residuo de arredondamento entre os
+  # 2, NAO o mecanismo principal para evitar net_offline_pct negativo (ver
+  # a nota completa em clip_offline_intervals_to_daylight(),
+  # R/availability_daylight.R, sobre o caso real que motivou isto).
+  net_offline_mins    <- max(0, raw_offline_mins - comm_failure_mins)
 
   pct_of_daylight <- function(mins) {
     if (daylight_mins_total == 0) NA_real_ else round(100 * mins / daylight_mins_total, 1)

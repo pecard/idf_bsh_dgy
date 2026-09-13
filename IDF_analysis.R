@@ -747,8 +747,15 @@ if (exists("heartb_dt")) {
   offline_dt <- compute_offline_intervals(
     heartb_dt, offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min
   )
-  offline_curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, offline_evidence_turbines_res$idf_turbines_dt)
-  offline_scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, offline_evidence_turbines_res$idf_turbines_dt)
+  # so' a porcao DIURNA de cada gap -- clip_offline_intervals_to_daylight(),
+  # R/availability_daylight.R -- para o total classificado (curtailment/
+  # SCADA) nunca poder exceder offline_mins_total (sempre so' diurno,
+  # summarise_availability()); sem isto, um gap que atravessa a noite era
+  # avaliado por inteiro, dando net_offline_pct negativo em
+  # summarise_net_availability() (caso real, BSH 2026-09).
+  offline_dt_daylight <- clip_offline_intervals_to_daylight(offline_dt, daylight_cal, proj_timezone)
+  offline_curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, offline_evidence_turbines_res$idf_turbines_dt)
+  offline_scada_checked_dt <- check_offline_scada_presence(offline_dt_daylight, scada_dt, offline_evidence_turbines_res$idf_turbines_dt)
   offline_evidence_dt      <- classify_offline_evidence(offline_curtl_checked_dt, offline_scada_checked_dt)
   offline_evidence_summary <- summarise_offline_evidence(offline_evidence_dt)
 

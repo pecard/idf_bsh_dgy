@@ -24,7 +24,9 @@
 ## Pre-requisitos (correr isto DEPOIS de uma corrida normal de
 ## IDF_analysis.R OU IDF_monthly_report.R, na mesma sessao) -- objetos ja
 ## tem de existir: heartb_dt, curtl_dt, scada_dt, heartbeat_offline_gap_min,
-## heartbeat_interval_min. Turbina(s) por unidade IDF -- ver secção 1
+## heartbeat_interval_min, daylight_cal (build_daylight_calendar(), usado
+## para recortar cada gap a so' a sua porcao diurna antes de o classificar
+## -- ver secção 2 abaixo). Turbina(s) por unidade IDF -- ver secção 1
 ## abaixo: a matriz manual (Primary IDF) e' SEMPRE preferida quando
 ## identificada para o parque (turbine_idf_manual_dt); so' cai para a
 ## cobertura geometrica (limiar de %, numero de turbinas variavel por
@@ -106,12 +108,21 @@ cat(sprintf("\n===== %d intervalo(s) offline encontrado(s), %d unidade(s) IDF di
   nrow(offline_dt), data.table::uniqueN(offline_dt$idf)
 ))
 
+# so' a porcao DIURNA de cada gap -- clip_offline_intervals_to_daylight(),
+# R/availability_daylight.R -- mesmo recorte agora usado em IDF_analysis.R/
+# IDF_monthly_report.R (2026-09), para os minutos classificados nunca
+# poderem exceder o offline_mins_total diurno (evita net_offline_pct
+# negativo em summarise_net_availability()). Precisa de daylight_cal
+# (build_daylight_calendar(), ja calculado numa corrida normal do
+# IDF_analysis.R/IDF_monthly_report.R -- ver pre-requisitos no topo).
+offline_dt_daylight <- clip_offline_intervals_to_daylight(offline_dt, daylight_cal, proj_timezone)
+
 
 ## 3. Cruza com curtailments E leituras SCADA de RPM, so' nas turbinas de
 ## idf_turbines_dt -----------------------------------------------------
 
-curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt, curtl_dt, idf_turbines_dt)
-scada_checked_dt <- check_offline_scada_presence(offline_dt, scada_dt, idf_turbines_dt)
+curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, idf_turbines_dt)
+scada_checked_dt <- check_offline_scada_presence(offline_dt_daylight, scada_dt, idf_turbines_dt)
 combined_dt <- classify_offline_evidence(curtl_checked_dt, scada_checked_dt)
 
 cat("\n===== Resumo: classificação por evidência =====\n")

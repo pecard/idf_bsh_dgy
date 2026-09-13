@@ -225,9 +225,18 @@ shorttrack_eval_range <- 300 # em metros; distancia ate qual se considera releva
 
 ## -- 3.5. Curtailment response assessment (roll join com SCADA) --
 
-# Incluir time range e turbinas para o qual temos dados de SCADA, mesmo que no intervalo tenham "buracos" sem info
+# Incluir time range e turbinas para o qual temos dados de SCADA, mesmo que no intervalo tenham "buracos" sem info.
+# scada_end alargado para um limite futuro largo (mesma convencao de
+# userSettings_DGY.R) em vez de uma data fixa proxima -- 2026-08-15 tinha
+# ficado ultrapassada (o dataset de SCADA real ja vai mais alem), fazendo
+# secções 5-8 (resposta a curtailment/shutdown time/safe distance) E as
+# tabelas/plots de cobertura temporal (secções 1.1/1.2) ignorarem SCADA
+## real em silencio -- confirmado pelo Paulo, 2026-09. scada_ini_monthly/
+# scada_end_monthly (IDF_monthly_report.R) ja intersectam sempre com o
+# periodo do relatorio, por isso alargar este limite superior nao arrisca
+# incluir nada fora do mes -- so' deixa de cortar SCADA real antes da hora.
 scada_ini <- as.POSIXct('2025-10-15 00:00:00', tz = proj_timezone)
-scada_end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-12-31 23:59:59', tz = proj_timezone)
 
 turbinas_scada <- c('BSH54', 'BSH62', 'BSH14')
 

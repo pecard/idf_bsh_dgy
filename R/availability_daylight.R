@@ -107,6 +107,55 @@ compute_daylight_offline <- function(offline_intervals, daylight_cal, tz) {
 }
 
 
+## 3b. Recorta cada intervalo offline a(s) sua(s) porcao(oes) diurna(s) --
+## mesma logica de recorte da funcao 3 acima (compute_daylight_offline()),
+## mas devolve os intervalos RECORTADOS em si (idf/off_start/off_end, 1
+## linha por intervalo x dia com sobreposicao real com o dia), nao um
+## agregado diario -- para alimentar check_offline_curtailment_overlap()/
+## check_offline_scada_presence() (R/offline_curtailment_check.R) so' com a
+## parte diurna de cada gap.
+##
+## Sem isto, um gap que atravessa a noite (ou fins de semana inteiros)
+## seria avaliado -- e contado -- por inteiro, incluindo horas em que a
+## protecao de aves nem e' avaliada -- inconsistente com o resto do
+## relatorio (offline_mins_total, summarise_availability(), e' sempre so'
+## diurno) e podia fazer os minutos "IDF unit communication failure"
+## excederem os minutos offline diurnos totais, dando um net_offline_pct
+## NEGATIVO em summarise_net_availability() (R/offline_curtailment_check.R)
+## -- caso real, BSH 2026-09.
+
+clip_offline_intervals_to_daylight <- function(offline_intervals, daylight_cal, tz) {
+
+  if (nrow(offline_intervals) == 0L) {
+    return(offline_intervals[0, .(idf, off_start, off_end)])
+  }
+
+  off <- copy(offline_intervals)
+  off[, `:=`(
+    date_start = as.IDate(off_start, tz = tz),
+    date_end   = as.IDate(off_end,   tz = tz)
+  )]
+
+  off_exp <- off[, .(date = seq(date_start, date_end, by = "day")),
+                by = .(idf, off_start, off_end)]
+  off_exp <- daylight_cal[off_exp, on = "date", nomatch = 0]
+
+  off_exp[, day_start := as.POSIXct(date, tz = tz)]
+  off_exp[, day_end   := day_start + days(1)]
+
+  off_exp[, clip_start_num := pmax(as.numeric(off_start), as.numeric(day_start), as.numeric(sunrise))]
+  off_exp[, clip_end_num   := pmin(as.numeric(off_end),   as.numeric(day_end),   as.numeric(sunset))]
+
+  off_exp <- off_exp[clip_end_num > clip_start_num]
+
+  off_exp[, .(
+    idf,
+    off_start = as.POSIXct(clip_start_num, origin = "1970-01-01", tz = tz),
+    off_end   = as.POSIXct(clip_end_num,   origin = "1970-01-01", tz = tz)
+  )]
+}
+
+
 ## 4. Grelha completa IDF x dia (dias sem registo offline = 0%) ----
 
 daylight_availability <- function(heartb_dt, daylight_cal, tz,

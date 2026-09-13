@@ -372,6 +372,67 @@ presence_summary_by_idf <- function(presence_dt) {
 }
 
 
+## 16. Cobertura de SCADA por turbina, COM categoria, dentro de um periodo
+## dado (ex: o mes do relatorio) -- pedido do Paulo, 2026-09, apos o
+## relatorio mensal do BSH mostrar (secções 1.1/1.2) uma cobertura de SCADA
+## farm-wide AGREGADA que parecia parar a meio do periodo -- na realidade
+## um limite superior desatualizado em scada_end (ver inputs/userSettings_BSH.R/
+## monthlyReportSettings_BSH.R), nao uma lacuna real nos dados. Mesmo
+## corrigido esse limite, uma unica linha/faixa "SCADA" agregada
+## (plot_data_coverage(), farm-wide) NAO consegue mostrar que turbinas
+## individuais podem ter periodos de recolha diferentes -- SCADA e'
+## descarregado turbina a turbina, nao como 1 feed unico do parque. Esta
+## funcao substitui essa faixa agregada por uma categoria por turbina.
+##
+## presence_dt: daily_presence_by_turbine(scada_dt_periodo, "datetime",
+## "turbinelabel", "SCADA") (funcao 9 acima), ja restrito ao periodo dado.
+## all_turbines: vetor com TODAS as turbinas a considerar (normalmente
+## resolve_turbinas_scada("all", scada_dt_unfilt), R/monthly_report_utils.R
+## -- "alguma vez equipadas com SCADA", nao so' as que aparecem em
+## presence_dt) -- para uma turbina SEM NENHUM dado SCADA neste periodo
+## tambem aparecer na tabela, categoria "No SCADA this month", em vez de
+## ficar silenciosamente ausente.
+## period_start/period_end: limites do periodo (Date).
+##
+## category, por prioridade:
+##   "No SCADA this month"        -- 0 dias com dados neste periodo
+##   "Full coverage"               -- dados em TODOS os dias do periodo
+##   "Ends early"                  -- tem dados, mas o ultimo dia com dados
+##                                    e' ANTES do fim do periodo -- o caso
+##                                    especifico que motivou esta funcao
+##   "Partial (gaps within month)" -- tem dados ate ao fim do periodo, mas
+##                                    com dias em falta pelo meio
+
+scada_coverage_by_turbine <- function(presence_dt, all_turbines, period_start, period_end) {
+
+  total_days <- as.integer(period_end - period_start) + 1L
+
+  by_turbine <- presence_dt[, .(
+    days_with_data      = uniqueN(date),
+    last_date_with_data = max(date)
+  ), by = turbine]
+
+  out <- merge(
+    data.table(turbine = sort(unique(all_turbines))),
+    by_turbine, by = "turbine", all.x = TRUE
+  )
+
+  out[is.na(days_with_data), days_with_data := 0L]
+  out[, days_missing := total_days - days_with_data]
+  out[, pct_missing  := round(100 * days_missing / total_days, 1)]
+
+  out[, category := fcase(
+    days_with_data == 0L,                                            "No SCADA this month",
+    pct_missing == 0,                                                "Full coverage",
+    !is.na(last_date_with_data) & last_date_with_data < period_end,  "Ends early",
+    default = "Partial (gaps within month)"
+  )]
+
+  setorder(out, category, turbine)
+  out[]
+}
+
+
 ## 15. Plot "calendario" de cobertura diaria por unidade IDF ----
 ##     idf_sel: vetor de unidades a mostrar (NULL = todas)
 

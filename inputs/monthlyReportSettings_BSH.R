@@ -233,9 +233,16 @@ shorttrack_eval_range <- 300
 # Janela em que ha dados de SCADA disponiveis -- fixa, igual a
 # userSettings_BSH.R; IDF_monthly_report.R intersecta com o mes do relatorio
 # (scada_ini_monthly/scada_end_monthly) para nao assumir SCADA antes desta
-# data nem incluir historico fora do mes.
+# data nem incluir historico fora do mes. scada_end alargado para um
+# limite futuro largo (mesma convencao de monthlyReportSettings_DGY.R) --
+# 2026-08-15 tinha ficado ultrapassada (o dataset de SCADA real ja vai
+# mais alem), fazendo secções 5-8 E as tabelas/plots de cobertura temporal
+# (secções 1.1/1.2) ignorarem SCADA real em silencio -- confirmado pelo
+# Paulo, 2026-09. A interseccao com scada_end_monthly (abaixo) ja limita
+# sempre ao mes do relatorio, por isso este limite mais largo nao arrisca
+# incluir nada fora do mes.
 scada_ini <- as.POSIXct('2025-10-15 00:00:00', tz = proj_timezone)
-scada_end <- as.POSIXct('2026-08-15 23:59:59', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-12-31 23:59:59', tz = proj_timezone)
 
 # "all" -- usa TODAS as turbinas com dados de SCADA na janela do relatorio
 # (resolvido a cada corrida por resolve_turbinas_scada(), R/monthly_report_utils.R
