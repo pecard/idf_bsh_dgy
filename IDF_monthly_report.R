@@ -564,13 +564,23 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   offline_evidence_dt      <- classify_offline_evidence(offline_curtl_checked_dt, offline_scada_checked_dt)
   offline_evidence_summary <- summarise_offline_evidence(offline_evidence_dt)
 
+  # Numeros farm-wide raw/net/sem-evidencia (secção 2.3.1, Unavailability
+  # Summary) -- calculados aqui (nao so' mais abaixo, na secção "Technical
+  # Summary") para poderem ir tambem para o xlsx de anexo desta secção,
+  # pedido do Paulo, 2026-09 (a tabela do corpo do relatorio nao tinha
+  # nenhum xlsx correspondente ate' agora).
+  source("R/monthly_technical_summary.R")
+  availability_overall     <- summarise_availability_overall(idf_availability_summary$by_idf)
+  net_availability_overall <- summarise_net_availability(availability_overall, offline_evidence_summary$overall)
+
   offline_evidence_sheets <- list(
-    All_offline_intervals    = offline_evidence_dt,
-    Comm_failure_confirmed   = offline_evidence_dt[classification == "IDF unit communication failure"],
-    Operational_no_detection = offline_evidence_dt[classification == "Turbine operational, no detection"],
-    No_evidence_review       = offline_evidence_dt[classification == "No evidence (heartbeat and SCADA both missing)"],
-    Summary_by_idf           = offline_evidence_summary$by_idf,
-    Summary_overall          = offline_evidence_summary$overall
+    All_offline_intervals      = offline_evidence_dt,
+    Comm_failure_confirmed     = offline_evidence_dt[classification == "IDF unit communication failure"],
+    Operational_no_detection   = offline_evidence_dt[classification == "Turbine operational, no detection"],
+    No_evidence_review         = offline_evidence_dt[classification == "No evidence (heartbeat and SCADA both missing)"],
+    Summary_by_idf             = offline_evidence_summary$by_idf,
+    Summary_overall            = offline_evidence_summary$overall,
+    Net_availability_overall   = net_availability_overall
   )
   if (offline_evidence_turbines_res$used_geometric_fallback) {
     offline_evidence_sheets <- c(
@@ -670,22 +680,47 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   ## tamanho/cor = % offline da sua unidade IDF primaria neste mes (ver
   ## R/availability_daylight.R, join_availability_to_turbine()/
   ## plot_availability_spatial()). So' corre se a matriz manual
-  ## turbina<->IDF estiver disponivel (ver "0. Import data").
+  ## turbina<->IDF estiver disponivel (ver "0. Import data"). 2 versoes --
+  ## raw (monitoring_period_pct, como sempre) e net/confirmada
+  ## (net_offline_pct, summarise_net_availability_by_idf(),
+  ## R/offline_curtailment_check.R) -- pedido do Paulo, 2026-09, apos notar
+  ## que so' a versao raw existia (a mesma distincao ja feita farm-wide na
+  ## Unavailability Summary, secção 2.3.1).
   if (!is.null(turbine_idf_manual_dt)) {
 
     turbine_availability_dt <- join_availability_to_turbine(
       idf_availability_summary$by_idf, wtg, turbine_idf_manual_dt, wtg_id_col = "InternalNa"
     )
+    net_availability_by_idf_dt <- summarise_net_availability_by_idf(
+      idf_availability_summary$by_idf, offline_evidence_summary$by_idf
+    )
+    turbine_net_availability_dt <- join_availability_to_turbine(
+      net_availability_by_idf_dt, wtg, turbine_idf_manual_dt,
+      wtg_id_col = "InternalNa", value_col = "net_offline_pct"
+    )
 
     write_xlsx_local(
-      list(Turbine_availability = turbine_availability_dt),
+      list(
+        Turbine_availability     = turbine_availability_dt,
+        Turbine_availability_net = turbine_net_availability_dt
+      ),
       file.path(folder_output, sprintf("idf_availability_spatial_%s.xlsx", report_month))
     )
 
     p_availability_spatial <- plot_availability_spatial(turbine_availability_dt)
     ggsave(
       file.path(folder_output, sprintf("idf_availability_spatial_%s.png", report_month)),
-      plot = p_availability_spatial, width = 16, height = 12, units = "cm", dpi = 300, bg = "white"
+      plot = p_availability_spatial, width = 16, height = 10, units = "cm", dpi = 300, bg = "white"
+    )
+
+    p_availability_spatial_net <- plot_availability_spatial(
+      turbine_net_availability_dt, value_col = "net_offline_pct",
+      title = "Spatial distribution of confirmed IDF unavailability by turbine",
+      subtitle = "Point size = net (confirmed) % of daylight monitoring period offline -- excludes minutes with confirmed evidence of continued operation; x = no data"
+    )
+    ggsave(
+      file.path(folder_output, sprintf("idf_availability_spatial_net_%s.png", report_month)),
+      plot = p_availability_spatial_net, width = 16, height = 10, units = "cm", dpi = 300, bg = "white"
     )
 
   } else {message("Matriz turbina<->IDF nao disponivel -- 1b (spatial unavailability) saltada nesta ronda.")}
@@ -1269,6 +1304,7 @@ monthly_report_params <- list(
   availability_plot_cal = if (exists("p_availability_cal")) p_availability_cal else NULL,
   availability_plot_freq = if (exists("p_availability_freq")) p_availability_freq else NULL,
   availability_plot_spatial = if (exists("p_availability_spatial")) p_availability_spatial else NULL,
+  availability_plot_spatial_net = if (exists("p_availability_spatial_net")) p_availability_spatial_net else NULL,
 
   offline_evidence_by_idf   = if (exists("offline_evidence_summary")) offline_evidence_summary$by_idf else NULL,
   offline_evidence_overall  = if (exists("offline_evidence_summary")) offline_evidence_summary$overall else NULL,
@@ -1333,6 +1369,27 @@ monthly_report_params <- list(
   idf_availability_top_n    = idf_availability_top_n,
   availability_cal_body_top_n = if (exists("availability_cal_body_top_n")) availability_cal_body_top_n else NULL,
   availability_cal_extended_filename = if (exists("availability_cal_extended_filename")) availability_cal_extended_filename else NULL,
+
+  # Nomes (basename) dos xlsx de anexo -- 1 por tabela do corpo do
+  # relatorio com o mesmo dado (ou mais completo) num workbook, para a
+  # frase "ver anexo ...xlsx" logo apos essa tabela -- pedido do Paulo,
+  # 2026-09 (mesma convencao do relatorio anual, report/report_template.rmd).
+  # Todos com sprintf(..., report_month) -- mesmo padrao de nomes ja usado
+  # em cada write_xlsx_local() correspondente, acima.
+  xlsx_data_summary        = sprintf("data_summary_%s.xlsx", report_month),
+  xlsx_data_coverage       = sprintf("data_coverage_%s.xlsx", report_month),
+  xlsx_offline_evidence    = sprintf("offline_evidence_detail_%s.xlsx", report_month),
+  xlsx_availability        = sprintf("idf_availability_%s.xlsx", report_month),
+  xlsx_availability_spatial = sprintf("idf_availability_spatial_%s.xlsx", report_month),
+  xlsx_observed_species    = sprintf("observed_species_%s.xlsx", report_month),
+  xlsx_curtailment_species = sprintf("curtailment_species_%s.xlsx", report_month),
+  xlsx_short_track         = sprintf("curtailment_short_track_%s.xlsx", report_month),
+  xlsx_shutdown_time       = sprintf("curtailment_shutdown_time_%s.xlsx", report_month),
+  xlsx_latency             = sprintf("curtailment_response_latency_%s.xlsx", report_month),
+  xlsx_safe_dist           = sprintf("curtailment_safe_distance_%s.xlsx", report_month),
+  xlsx_id_transitions      = sprintf("id_transitions_%s.xlsx", report_month),
+  xlsx_flight_metrics      = sprintf("bio_flight_metrics_%s.xlsx", report_month),
+  xlsx_min_indiv           = sprintf("min_individuals_per_bin_%s.xlsx", report_month),
 
   shorttrack_min_points   = shorttrack_min_points,
   shorttrack_eval_range_m = shorttrack_eval_range,

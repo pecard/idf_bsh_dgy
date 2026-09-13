@@ -37,6 +37,7 @@ params:
   availability_plot_cal: !r NULL
   availability_plot_freq: !r NULL
   availability_plot_spatial: !r NULL
+  availability_plot_spatial_net: !r NULL
 
   offline_evidence_by_idf: !r NULL
   offline_evidence_overall: !r NULL
@@ -94,6 +95,23 @@ params:
   idf_availability_top_n: !r NULL
   availability_cal_body_top_n: !r NULL
   availability_cal_extended_filename: !r NULL
+
+  # Nomes (basename) dos xlsx de anexo -- 1 por tabela, para a frase "ver
+  # anexo ...xlsx" logo apos cada tabela do relatorio.
+  xlsx_data_summary: !r NULL
+  xlsx_data_coverage: !r NULL
+  xlsx_offline_evidence: !r NULL
+  xlsx_availability: !r NULL
+  xlsx_availability_spatial: !r NULL
+  xlsx_observed_species: !r NULL
+  xlsx_curtailment_species: !r NULL
+  xlsx_short_track: !r NULL
+  xlsx_shutdown_time: !r NULL
+  xlsx_latency: !r NULL
+  xlsx_safe_dist: !r NULL
+  xlsx_id_transitions: !r NULL
+  xlsx_flight_metrics: !r NULL
+  xlsx_min_indiv: !r NULL
 
   shorttrack_min_points: !r NULL
   shorttrack_eval_range_m: !r NULL
@@ -237,6 +255,21 @@ recode_values <- function(x, col, mapping) {
   x[[col]][hit] <- unname(mapping[x[[col]][hit]])
   x
 }
+
+# Frase-padrao, logo apos cada tabela, a apontar para o xlsx de anexo com o
+# detalhe completo (todas as linhas/colunas) -- pedido do Paulo (2026-09)
+# para toda tabela do relatorio mensal que tenha o mesmo dado (ou mais
+# completo) num xlsx de anexo, mesma convencao ja usada no relatorio anual
+# (report/report_template.rmd). Chamar APENAS num chunk results='asis'
+# proprio, separado do chunk que desenha a tabela (report_table() depende
+# do auto-print do knit_print.flextable, que so' funciona corretamente
+# quando essa e' a UNICA expressao visivel do bloco -- ver nota "Cada
+# tabela/plot..." acima).
+annex_note <- function(xlsx_name) {
+  if (!is.null(xlsx_name)) {
+    cat(sprintf("\n*The full table is available in the accompanying workbook: `%s`.*\n", xlsx_name))
+  }
+}
 ```
 
 <!--
@@ -367,6 +400,9 @@ if (!is.null(params$data_summary)) {
   ))
 }
 ```
+```{r data-summary-annex, results='asis'}
+annex_note(params$xlsx_data_summary)
+```
 
 ## Temporal Coverage
 
@@ -388,6 +424,9 @@ if (!is.null(params$coverage_summary)) {
     )
   )
 }
+```
+```{r coverage-summary-annex, results='asis'}
+annex_note(params$xlsx_data_coverage)
 ```
 
 ```{r coverage-plot, fig.width=7, fig.height=4}
@@ -433,6 +472,9 @@ if (!is.null(params$availability_by_idf)) {
   ))
 }
 ```
+```{r availability-annex, results='asis'}
+annex_note(params$xlsx_availability)
+```
 
 ## Availability Calendar
 
@@ -448,7 +490,7 @@ Each slot is colored by one of six statuses:
 - **No data**: no underlying calendar data available for this slot, independent of the evidence check above.
 
 <!-- Source: offline_evidence_slot_grid()/plot_offline_evidence_slots(), R/availability_daylight.R; classification from classify_offline_evidence(), R/offline_curtailment_check.R -->
-```{r availability-cal, fig.width=6.30, fig.height=6.30}
+```{r availability-cal, fig.width=6.30, fig.height=7.09}
 if (!is.null(params$availability_plot_cal)) print(params$availability_plot_cal)
 ```
 ```{r availability-cal-annex, results='asis'}
@@ -480,6 +522,9 @@ if (!is.null(params$net_availability_overall)) {
   ))
 }
 ```
+```{r net-availability-annex, results='asis'}
+annex_note(params$xlsx_offline_evidence)
+```
 
 ```{r offline-evidence-heading-overall, results='asis'}
 if (!is.null(params$offline_evidence_overall) && nrow(params$offline_evidence_overall) > 0) cat("\n\n**Farm-wide**\n")
@@ -493,6 +538,9 @@ if (!is.null(params$offline_evidence_overall) && nrow(params$offline_evidence_ov
     c(classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)", pct_of_total = "% of Total")
   ))
 }
+```
+```{r offline-evidence-overall-annex, results='asis'}
+annex_note(params$xlsx_offline_evidence)
 ```
 
 ```{r offline-evidence-heading-by-idf, results='asis'}
@@ -511,6 +559,9 @@ if (!is.null(params$offline_evidence_by_idf) && nrow(params$offline_evidence_by_
   )
 }
 ```
+```{r offline-evidence-by-idf-annex, results='asis'}
+annex_note(params$xlsx_offline_evidence)
+```
 
 ```{r offline-evidence-scope-note, results='asis'}
 if (!is.null(params$offline_evidence_scope_note)) cat(sprintf("\n*%s*\n", params$offline_evidence_scope_note))
@@ -527,11 +578,17 @@ if (!is.null(params$availability_plot_freq)) print(params$availability_plot_freq
 
 ## Spatial Distribution of Unavailability
 
-Spatial distribution of unavailability, by turbine (point size = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit). Daylight availability (100% minus this offline percentage) follows the same monthly heartbeat-based methodology described in Availability by IDF Unit (section 2.1).
+Spatial distribution of unavailability, by turbine (point size = % of the month's daylight monitoring period offline, for that turbine's primary IDF unit). Daylight availability (100% minus this offline percentage) follows the same monthly heartbeat-based methodology described in Availability by IDF Unit (section 2.1). The first plot below uses the raw, heartbeat-only offline percentage; the second uses the net (confirmed) percentage instead -- excluding minutes with confirmed evidence of continued operation, the same distinction laid out in the Unavailability Summary (section 2.3.1).
 
 <!-- Source: turbine_availability_dt <- join_availability_to_turbine(); plot_availability_spatial(), both R/availability_daylight.R -->
-```{r availability-spatial, fig.width=6.30, fig.height=4.72}
+```{r availability-spatial, fig.width=6.30, fig.height=3.94}
 if (!is.null(params$availability_plot_spatial)) print(params$availability_plot_spatial)
+```
+```{r availability-spatial-net, fig.width=6.30, fig.height=3.94}
+if (!is.null(params$availability_plot_spatial_net)) print(params$availability_plot_spatial_net)
+```
+```{r availability-spatial-annex, results='asis'}
+annex_note(params$xlsx_availability_spatial)
 ```
 
 # Observed Species
@@ -560,6 +617,9 @@ if (!is.null(params$richness_dt)) {
   )
 }
 ```
+```{r richness-annex, results='asis'}
+annex_note(params$xlsx_observed_species)
+```
 
 <!-- 3.2 (richness histogram) removida do docx por pedido -- a figura
 continua a ser calculada e gravada em outputs/ (ver IDF_monthly_report.R,
@@ -580,6 +640,9 @@ if (!is.null(params$curtl_by_species_dt)) {
   ))
 }
 ```
+```{r curtl-species-annex, results='asis'}
+annex_note(params$xlsx_curtailment_species)
+```
 
 ## Curtailments by Priority Group
 
@@ -594,6 +657,9 @@ if (!is.null(params$curtl_by_group_dt)) {
   ))
 }
 ```
+```{r curtl-group-annex, results='asis'}
+annex_note(params$xlsx_curtailment_species)
+```
 
 # Short-Track Curtailments
 
@@ -602,6 +668,9 @@ Curtailments triggered by tracks with fewer than `r params$shorttrack_min_points
 <!-- Source: summarise_short_track_curtailments(), R/curtailment_short_track.R (built on classify_short_track_curtailments()) -->
 ```{r short-track-table}
 if (!is.null(params$short_track_summary_dt)) report_table(params$short_track_summary_dt)
+```
+```{r short-track-annex, results='asis'}
+annex_note(params$xlsx_short_track)
 ```
 
 # Curtailment Response & Latency
@@ -630,6 +699,9 @@ if (!is.null(params$latency_by_turbine)) {
   )
 }
 ```
+```{r latency-turbine-annex, results='asis'}
+annex_note(params$xlsx_latency)
+```
 
 ### Response Latency Bands
 
@@ -643,6 +715,9 @@ if (!is.null(params$latency_bands)) {
     c(cutoff_sec = "Cut-off (s)", pct_within_cutoff = "% Within Cut-off")
   ))
 }
+```
+```{r latency-bands-annex, results='asis'}
+annex_note(params$xlsx_latency)
 ```
 
 ### Response Latency Distribution
@@ -684,6 +759,9 @@ if (!is.null(params$shutdown_by_turbine)) {
   )
 }
 ```
+```{r shutdown-turbine-annex, results='asis'}
+annex_note(params$xlsx_shutdown_time)
+```
 
 ### Time to Threshold Bands
 
@@ -700,6 +778,9 @@ if (!is.null(params$shutdown_bands)) {
     )
   ))
 }
+```
+```{r shutdown-bands-annex, results='asis'}
+annex_note(params$xlsx_shutdown_time)
 ```
 
 ### Time to Threshold Distribution
@@ -731,6 +812,9 @@ if (!is.null(params$latency_by_turbine)) {
     max_col_width_cm = 2.5
   )
 }
+```
+```{r no-response-turbine-annex, results='asis'}
+annex_note(params$xlsx_latency)
 ```
 
 ## Example Response Profiles
@@ -785,6 +869,9 @@ if (!is.null(params$safe_dist_overall)) {
   )
 }
 ```
+```{r safe-dist-overall-annex, results='asis'}
+annex_note(params$xlsx_safe_dist)
+```
 
 ## By Species
 
@@ -807,6 +894,9 @@ if (!is.null(params$safe_dist_by_species)) {
     )
   )
 }
+```
+```{r safe-dist-species-annex, results='asis'}
+annex_note(params$xlsx_safe_dist)
 ```
 
 ## Distribution
@@ -842,6 +932,9 @@ if (!is.null(params$id_risk_by_direction)) {
     c(risk_direction = "Direction", n_tracks = "Tracks", n_multi_id_tracks = "Multi-ID Tracks", pct_of_multi_id = "% of Multi-ID")
   ))
 }
+```
+```{r id-risk-annex, results='asis'}
+annex_note(params$xlsx_id_transitions)
 ```
 
 <!--
@@ -894,6 +987,9 @@ if (!is.null(params$flight_speed_by_species)) {
   ))
 }
 ```
+```{r flight-speed-annex, results='asis'}
+annex_note(params$xlsx_flight_metrics)
+```
 
 ## Flight Height by Species
 
@@ -914,6 +1010,9 @@ if (!is.null(params$flight_height_by_species)) {
     c(spec = "Species", mean_height_m = "Mean (m)", sd_height_m = "SD (m)", pct_in_risk_zone = "% in Risk Zone")
   ))
 }
+```
+```{r flight-height-annex, results='asis'}
+annex_note(params$xlsx_flight_metrics)
 ```
 
 ## Distribution
@@ -939,12 +1038,18 @@ if (!is.null(params$min_indiv_summary)) {
   ))
 }
 ```
+```{r min-indiv-summary-annex, results='asis'}
+annex_note(params$xlsx_min_indiv)
+```
 
 ## Daily Peak, by Species
 
 <!-- Source: plot_daily_max_individuals(monthly_min_indiv_daily_dt, species_sel = prioritysp, date_breaks = "1 week"), R/track_min_individuals.R (monthly_min_indiv_daily_dt from summarise_daily_max_individuals()) -->
 ```{r min-indiv-daily-plot, fig.width=6.30, fig.height=8.66}
 if (!is.null(params$min_indiv_daily_plot)) print(params$min_indiv_daily_plot)
+```
+```{r min-indiv-daily-annex, results='asis'}
+annex_note(params$xlsx_min_indiv)
 ```
 
 # Annexes

@@ -403,6 +403,38 @@ summarise_net_availability <- function(availability_overall, offline_evidence_ov
 }
 
 
+## 5c. A mesma logica de summarise_net_availability() (funcao 5b), mas POR
+## UNIDADE IDF em vez de farm-wide -- pedido do Paulo, 2026-09, para
+## alimentar uma versao "net/confirmado" do plot espacial de
+## indisponibilidade (plot_availability_spatial(), R/availability_daylight.R),
+## que ate aqui so' mostrava a % offline RAW (monitoring_period_pct) por
+## turbina/unidade IDF, nunca a % confirmada.
+##
+## availability_by_idf: idf_availability_summary$by_idf (summarise_availability(),
+## R/availability_daylight.R) -- idf, offline_mins_total, daylight_mins_total.
+## offline_evidence_by_idf: summarise_offline_evidence(combined_dt)$by_idf
+## (funcao 5 acima) -- idf, classification, n_intervals, total_mins.
+
+summarise_net_availability_by_idf <- function(availability_by_idf, offline_evidence_by_idf) {
+
+  comm_failure_by_idf <- offline_evidence_by_idf[
+    classification == "IDF unit communication failure", .(idf, comm_failure_mins = total_mins)
+  ]
+
+  out <- merge(
+    availability_by_idf[, .(idf, offline_mins_total, daylight_mins_total)],
+    comm_failure_by_idf, by = "idf", all.x = TRUE
+  )
+  out[is.na(comm_failure_mins), comm_failure_mins := 0]
+  out[, net_offline_mins := pmax(0, offline_mins_total - comm_failure_mins)]
+  out[, net_offline_pct  := data.table::fifelse(
+    daylight_mins_total > 0, round(100 * net_offline_mins / daylight_mins_total, 1), NA_real_
+  )]
+
+  out[]
+}
+
+
 ## 6. Nota metodologica -- a incluir no relatorio (mensal e anual) quando
 ## esta analise for formalizada numa secção propria (pedido do Paulo,
 ## 2026-09) -- em ingles, ja pronta para reutilizar no texto do relatorio

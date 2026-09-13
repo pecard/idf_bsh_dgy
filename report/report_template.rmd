@@ -87,6 +87,7 @@ params:
   # Nomes (basename) dos xlsx de anexo -- 1 por tabela, para a frase "ver
   # anexo ...xlsx" logo apos cada tabela do relatorio.
   xlsx_availability: !r NULL
+  xlsx_offline_evidence: !r NULL
   xlsx_coverage_turbine: !r NULL
   xlsx_coverage_idf: !r NULL
   xlsx_latency: !r NULL
@@ -382,6 +383,9 @@ if (!is.null(params$net_availability_overall)) {
   ))
 }
 ```
+```{r net-availability-annex, results='asis'}
+annex_note(params$xlsx_offline_evidence)
+```
 
 ```{r offline-evidence-heading-overall, results='asis'}
 if (!is.null(params$offline_evidence_overall) && nrow(params$offline_evidence_overall) > 0) cat("\n\n**Farm-wide**\n")
@@ -395,6 +399,9 @@ if (!is.null(params$offline_evidence_overall) && nrow(params$offline_evidence_ov
     c(classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)", pct_of_total = "% of Total")
   ))
 }
+```
+```{r offline-evidence-overall-annex, results='asis'}
+annex_note(params$xlsx_offline_evidence)
 ```
 
 ```{r offline-evidence-heading-by-idf, results='asis'}
@@ -412,6 +419,9 @@ if (!is.null(params$offline_evidence_by_idf) && nrow(params$offline_evidence_by_
     max_col_width_cm = 4
   )
 }
+```
+```{r offline-evidence-by-idf-annex, results='asis'}
+annex_note(params$xlsx_offline_evidence)
 ```
 
 ```{r offline-evidence-scope-note, results='asis'}
