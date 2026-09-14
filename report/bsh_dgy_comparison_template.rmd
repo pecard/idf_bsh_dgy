@@ -1,0 +1,216 @@
+---
+title: "`r params$title`"
+output: word_document
+params:
+  title: ""
+  project_ref: ""
+  report_start: ""
+  report_end: ""
+  analysis_date: ""
+  username: ""
+  code_version: ""
+
+  n_turbines_bsh: !r NULL
+  n_idf_bsh: !r NULL
+  n_turbines_dgy: !r NULL
+  n_idf_dgy: !r NULL
+
+  priority_species_compare: ""
+  species_presence_summary: !r NULL
+  species_presence_plot: !r NULL
+
+  terrain_class_comparison: !r NULL
+  terrain_map_plot_bsh: !r NULL
+  terrain_map_plot_dgy: !r NULL
+  terrain_weekly_plot_bsh: !r NULL
+  terrain_weekly_plot_dgy: !r NULL
+
+  xlsx_comparison: !r NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# Mesmos helpers de report/report_template.rmd e report/monthly_report_template.rmd
+# -- ver esses ficheiros para os comentarios completos sobre cada um.
+report_table <- function(x, caption = NULL, max_col_width_cm = NULL, col_widths_cm = NULL) {
+  ft <- flextable::flextable(round_display(x)) |>
+    flextable::theme_box() |>
+    flextable::bg(part = "header", bg = "gray85") |>
+    flextable::bold(part = "header") |>
+    flextable::fontsize(size = 9, part = "header") |>
+    flextable::fontsize(size = 9, part = "body") |>
+    flextable::align(align = "center", part = "header") |>
+    flextable::valign(valign = "center", part = "all") |>
+    flextable::autofit()
+  if (!is.null(max_col_width_cm)) ft <- cap_col_width(ft, max_col_width_cm)
+  if (!is.null(col_widths_cm)) ft <- set_col_max_width(ft, col_widths_cm)
+  if (!is.null(caption)) ft <- flextable::set_caption(ft, caption)
+  ft
+}
+
+round_display <- function(x, digits = 2) {
+  x <- as.data.frame(x)
+  for (col in names(x)) {
+    v <- x[[col]]
+    if (!is.numeric(v) || is.integer(v)) next
+    if (all(v == round(v), na.rm = TRUE)) next
+    x[[col]] <- vapply(v, function(val) {
+      if (is.na(val)) return(NA_character_)
+      d <- digits
+      while (round(val, d) == 0 && val != 0 && d < 6) d <- d + 1
+      sprintf(paste0("%.", d, "f"), val)
+    }, character(1))
+  }
+  x
+}
+
+cap_col_width <- function(ft, max_width_cm = 2) {
+  widths_in <- dim(ft)$widths
+  capped_cm <- pmin(widths_in * 2.54, max_width_cm)
+  flextable::width(ft, j = seq_along(capped_cm), width = capped_cm, unit = "cm")
+}
+
+set_col_max_width <- function(ft, widths_cm) {
+  widths_in <- dim(ft)$widths
+  idx <- match(names(widths_cm), ft$col_keys)
+  hit <- !is.na(idx)
+  if (any(hit)) {
+    capped_cm <- pmin(widths_in[idx[hit]] * 2.54, unname(widths_cm[hit]))
+    ft <- flextable::width(ft, j = idx[hit], width = capped_cm, unit = "cm")
+  }
+  ft
+}
+
+rename_display <- function(x, mapping) {
+  x <- as.data.frame(x)
+  idx <- match(names(mapping), names(x))
+  hit <- !is.na(idx)
+  names(x)[idx[hit]] <- unname(mapping)[hit]
+  x
+}
+
+annex_note <- function(xlsx_name) {
+  if (!is.null(xlsx_name)) {
+    cat(sprintf("\n*The full table is available in the accompanying workbook: `%s`.*\n", xlsx_name))
+  }
+}
+```
+
+**`r params$project_ref`**
+
+Comparison window: `r params$report_start` to `r params$report_end`
+
+Analysis date: `r params$analysis_date`
+
+Responsible Team: `r params$username`
+
+Code version: `r params$code_version`
+
+This note is descriptive and fully automated, generated end-to-end by an R code pipeline (`explore_bsh_dgy_comparison.R`). It presents metrics computed from the IdentiFlight datasets of both farms, without further interpretation, except in the concluding section.
+
+---
+
+# Context and Purpose
+
+Dzhankeldy (DGY) is monitored by only `r params$n_idf_dgy` IdentiFlight (IDF) units, covering a limited subset of its `r params$n_turbines_dgy` turbines -- a monitoring history too short and too narrow, on its own, to directly support a request to restore normal (non-curtailed) operation. Bash (BSH), approximately 50 km away, shares the same avian community and the same priority species (see the list below), and has an extensive monitoring history across detections, terrain, curtailment response and topography.
+
+This note builds an indirect, comparison-based case for DGY: where BSH shows a stable, well-characterised pattern, and DGY -- despite its limited own history -- shows a consistent pattern with BSH, that consistency itself is evidence that DGY's bird activity and risk profile is not meaningfully different from BSH's.
+
+Two lines of evidence are presented below: (1) the weekly seasonal presence of priority species from track data, and (2) topography and the associated seasonal pattern of space use. A third line of evidence, a raptor breeding survey conducted at DGY, is planned for a future revision of this note (see placeholder section below).
+
+Priority species considered in this comparison (union of both farms' priority lists): `r params$priority_species_compare`.
+
+<!-- Source: import_farm_data(), explore_bsh_dgy_comparison.R -->
+```{r farm-overview-table}
+if (!is.null(params$n_turbines_bsh)) {
+  report_table(data.frame(
+    Farm = c("BSH", "DGY"),
+    `Total Turbines` = c(params$n_turbines_bsh, params$n_turbines_dgy),
+    `IDF Units` = c(params$n_idf_bsh, params$n_idf_dgy),
+    check.names = FALSE
+  ))
+}
+```
+
+# Weekly Presence of Priority Species (Track Data)
+
+For each priority species, presence is scored 0/1 per 7-day week over the comparison window above -- 1 if at least one track of that species was detected in that week, 0 otherwise. Week bins are anchored to the same start date in both farms (not to each farm's own start of data), so that week N refers to the same calendar dates in BSH and DGY, and the two rows of the calendar below can be compared directly on a like-for-like seasonal basis. The comparison window itself is bounded by DGY's shorter history (the intersection of both farms' available periods).
+
+<!-- Source: plot_species_presence_heatmap(), explore_bsh_dgy_comparison.R -->
+```{r species-presence-plot, fig.width=6.30, fig.height=6.5}
+if (!is.null(params$species_presence_plot)) print(params$species_presence_plot)
+```
+
+The table below summarises, per species, the percentage of weeks in the comparison window with at least one detection in each farm -- a similar percentage between farms, for a given species, indicates a similar seasonal presence pattern despite DGY's shorter own history.
+
+<!-- Source: summarise_species_presence_comparison(), explore_bsh_dgy_comparison.R -->
+```{r species-presence-table}
+if (!is.null(params$species_presence_summary)) {
+  report_table(
+    rename_display(
+      params$species_presence_summary,
+      c(species = "Species",
+        n_weeks_present_BSH = "Weeks Present (BSH)", n_weeks_total_BSH = "Weeks Total (BSH)", pct_weeks_present_BSH = "% Weeks Present (BSH)",
+        n_weeks_present_DGY = "Weeks Present (DGY)", n_weeks_total_DGY = "Weeks Total (DGY)", pct_weeks_present_DGY = "% Weeks Present (DGY)")
+    ),
+    max_col_width_cm = 2.6
+  )
+}
+```
+```{r species-presence-annex, results='asis'}
+annex_note(params$xlsx_comparison)
+```
+
+# Topography and Seasonal Space-Use Comparison
+
+Each turbine's surrounding terrain is classified as ridge, complex or flat from a digital elevation model (DEM), using the same methodology applied in the annual report (turbine elevation relative to its surroundings, and local ground slope -- see `R/turbine_terrain_classification.R`). DGY has its own DEM, so this classification -- and the associated weekly pattern of space use by terrain class (`R/track_terrain_temporal.R`) -- is computed independently for each farm, not inferred from BSH alone. The comparison below checks whether the two farms present a similar terrain profile and a similar seasonal relationship between terrain class and bird activity; where they do, BSH's better-characterised pattern (from its longer track history) becomes a reasonable proxy for what DGY's own pattern is likely to be, even where DGY's own history is too short to establish it directly.
+
+<!-- Source: summarise_terrain_class_counts(), R/turbine_terrain_classification.R -->
+```{r terrain-class-comparison-table}
+if (!is.null(params$terrain_class_comparison)) {
+  report_table(rename_display(
+    params$terrain_class_comparison,
+    c(terrain_class = "Terrain Class",
+      n_turbines_BSH = "Turbines (BSH)", pct_turbines_BSH = "% Turbines (BSH)",
+      n_turbines_DGY = "Turbines (DGY)", pct_turbines_DGY = "% Turbines (DGY)")
+  ))
+}
+```
+```{r terrain-class-annex, results='asis'}
+annex_note(params$xlsx_comparison)
+```
+
+## Terrain Classification Maps
+
+<!-- Source: plot_turbine_terrain_map(), R/turbine_terrain_classification.R -->
+```{r terrain-map-bsh, fig.width=5.91, fig.height=5.91}
+if (!is.null(params$terrain_map_plot_bsh)) print(params$terrain_map_plot_bsh + ggplot2::labs(title = "BSH -- Turbine terrain classification"))
+```
+```{r terrain-map-dgy, fig.width=5.91, fig.height=5.91}
+if (!is.null(params$terrain_map_plot_dgy)) print(params$terrain_map_plot_dgy + ggplot2::labs(title = "DGY -- Turbine terrain classification"))
+```
+
+## Weekly Space-Use by Terrain Class
+
+Percentage of turbines of each terrain class with at least one recorded track in that week -- same metric and window logic as the Availability/track sections above, applied within each farm's own terrain classes (see `R/track_terrain_temporal.R`; each farm's own weekly bins, anchored to its own start of data, not the shared comparison window used for species presence above).
+
+<!-- Source: plot_tracks_by_week_terrain(), R/track_terrain_temporal.R -->
+```{r terrain-weekly-bsh, fig.width=6.30, fig.height=3.94}
+if (!is.null(params$terrain_weekly_plot_bsh)) print(params$terrain_weekly_plot_bsh + ggplot2::labs(title = "BSH -- % turbines active per week, by terrain class"))
+```
+```{r terrain-weekly-dgy, fig.width=6.30, fig.height=3.94}
+if (!is.null(params$terrain_weekly_plot_dgy)) print(params$terrain_weekly_plot_dgy + ggplot2::labs(title = "DGY -- % turbines active per week, by terrain class"))
+```
+
+# Raptor Breeding Survey (DGY)
+
+*This section is pending. A raptor breeding survey conducted at DGY -- species identified as breeding in the vicinity, and the associated collision risk -- will be added as a third line of evidence in a future revision of this note.*
+
+# Summary and Recommendation
+
+*This section will be completed once the raptor breeding survey evidence above is available. Provisionally, based on the two lines of evidence presented (seasonal presence of priority species, and topography-linked space use), it is expected that DGY's bird activity and risk profile can be characterised as consistent with BSH's -- a comparison to be confirmed and finalised, with the specific operational recommendation, once the full evidence base is assembled.*
+
+# Annexes
+
+The full detail behind every summarised table above (weekly presence per species, per-turbine terrain classification, weekly terrain-class usage) is available in the accompanying workbook: `r params$xlsx_comparison`.
