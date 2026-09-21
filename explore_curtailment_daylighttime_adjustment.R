@@ -30,25 +30,38 @@
 ## nunca o chamam) -- so' imprime tabelas/graficos na consola/Viewer, nao
 ## escreve nada em outputs/. Mesmo padrao de explore_terrain_bearing_section.R.
 ##
-## Pre-requisitos (correr isto DEPOIS de uma corrida normal de
-## IDF_analysis.R, na mesma sessao, para o parque que quiseres analisar --
-## BSH ou DGY) -- objetos ja' tem de existir:
-##   curtl_dt, daylight_cal, fatality_incidents, proj_timezone
-##   (CONFIRMAR o range de datas -- range(curtl_dt$start) -- antes de correr,
-##   sobretudo se quiseres o historico completo em vez do periodo do
-##   relatorio: usa curtl_dt_unfilt em vez de curtl_dt nesse caso)
+## NAO precisa de uma corrida completa de IDF_analysis.R primeiro -- carrega
+## so' os curtailments (+ calendario de luz do dia) atraves de
+## load_curtailments.R (script dedicado, le a cache/os brutos, NAO altera
+## nenhum settings existente). Uso (sessao R nova, a partir da raiz do
+## projeto):
 ##
-## Correr: source("explore_curtailment_daylighttime_adjustment.R")
+##   project_settings_file <- "userSettings_BSH.R"  # ou "userSettings_DGY.R"
+##   source("load_curtailments.R")
+##   source("explore_curtailment_daylighttime_adjustment.R")
 ##
 
 source("R/curtailment_daylighttime_adjustment.R")
+
+## plot_daily_curtailment_bounds()/plot_curtailment_edge_trend() (sourced
+## acima) usam ggplot()/aes()/geom_*() sem prefixo -- precisam do pacote
+## anexado via library(), nao so' instalado. load_curtailments.R so' carrega
+## o minimo para ler/cachear curtailments (nao inclui ggplot2, de proposito
+## -- e' so' um loader de dados) -- por isso o grafico, especificamente,
+## precisa do pacote aqui.
+if (!require("ggplot2", character.only = TRUE)) install.packages("ggplot2")
+library(ggplot2)
+
+if (!exists("curtl_dt_unfilt")) {
+  stop("curtl_dt_unfilt nao existe -- correr primeiro: project_settings_file <- \"userSettings_BSH.R\" (ou _DGY.R); source(\"load_curtailments.R\").")
+}
 
 ## Janela de analise -- ultimos 6 meses de curtailments disponiveis (a
 ## partir do curtailment mais recente, nao de Sys.time(), para nao incluir
 ## um "buraco" se a cache nao tiver sido atualizada hoje). Ajustar
 ## window_months para reveres um periodo mais longo/curto.
 window_months <- 6
-window_end   <- max(curtl_dt$start)
+window_end   <- max(curtl_dt_unfilt$start)
 ## %m-% (nao so' "-"): "-" com um Period de meses pode devolver NA quando o
 ## dia-do-mes de window_end nao existe no mes alvo (ex: 31 ago - 6 meses =
 ## "28/29 fev" nao "31 fev") -- lubridate::"-.Period" nao faz clamping,
@@ -93,7 +106,7 @@ twilight_cal <- build_twilight_calendar(plot_start, window_end, proj_lat, proj_l
 ## 1. Bordos diarios (min/max literal) -- padrao geral, farm-wide ----
 
 ## Tabela de decisao -- so' os "ultimos 6 meses" (window_start..window_end)
-daily_dt <- daily_curtailment_bounds(curtl_dt, window_start, window_end, tz = proj_timezone)
+daily_dt <- daily_curtailment_bounds(curtl_dt_unfilt, window_start, window_end, tz = proj_timezone)
 daily_dt <- join_curtailment_bounds_daylight(daily_dt, daylight_cal)
 
 cat("\n===== Resumo diario (amostra) =====\n")
@@ -101,7 +114,7 @@ print(head(daily_dt[, .(date, first_curtailment_start, last_curtailment_end, gap
 
 ## Grafico -- contexto mais longo (plot_start..window_end), com marcador
 ## branco em window_start
-daily_dt_plot <- daily_curtailment_bounds(curtl_dt, plot_start, window_end, tz = proj_timezone)
+daily_dt_plot <- daily_curtailment_bounds(curtl_dt_unfilt, plot_start, window_end, tz = proj_timezone)
 daily_dt_plot <- join_curtailment_bounds_daylight(daily_dt_plot, daylight_cal, twilight_cal)
 
 p_daily <- plot_daily_curtailment_bounds(
@@ -132,7 +145,7 @@ print(violations_dt)
 ## periodo (min_n = 20 por omissao -- periodos com menos ficam NA) ----
 
 edge_bins_dt <- curtailment_edge_bins_by_period(
-  curtl_dt, daylight_cal, window_start, window_end, tz = proj_timezone,
+  curtl_dt_unfilt, daylight_cal, window_start, window_end, tz = proj_timezone,
   period = "month", bin_mins = 10, edge_pct = 0.01, min_n = 20
 )
 cat("\n===== Bordos robustos por mes (percentil 1%/99%, bin de 10 min) =====\n")
@@ -140,7 +153,7 @@ print(edge_bins_dt)
 
 ## Grafico -- contexto mais longo (plot_start..window_end), mesmo periodo
 edge_bins_dt_plot <- curtailment_edge_bins_by_period(
-  curtl_dt, daylight_cal, plot_start, window_end, tz = proj_timezone,
+  curtl_dt_unfilt, daylight_cal, plot_start, window_end, tz = proj_timezone,
   period = "month", bin_mins = 10, edge_pct = 0.01, min_n = 20
 )
 p_edge <- plot_curtailment_edge_trend(
