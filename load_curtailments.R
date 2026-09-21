@@ -8,11 +8,18 @@
 ##
 ## NAO altera nenhum dos settings/scripts existentes (userSettings_BSH.R,
 ## userSettings_DGY.R, monthlyReportSettings_*.R, IDF_analysis.R,
-## IDF_monthly_report.R) -- so' os LE (source(), read-only). Reutiliza a
-## MESMA cache (cache/<farm_code>/curtl_dt_unfilt.fst) que esses scripts ja'
-## escrevem/leem -- se ja' correste um deles recentemente para este parque,
-## este script e' quase instantaneo (nao relê os ficheiros brutos); senao,
-## lê os brutos 1a vez e grava essa cache, tal como IDF_analysis.R faria.
+## IDF_monthly_report.R) -- so' os LE (source(), read-only). Escreve na
+## MESMA cache (cache/<farm_code>/curtl_dt_unfilt.fst) que esses scripts
+## tambem usam, mas por omissao RELÊ sempre os ficheiros brutos em vez de
+## confiar na cache (force_reread_cache = TRUE por omissao, ao contrario do
+## resto do pipeline) -- curtailments e' o mais leve dos 4 datasets grandes
+## (ao contrario de tracks/SCADA/heartbeats, na ordem dos milhoes de linhas),
+## por isso nao ha' custo real em reler sempre, e evita o caso de correres
+## isto logo a seguir a adicionar ficheiros novos e ficares com a cache
+## antiga silenciosamente (sem te lembrares de pôr force_reread_cache <- TRUE
+## primeiro). Define force_reread_cache <- FALSE antes de source() se
+## preferires reutilizar a cache em disco sem reler (ex: varias corridas
+## seguidas deste script, mesmos dados, so' a testar parametros da analise).
 ##
 ## Uso -- escolher o parque ANTES de dar source a este ficheiro (mesmo
 ## padrao de run_annual_analysis_BSH.R/run_annual_analysis_DGY.R):
@@ -62,7 +69,10 @@ source("R/availability_daylight.R") # so' para build_daylight_calendar() (funcao
 databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
 folder_cache <- file.path("cache", farm_code)
 
-if (!exists("force_reread_cache")) force_reread_cache <- FALSE
+## TRUE por omissao -- ver nota acima (curtailments e' leve, sem custo real
+## em reler sempre; define force_reread_cache <- FALSE antes de source() se
+## quiseres reutilizar a cache em disco sem reler).
+if (!exists("force_reread_cache")) force_reread_cache <- TRUE
 
 ## current = NULL sempre (nao "if (exists(...))...") -- mesmo cuidado de
 ## explore_bsh_dgy_comparison.R: garante que ve' sempre a cache em disco
