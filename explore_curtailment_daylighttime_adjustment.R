@@ -33,10 +33,14 @@
 ## NAO precisa de uma corrida completa de IDF_analysis.R primeiro -- carrega
 ## so' os curtailments (+ calendario de luz do dia) atraves de
 ## load_curtailments.R (script dedicado, le a cache/os brutos, NAO altera
-## nenhum settings existente). Uso (sessao R nova, a partir da raiz do
+## nenhum settings existente). Forma mais simples de correr: dar Source a
+## run_curtailment_daylighttime_adjustment_BSH.R (ou _DGY.R) -- ja' trata
+## de tudo (project_settings_file, force_reread_cache, e as opcoes abaixo)
+## num so' passo. Equivalente manual (sessao R nova, a partir da raiz do
 ## projeto):
 ##
 ##   project_settings_file <- "userSettings_BSH.R"  # ou "userSettings_DGY.R"
+##   force_reread_cache <- TRUE
 ##   source("load_curtailments.R")
 ##   source("explore_curtailment_daylighttime_adjustment.R")
 ##
@@ -56,12 +60,17 @@ if (!exists("curtl_dt_unfilt")) {
   stop("curtl_dt_unfilt nao existe -- correr primeiro: project_settings_file <- \"userSettings_BSH.R\" (ou _DGY.R); source(\"load_curtailments.R\").")
 }
 
-## Janela de analise -- ultimos 6 meses de curtailments disponiveis (a
+## Todas as opcoes abaixo seguem o mesmo padrao de force_reread_cache/
+## generate_report (IDF_analysis.R): so' definem um valor por omissao SE
+## ainda nao existir -- define-as ANTES de source() (ex: num script
+## lancador, ver run_curtailment_daylighttime_adjustment_BSH.R/_DGY.R) para
+## as sobrepor sem editar este ficheiro.
+
+## Janela de analise -- ultimos N meses de curtailments disponiveis (a
 ## partir do curtailment mais recente, nao de Sys.time(), para nao incluir
-## um "buraco" se a cache nao tiver sido atualizada hoje). Ajustar
-## window_months para reveres um periodo mais longo/curto.
-window_months <- 6
-window_end   <- max(curtl_dt_unfilt$start)
+## um "buraco" se a cache nao tiver sido atualizada hoje).
+if (!exists("window_months")) window_months <- 6
+window_end <- max(curtl_dt_unfilt$start)
 ## %m-% (nao so' "-"): "-" com um Period de meses pode devolver NA quando o
 ## dia-do-mes de window_end nao existe no mes alvo (ex: 31 ago - 6 meses =
 ## "28/29 fev" nao "31 fev") -- lubridate::"-.Period" nao faz clamping,
@@ -71,19 +80,27 @@ window_start <- window_end %m-% months(window_months)
 
 ## Janela fixa proposta a testar -- ajustar livremente para experimentar
 ## outras horas (ex: "06:30"/"18:30") antes de decidir a recomendacao final.
-proposed_start_clock <- "07:00"
-proposed_end_clock   <- "18:00"
+if (!exists("proposed_start_clock")) proposed_start_clock <- "07:00"
+if (!exists("proposed_end_clock"))   proposed_end_clock   <- "18:00"
 
 ## Janela so' para os GRAFICOS (contexto mais longo, ex: 12 meses) -- as
 ## tabelas de decisao (coverage_dt/trend_dt/violations_dt, abaixo) ficam
-## sempre restritas a window_start/window_end (os "ultimos 6 meses" que
+## sempre restritas a window_start/window_end (os "ultimos N meses" que
 ## interessam a recomendacao); plot_start e' so' visual, para dar ao Paulo
 ## o mesmo tipo de contexto "historico + periodo revisto marcado" do
 ## grafico de referencia (Nota Tecnica Brasil -- dados PACAAL + periodo da
 ## Nota Tecnica, com 1 linha branca a separar os 2). window_marker_date
 ## desenha essa linha branca em window_start.
-plot_context_months <- 12
+if (!exists("plot_context_months")) plot_context_months <- 12
 plot_start <- window_end %m-% months(plot_context_months)
+
+## Bordos robustos (secção 2) -- periodo de agregacao, bin de arredondamento
+## e percentil usados por curtailment_edge_bins_by_period() (funcao 6,
+## R/curtailment_daylighttime_adjustment.R).
+if (!exists("edge_period"))   edge_period   <- "month" # ou "week"
+if (!exists("edge_bin_mins")) edge_bin_mins <- 10
+if (!exists("edge_pct"))      edge_pct      <- 0.01
+if (!exists("edge_min_n"))    edge_min_n    <- 20
 
 cat(sprintf(
   "\n===== Janela de decisao (recomendacao): %s a %s (%d meses) =====\n",
@@ -105,7 +122,7 @@ twilight_cal <- build_twilight_calendar(plot_start, window_end, proj_lat, proj_l
 
 ## 1. Bordos diarios (min/max literal) -- padrao geral, farm-wide ----
 
-## Tabela de decisao -- so' os "ultimos 6 meses" (window_start..window_end)
+## Tabela de decisao -- so' os "ultimos window_months meses" (window_start..window_end)
 daily_dt <- daily_curtailment_bounds(curtl_dt_unfilt, window_start, window_end, tz = proj_timezone)
 daily_dt <- join_curtailment_bounds_daylight(daily_dt, daylight_cal)
 
@@ -146,7 +163,7 @@ print(violations_dt)
 
 edge_bins_dt <- curtailment_edge_bins_by_period(
   curtl_dt_unfilt, daylight_cal, window_start, window_end, tz = proj_timezone,
-  period = "month", bin_mins = 10, edge_pct = 0.01, min_n = 20
+  period = edge_period, bin_mins = edge_bin_mins, edge_pct = edge_pct, min_n = edge_min_n
 )
 cat("\n===== Bordos robustos por mes (percentil 1%/99%, bin de 10 min) =====\n")
 print(edge_bins_dt)
@@ -154,7 +171,7 @@ print(edge_bins_dt)
 ## Grafico -- contexto mais longo (plot_start..window_end), mesmo periodo
 edge_bins_dt_plot <- curtailment_edge_bins_by_period(
   curtl_dt_unfilt, daylight_cal, plot_start, window_end, tz = proj_timezone,
-  period = "month", bin_mins = 10, edge_pct = 0.01, min_n = 20
+  period = edge_period, bin_mins = edge_bin_mins, edge_pct = edge_pct, min_n = edge_min_n
 )
 p_edge <- plot_curtailment_edge_trend(
   edge_bins_dt_plot, daylight_cal, twilight_cal,
