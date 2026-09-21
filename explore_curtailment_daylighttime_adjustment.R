@@ -6,6 +6,26 @@
 ## envolvidas em incidentes com abutres/aguias para uma janela fixa mais
 ## favoravel ao cliente (ex: 7h-18h), sem comprometer a seguranca.
 ##
+## FARM-WIDE APENAS -- decisao do Paulo (2026-09): as turbinas de
+## fatality_incidents (as que a recomendacao vai mudar) JA' tem curtailment
+## implementado, possivelmente sob um regime mais conservador por causa do
+## proprio incidente -- o padrao historico de curtailment NESSAS turbinas
+## reflete esse regime atual, nao a atividade "natural" das aves, e usa-lo
+## para justificar mudar o proprio regime que o produziu seria circular.
+## Sao tambem turbinas escolhidas PRECISAMENTE por terem tido um incidente
+## (viés de selecao -- podem ter um fator local proprio, ex: ninho perto,
+## corredor de voo, nao so' o padrao sazonal geral) e uma amostra muito mais
+## pequena/ruidosa do que o parque inteiro (problematico sobretudo para a
+## abordagem por percentil da secção 2, que precisa de min_n curtailments
+## por periodo). A evidencia usada para a recomendacao e' sempre FARM-WIDE
+## (caracteriza o padrao geral, mais robusto); as turbinas criticas sao so'
+## o ALVO de aplicacao dessa recomendacao, nao a fonte da evidencia -- por
+## isso aqui aparecem so' listadas (contexto), sem nenhuma analise restrita
+## a elas. daily_curtailment_bounds()/curtailment_edge_bins_by_period()
+## (R/curtailment_daylighttime_adjustment.R) continuam a aceitar
+## turbines = <vector> se algum dia precisares de um subconjunto por outra
+## razao -- so' nao e' usado aqui para esta recomendacao especifica.
+##
 ## NAO faz parte do pipeline de producao (IDF_analysis.R/IDF_monthly_report.R
 ## nunca o chamam) -- so' imprime tabelas/graficos na consola/Viewer, nao
 ## escreve nada em outputs/. Mesmo padrao de explore_terrain_bearing_section.R.
@@ -61,16 +81,22 @@ cat(sprintf(
   format(plot_start, "%Y-%m-%d"), format(window_end, "%Y-%m-%d"), plot_context_months
 ))
 
+## So' para contexto/referencia -- NAO usado para filtrar nenhuma analise
+## abaixo (ver nota no topo do ficheiro sobre porque a evidencia e' sempre
+## farm-wide).
+critical_turbines <- unique(fatality_incidents$turbine)
+cat(sprintf("\n===== Turbinas-alvo da recomendacao (contexto, nao filtradas abaixo): %s =====\n", paste(critical_turbines, collapse = ", ")))
+
 twilight_cal <- build_twilight_calendar(plot_start, window_end, proj_lat, proj_lon, proj_timezone)
 
 
-## 1. Farm-wide (todas as turbinas) -- padrao geral de atividade das aves ---
+## 1. Bordos diarios (min/max literal) -- padrao geral, farm-wide ----
 
 ## Tabela de decisao -- so' os "ultimos 6 meses" (window_start..window_end)
 daily_dt <- daily_curtailment_bounds(curtl_dt, window_start, window_end, tz = proj_timezone)
 daily_dt <- join_curtailment_bounds_daylight(daily_dt, daylight_cal)
 
-cat("\n===== Farm-wide: resumo diario (amostra) =====\n")
+cat("\n===== Resumo diario (amostra) =====\n")
 print(head(daily_dt[, .(date, first_curtailment_start, last_curtailment_end, gap_sunrise_min, gap_sunset_min)], 10))
 
 ## Grafico -- contexto mais longo (plot_start..window_end), com marcador
@@ -78,63 +104,67 @@ print(head(daily_dt[, .(date, first_curtailment_start, last_curtailment_end, gap
 daily_dt_plot <- daily_curtailment_bounds(curtl_dt, plot_start, window_end, tz = proj_timezone)
 daily_dt_plot <- join_curtailment_bounds_daylight(daily_dt_plot, daylight_cal, twilight_cal)
 
-p_farmwide <- plot_daily_curtailment_bounds(
+p_daily <- plot_daily_curtailment_bounds(
   daily_dt_plot, proposed_start_clock, proposed_end_clock,
   window_marker_date = window_start, date_breaks = "3 weeks"
 )
-print(p_farmwide)
+print(p_daily)
 
 coverage_dt <- summarise_curtailment_window_coverage(daily_dt, proposed_start_clock, proposed_end_clock, window_start, window_end, tz = proj_timezone)
-cat("\n===== Farm-wide: cobertura da janela proposta =====\n")
+cat("\n===== Cobertura da janela proposta (bordo diario, min/max) =====\n")
 print(coverage_dt)
 
 trend_dt <- test_curtailment_gap_trend(daily_dt)
-cat("\n===== Farm-wide: tendencia (gap vs. duracao do dia) =====\n")
+cat("\n===== Tendencia (gap vs. duracao do dia) -- bordo diario =====\n")
 print(trend_dt)
 
 violations_dt <- list_curtailment_window_violations(daily_dt, proposed_start_clock, proposed_end_clock)
-cat(sprintf("\n===== Farm-wide: %d dias com curtailment fora da janela proposta =====\n", nrow(violations_dt)))
+cat(sprintf("\n===== %d dias com curtailment fora da janela proposta (bordo diario) =====\n", nrow(violations_dt)))
 print(violations_dt)
 
 
-## 2. So' as turbinas de incidentes com abutres/aguias -- o alvo real da
-## recomendacao (fatality_incidents, userSettings_BSH.R/userSettings_DGY.R) --
+## 2. Bordos robustos (percentil 1%/99%, bins de 10 min, por periodo) --
+## complementa a secção 1: o min/max diario e' sensivel a 1 unico outlier;
+## agrupando por periodo (mes por omissao -- mais curtailments por periodo
+## do que semana, percentil mais estavel) e olhando ao percentil em vez do
+## literal min/max, ate' 1% dos curtailments desse periodo pode ser um caso
+## atipico sem deslocar a estimativa. CONFIRMAR sempre n_curtailments por
+## periodo (min_n = 20 por omissao -- periodos com menos ficam NA) ----
 
-critical_turbines <- unique(fatality_incidents$turbine)
-cat(sprintf("\n===== Turbinas de incidentes (abutres/aguias): %s =====\n", paste(critical_turbines, collapse = ", ")))
-
-## Tabela de decisao -- so' os "ultimos 6 meses"
-daily_dt_critical <- daily_curtailment_bounds(curtl_dt, window_start, window_end, tz = proj_timezone, turbines = critical_turbines)
-daily_dt_critical <- join_curtailment_bounds_daylight(daily_dt_critical, daylight_cal)
-
-## Grafico -- contexto mais longo, mesmo marcador de window_start
-daily_dt_critical_plot <- daily_curtailment_bounds(curtl_dt, plot_start, window_end, tz = proj_timezone, turbines = critical_turbines)
-daily_dt_critical_plot <- join_curtailment_bounds_daylight(daily_dt_critical_plot, daylight_cal, twilight_cal)
-
-p_critical <- plot_daily_curtailment_bounds(
-  daily_dt_critical_plot, proposed_start_clock, proposed_end_clock,
-  window_marker_date = window_start, date_breaks = "3 weeks"
+edge_bins_dt <- curtailment_edge_bins_by_period(
+  curtl_dt, daylight_cal, window_start, window_end, tz = proj_timezone,
+  period = "month", bin_mins = 10, edge_pct = 0.01, min_n = 20
 )
-print(p_critical)
+cat("\n===== Bordos robustos por mes (percentil 1%/99%, bin de 10 min) =====\n")
+print(edge_bins_dt)
 
-coverage_dt_critical <- summarise_curtailment_window_coverage(daily_dt_critical, proposed_start_clock, proposed_end_clock, window_start, window_end, tz = proj_timezone)
-cat("\n===== Turbinas criticas: cobertura da janela proposta =====\n")
-print(coverage_dt_critical)
+## Grafico -- contexto mais longo (plot_start..window_end), mesmo periodo
+edge_bins_dt_plot <- curtailment_edge_bins_by_period(
+  curtl_dt, daylight_cal, plot_start, window_end, tz = proj_timezone,
+  period = "month", bin_mins = 10, edge_pct = 0.01, min_n = 20
+)
+p_edge <- plot_curtailment_edge_trend(
+  edge_bins_dt_plot, daylight_cal, twilight_cal,
+  proposed_start_clock, proposed_end_clock,
+  window_marker_date = window_start
+)
+print(p_edge)
 
-trend_dt_critical <- test_curtailment_gap_trend(daily_dt_critical)
-cat("\n===== Turbinas criticas: tendencia (gap vs. duracao do dia) =====\n")
-print(trend_dt_critical)
+coverage_edge_dt <- summarise_curtailment_edge_coverage(edge_bins_dt, proposed_start_clock, proposed_end_clock)
+cat("\n===== Cobertura da janela proposta (bordo robusto, por mes) =====\n")
+print(coverage_edge_dt)
 
-violations_dt_critical <- list_curtailment_window_violations(daily_dt_critical, proposed_start_clock, proposed_end_clock)
-cat(sprintf("\n===== Turbinas criticas: %d dias com curtailment fora da janela proposta =====\n", nrow(violations_dt_critical)))
-print(violations_dt_critical)
+trend_edge_dt <- test_curtailment_gap_trend(edge_bins_dt)
+cat("\n===== Tendencia (gap vs. duracao do dia) -- bordo robusto =====\n")
+print(trend_edge_dt)
 
-## ATENCAO: coverage_dt_critical$n_days_violation_start/end > 0 significa
-## que, no periodo revisto, a janela proposta TERIA deixado bird activity
-## real (nestas turbinas especificas, ligadas a incidentes) sem curtailment
-## -- nesse caso a janela proposta NAO e' segura como esta', mesmo que a
-## media/tendencia farm-wide pareca favoravel. Ver violations_dt_critical
-## para os dias/casos concretos antes de qualquer recomendacao ao cliente.
+## ATENCAO: comparar coverage_dt (secção 1, bordo diario) com
+## coverage_edge_dt (secção 2, bordo robusto) e' o proprio argumento de
+## robustez -- o bordo diario e' mais conservador (qualquer outlier conta),
+## o robusto tolera ate' 1% de casos atipicos por periodo. Se AINDA ASSIM
+## houver violacao no bordo robusto (n_periods_violation_start/end > 0),
+## e' um sinal mais forte de que a janela proposta nao e' segura como esta'
+## -- nao decidir so' com base num dos dois.
 
-# ggsave("bird_daylighttime_farmwide.png", p_farmwide, width = 9, height = 4.5, dpi = 300, bg = "white")
-# ggsave("bird_daylighttime_critical.png", p_critical, width = 9, height = 4.5, dpi = 300, bg = "white")
+# ggsave("bird_daylighttime_daily.png", p_daily, width = 9, height = 4.5, dpi = 300, bg = "white")
+# ggsave("bird_daylighttime_edge_trend.png", p_edge, width = 9, height = 4.5, dpi = 300, bg = "white")

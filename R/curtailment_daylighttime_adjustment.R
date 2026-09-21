@@ -23,6 +23,22 @@
 ## explicito do Paulo ("apenas a evolucao temporal dos primeiros e dos
 ## ultimos curtailments de cada dia").
 ##
+## IMPORTANTE (decisao do Paulo, 2026-09) -- a evidencia usada para a
+## recomendacao e' sempre FARM-WIDE (turbines = NULL em todas as chamadas
+## abaixo), NUNCA restrita as proprias turbinas de fatality_incidents: essas
+## turbinas ja' tem curtailment implementado sob o regime que se quer mudar
+## (o padrao historico delas reflete esse regime atual, nao a atividade
+## "natural" das aves -- usa-lo para justificar mudar o proprio regime que o
+## produziu seria circular), foram escolhidas PRECISAMENTE por terem tido um
+## incidente (viés de selecao -- podem ter um fator local proprio, nao so' o
+## padrao sazonal geral), e sao uma amostra muito mais pequena/ruidosa do
+## que o parque inteiro. As turbinas de fatality_incidents sao so' o ALVO de
+## aplicacao da recomendacao, nao a fonte da evidencia -- o parametro
+## turbines= de daily_curtailment_bounds()/curtailment_edge_bins_by_period()
+## continua generico (disponivel se precisares de um subconjunto por outra
+## razao), mas ver explore_curtailment_daylighttime_adjustment.R para o uso
+## efetivamente recomendado (farm-wide em todas as chamadas).
+##
 ## Depende de: data.table, ggplot2
 ## (build_daylight_calendar(), R/availability_daylight.R, ja' fornece
 ## sunrise/sunset por dia -- sourced separadamente, nao redefinido aqui)
@@ -36,7 +52,7 @@
 ##
 ##   window_end <- max(curtl_dt$start)
 ##
-##   # Farm-wide (todas as turbinas) -- padrao geral
+##   # Farm-wide (turbines = NULL, omissao) -- a UNICA evidencia usada (ver nota acima)
 ##   daily_dt <- daily_curtailment_bounds(curtl_dt, window_start, window_end, tz = proj_timezone)
 ##   daily_dt <- join_curtailment_bounds_daylight(daily_dt, daylight_cal)
 ##   p <- plot_daily_curtailment_bounds(daily_dt, proposed_start_clock = "07:00", proposed_end_clock = "18:00")
@@ -44,12 +60,10 @@
 ##   violations_dt <- list_curtailment_window_violations(daily_dt, "07:00", "18:00")
 ##   trend_dt <- test_curtailment_gap_trend(daily_dt)
 ##
-##   # So' as turbinas de incidentes com abutres/aguias -- o alvo real da recomendacao
-##   critical_turbines <- unique(fatality_incidents$turbine)
-##   daily_dt_critical <- daily_curtailment_bounds(curtl_dt, window_start, window_end, tz = proj_timezone, turbines = critical_turbines)
-##   daily_dt_critical <- join_curtailment_bounds_daylight(daily_dt_critical, daylight_cal)
-##   p_critical <- plot_daily_curtailment_bounds(daily_dt_critical, proposed_start_clock = "07:00", proposed_end_clock = "18:00")
-##   coverage_dt_critical <- summarise_curtailment_window_coverage(daily_dt_critical, "07:00", "18:00", window_start, window_end, tz = proj_timezone)
+##   # Versao robusta (percentil 1%/99%, por mes) -- ver funcao 6/7/8, mais abaixo
+##   edge_bins_dt <- curtailment_edge_bins_by_period(curtl_dt, daylight_cal, window_start, window_end, tz = proj_timezone)
+##   p_edge <- plot_curtailment_edge_trend(edge_bins_dt, daylight_cal, proposed_start_clock = "07:00", proposed_end_clock = "18:00")
+##   coverage_edge_dt <- summarise_curtailment_edge_coverage(edge_bins_dt, "07:00", "18:00")
 ##
 
 
@@ -381,5 +395,234 @@ test_curtailment_gap_trend <- function(daily_bounds_daylight_dt) {
   rbind(
     data.table::data.table(metric = "gap_sunrise_min", as.data.table(fit_one("gap_sunrise_min"))),
     data.table::data.table(metric = "gap_sunset_min",  as.data.table(fit_one("gap_sunset_min")))
+  )
+}
+
+
+## 6. Versao robusta (por percentil) do limite matinal/vespertino -- em vez
+## do min/max literal de CADA dia (funcao 1), agrupa os curtailments por
+## periodo (semana ou mes) e usa o percentil edge_pct/1-edge_pct da
+## distribuicao de horas-do-dia nesse periodo ----
+##
+## Pedido do Paulo (2026-09): o min/max diario (funcao 1) e' fragil -- 1 SO'
+## curtailment atipico (ex: 1 ave a passar muito cedo, 1 caso raro) desloca
+## o "1o/ultimo curtailment do dia" inteiro nesse dia, mesmo sendo um
+## outlier isolado. Agrupando N dias num periodo e olhando para o percentil
+## 1%/99% (omissao) em vez do min/max, ate' 1% dos curtailments desse
+## periodo pode ser outlier sem deslocar a estimativa -- muito mais robusto
+## para ver a TENDENCIA real (o "nucleo" a encolher com os dias mais
+## curtos), sem ficar refem de casos isolados.
+##
+## bin_mins (10 por omissao) -- os percentis (minutos exatos, continuos) sao
+## arredondados ao bin de 10 min mais proximo so' para leitura/apresentacao
+## (ex: "6:10", nao "6:07.3") -- edge_low_min/edge_high_min (NAO
+## arredondados) ficam disponiveis para calculo (gap_sunrise_min/
+## gap_sunset_min abaixo usam os valores exatos, nao os bins).
+##
+## min_n (20 por omissao) -- periodos com menos de min_n curtailments ficam
+## com edge_low_min/edge_high_min = NA (um percentil de amostra pequena e'
+## ele proprio pouco fiavel) -- CONFIRMAR sempre a coluna n_curtailments do
+## resultado antes de confiar num periodo; se muitos periodos ficarem sem
+## dados com period="week", tentar period="month" (mais curtailments por
+## periodo, menos resolucao temporal -- trade-off inevitavel).
+##
+## gap_sunrise_min/gap_sunset_min/daylight_mins -- MESMOS nomes de coluna
+## de join_curtailment_bounds_daylight() (funcao 2), de proposito: assim
+## test_curtailment_gap_trend() (funcao 5) funciona sem alteracoes tambem
+## sobre esta tabela (so' precisa dessas 3 colunas, nao importa a origem).
+
+curtailment_edge_bins_by_period <- function(curtl_dt, daylight_cal, window_start, window_end, tz,
+                                            turbines = NULL, period = c("month", "week"),
+                                            bin_mins = 10, edge_pct = 0.01, min_n = 20) {
+
+  period <- match.arg(period)
+
+  dt <- curtl_dt[start >= window_start & start <= window_end]
+  if (!is.null(turbines)) dt <- dt[turbine %in% turbines]
+
+  if (nrow(dt) == 0L) {
+    message("curtailment_edge_bins_by_period(): sem curtailments no periodo/turbinas pedidas -- tabela vazia devolvida.")
+    return(dt[, .(
+      period_start = as.Date(character()), n_curtailments = integer(),
+      edge_low_min = numeric(), edge_high_min = numeric(),
+      edge_low_bin_min = numeric(), edge_high_bin_min = numeric(),
+      gap_sunrise_min = numeric(), gap_sunset_min = numeric(), daylight_mins = numeric()
+    )])
+  }
+
+  to_min_of_day <- function(x) as.numeric(lubridate::hour(x) * 60 + lubridate::minute(x) + lubridate::second(x) / 60)
+
+  dt[, `:=`(start_min_of_day = to_min_of_day(start), end_min_of_day = to_min_of_day(end))]
+
+  # bins de periodo -- "week": 7 dias ancorados a window_start (mesma logica
+  # de weekly_species_presence(), explore_bsh_dgy_comparison.R); "month":
+  # 1o dia de cada mes de calendario (mais simples de ler num relatorio,
+  # mas meses tem tamanhos diferentes -- nao afeta o calculo do percentil,
+  # so' a leitura do eixo X)
+  if (period == "week") {
+    anchor <- as.Date(window_start, tz = tz)
+    dt[, period_start := anchor + (as.integer(as.Date(start, tz = tz) - anchor) %/% 7L) * 7L]
+  } else {
+    dt[, period_start := as.Date(format(as.Date(start, tz = tz), "%Y-%m-01"))]
+  }
+
+  round_to_bin <- function(x) round(x / bin_mins) * bin_mins
+
+  out <- dt[, {
+    n <- .N
+    if (n < min_n) {
+      list(n_curtailments = n, edge_low_min = NA_real_, edge_high_min = NA_real_,
+          edge_low_bin_min = NA_real_, edge_high_bin_min = NA_real_)
+    } else {
+      q_low  <- as.numeric(stats::quantile(start_min_of_day, probs = edge_pct, type = 7))
+      q_high <- as.numeric(stats::quantile(end_min_of_day,   probs = 1 - edge_pct, type = 7))
+      list(
+        n_curtailments = n, edge_low_min = round(q_low, 1), edge_high_min = round(q_high, 1),
+        edge_low_bin_min = round_to_bin(q_low), edge_high_bin_min = round_to_bin(q_high)
+      )
+    }
+  }, by = period_start]
+
+  # gap_sunrise_min/gap_sunset_min/daylight_mins -- usa o sunrise/sunset do
+  # PROPRIO period_start (1o dia do periodo) como referencia; para "month"
+  # isto e' uma aproximacao (o sunrise/sunset muda um pouco ao longo do
+  # mes) -- suficiente para a tendencia, que e' o que test_curtailment_gap_trend()
+  # (funcao 5) usa.
+  daylight_ref <- data.table::copy(daylight_cal)[, .(period_start = date, sunrise, sunset)]
+  daylight_ref[, `:=`(sunrise_min = to_min_of_day(sunrise), sunset_min = to_min_of_day(sunset))]
+
+  out <- merge(out, daylight_ref[, .(period_start, sunrise_min, sunset_min)], by = "period_start", all.x = TRUE)
+  out[, gap_sunrise_min := round(edge_low_min - sunrise_min, 1)]
+  out[, gap_sunset_min  := round(sunset_min - edge_high_min, 1)]
+  out[, daylight_mins   := round(sunset_min - sunrise_min, 1)]
+  out[, `:=`(sunrise_min = NULL, sunset_min = NULL)]
+
+  data.table::setorder(out, period_start)
+  out[]
+}
+
+
+## 7. Grafico -- os mesmos bordos robustos (funcao 6), como uma linha por
+## periodo, sobre a mesma faixa de luz do dia/crepusculo da funcao 3 ----
+##
+## Funcao SEPARADA de plot_daily_curtailment_bounds() (nao partilham codigo)
+## -- de proposito, para nao arriscar alterar a funcao 3 (ja' revista/
+## usada) so' para extrair um helper comum; ha' alguma duplicacao do
+## desenho da faixa de luz do dia entre as 2, aceite aqui em troca de nao
+## mexer no que ja' estava pronto.
+##
+## edge_bins_dt -- saida de curtailment_edge_bins_by_period() (funcao 6);
+## periodos com n_curtailments < min_n (edge_low_bin_min/edge_high_bin_min
+## = NA) sao omitidos da linha (nao aparecem como um ponto a 0h/vazio).
+
+plot_curtailment_edge_trend <- function(edge_bins_dt, daylight_cal, twilight_cal = NULL,
+                                        proposed_start_clock = NULL, proposed_end_clock = NULL,
+                                        window_marker_date = NULL, date_breaks = "1 month") {
+
+  edge_dt <- data.table::copy(edge_bins_dt)[!is.na(edge_low_bin_min) & !is.na(edge_high_bin_min)]
+  if (nrow(edge_dt) == 0L) {
+    message("plot_curtailment_edge_trend(): sem periodos com dados suficientes (ver min_n) -- NULL devolvido.")
+    return(NULL)
+  }
+  edge_dt[, `:=`(edge_low_h = edge_low_bin_min / 60, edge_high_h = edge_high_bin_min / 60)]
+
+  to_decimal_hour <- function(x) lubridate::hour(x) + lubridate::minute(x) / 60 + lubridate::second(x) / 3600
+  clock_to_decimal <- function(hhmm) {
+    if (is.null(hhmm)) return(NULL)
+    parts <- as.numeric(strsplit(hhmm, ":")[[1]])
+    parts[1] + parts[2] / 60
+  }
+
+  bg_dt <- data.table::copy(daylight_cal)
+  bg_dt[, `:=`(sunrise_h = to_decimal_hour(sunrise), sunset_h = to_decimal_hour(sunset))]
+  has_twilight <- !is.null(twilight_cal)
+  if (has_twilight) {
+    bg_dt <- merge(bg_dt, twilight_cal[, .(date, dawn, dusk)], by = "date", all.x = TRUE)
+    bg_dt[, `:=`(dawn_h = to_decimal_hour(dawn), dusk_h = to_decimal_hour(dusk))]
+  }
+
+  proposed_start_h <- clock_to_decimal(proposed_start_clock)
+  proposed_end_h   <- clock_to_decimal(proposed_end_clock)
+
+  p <- ggplot() +
+    geom_ribbon(data = bg_dt, aes(x = date, ymin = sunrise_h, ymax = sunset_h), fill = "#d9c94a", colour = NA)
+
+  if (has_twilight) {
+    p <- p +
+      geom_line(data = bg_dt, aes(x = date, y = dawn_h), colour = "#3a5bbf", linewidth = 0.5) +
+      geom_line(data = bg_dt, aes(x = date, y = dusk_h), colour = "#3a5bbf", linewidth = 0.5)
+  }
+
+  p <- p +
+    geom_line(data = edge_dt, aes(x = period_start, y = edge_low_h), colour = "#2b2b2b", linewidth = 0.8) +
+    geom_point(data = edge_dt, aes(x = period_start, y = edge_low_h), shape = 21, fill = "white", colour = "#2b2b2b", size = 2.2, stroke = 0.5) +
+    geom_line(data = edge_dt, aes(x = period_start, y = edge_high_h), colour = "#2b2b2b", linewidth = 0.8) +
+    geom_point(data = edge_dt, aes(x = period_start, y = edge_high_h), shape = 21, fill = "white", colour = "#2b2b2b", size = 2.2, stroke = 0.5)
+
+  if (!is.null(proposed_start_h)) p <- p + geom_hline(yintercept = proposed_start_h, colour = "#2f9e56", linetype = "dashed", linewidth = 0.6)
+  if (!is.null(proposed_end_h))   p <- p + geom_hline(yintercept = proposed_end_h,   colour = "#2f9e56", linetype = "dashed", linewidth = 0.6)
+  if (!is.null(window_marker_date)) p <- p + geom_vline(xintercept = as.numeric(as.Date(window_marker_date)), colour = "white", linewidth = 0.8)
+
+  p +
+    scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
+    scale_y_continuous(limits = c(0, 24), breaks = seq(0, 24, 4), labels = function(x) sprintf("%02d:00", x), expand = c(0, 0)) +
+    labs(
+      x = "Date", y = "Time of day",
+      title = "Robust curtailment edges by period (percentile-based, not daily min/max)",
+      subtitle = paste(
+        "White dots/line: 10-min-binned 1st/99th percentile of curtailment start/end time-of-day, per period.",
+        if (!is.null(proposed_start_h)) sprintf("Dashed green: proposed fixed window (%s-%s).", proposed_start_clock, proposed_end_clock) else NULL
+      )
+    ) +
+    theme_minimal(base_size = 9) +
+    theme(
+      panel.background = element_rect(fill = "#16324a", colour = NA),
+      panel.grid = element_line(colour = "white", linewidth = 0.15, linetype = "dotted"),
+      axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
+      plot.subtitle = element_text(size = 7)
+    )
+}
+
+
+## 8. Cobertura da janela proposta, ao nivel do PERIODO (nao do dia) --
+## quantos periodos teriam o bordo robusto fora da janela proposta ----
+##
+## Mesma logica de summarise_curtailment_window_coverage() (funcao 4), mas
+## sobre os bordos por percentil/periodo (funcao 6) em vez do min/max
+## diario (funcao 1) -- os 2 nao tem de bater certo: o percentil e' mais
+## conservador (tolera outliers), por isso normalmente vai dar MENOS
+## violacoes do que o min/max diario -- comparar os 2 resultados e' o
+## proprio argumento de robustez (se ainda assim houver violacao no
+## percentil, e' um sinal mais forte de que a janela proposta nao e'
+## segura).
+
+summarise_curtailment_edge_coverage <- function(edge_bins_dt, proposed_start_clock, proposed_end_clock) {
+
+  clock_to_decimal_min <- function(hhmm) {
+    parts <- as.numeric(strsplit(hhmm, ":")[[1]])
+    parts[1] * 60 + parts[2]
+  }
+  proposed_start_min <- clock_to_decimal_min(proposed_start_clock)
+  proposed_end_min   <- clock_to_decimal_min(proposed_end_clock)
+
+  dt <- edge_bins_dt[!is.na(edge_low_bin_min) & !is.na(edge_high_bin_min)]
+
+  if (nrow(dt) == 0L) {
+    return(data.table::data.table(
+      n_periods_total = nrow(edge_bins_dt), n_periods_with_data = 0L,
+      n_periods_violation_start = NA_integer_, n_periods_violation_end = NA_integer_,
+      pct_periods_within_window = NA_real_
+    ))
+  }
+
+  violation_start <- dt$edge_low_bin_min < proposed_start_min
+  violation_end   <- dt$edge_high_bin_min > proposed_end_min
+
+  data.table::data.table(
+    n_periods_total             = nrow(edge_bins_dt),
+    n_periods_with_data         = nrow(dt),
+    n_periods_violation_start   = sum(violation_start),
+    n_periods_violation_end     = sum(violation_end),
+    pct_periods_within_window   = round(100 * mean(!violation_start & !violation_end), 1)
   )
 }
