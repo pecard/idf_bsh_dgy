@@ -119,6 +119,16 @@ cat(sprintf("\n===== Turbinas-alvo da recomendacao (contexto, nao filtradas abai
 
 twilight_cal <- build_twilight_calendar(plot_start, window_end, proj_lat, proj_lon, proj_timezone)
 
+## daylight_cal (de load_curtailments.R) cobre TODO o historico de
+## curtl_dt_unfilt, nao so' a janela do grafico -- plot_curtailment_edge_trend()
+## (secção 2, abaixo) precisa de uma versao restrita a plot_start..window_end,
+## do MESMO tamanho de twilight_cal (que ja' nasce so' com esse periodo),
+## senao o fundo de luz do dia fica mais largo do que o resto do grafico
+## (alarga o eixo X para alem do contexto pretendido) e a linha de crepusculo
+## fica com NA fora do periodo coberto por twilight_cal, gerando o aviso
+## "Removed N rows ... missing values" do geom_line() dessa linha.
+daylight_cal_plot <- daylight_cal[date >= as.Date(plot_start, tz = proj_timezone) & date <= as.Date(window_end, tz = proj_timezone)]
+
 
 ## 1. Bordos diarios (min/max literal) -- padrao geral, farm-wide ----
 
@@ -174,7 +184,7 @@ edge_bins_dt_plot <- curtailment_edge_bins_by_period(
   period = edge_period, bin_mins = edge_bin_mins, edge_pct = edge_pct, min_n = edge_min_n
 )
 p_edge <- plot_curtailment_edge_trend(
-  edge_bins_dt_plot, daylight_cal, twilight_cal,
+  edge_bins_dt_plot, daylight_cal_plot, twilight_cal,
   proposed_start_clock, proposed_end_clock,
   window_marker_date = window_start
 )

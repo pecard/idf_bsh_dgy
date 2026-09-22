@@ -255,7 +255,7 @@ plot_daily_curtailment_bounds <- function(daily_bounds_daylight_dt, proposed_sta
 
   if (!is.null(proposed_start_h)) p <- p + geom_hline(yintercept = proposed_start_h, colour = "#2f9e56", linetype = "dashed", linewidth = 0.6)
   if (!is.null(proposed_end_h))   p <- p + geom_hline(yintercept = proposed_end_h,   colour = "#2f9e56", linetype = "dashed", linewidth = 0.6)
-  if (!is.null(window_marker_date)) p <- p + geom_vline(xintercept = as.numeric(as.Date(window_marker_date)), colour = "white", linewidth = 0.8)
+  if (!is.null(window_marker_date)) p <- p + geom_vline(xintercept = as.Date(window_marker_date), colour = "white", linewidth = 0.8)
 
   p +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
@@ -561,7 +561,7 @@ plot_curtailment_edge_trend <- function(edge_bins_dt, daylight_cal, twilight_cal
 
   if (!is.null(proposed_start_h)) p <- p + geom_hline(yintercept = proposed_start_h, colour = "#2f9e56", linetype = "dashed", linewidth = 0.6)
   if (!is.null(proposed_end_h))   p <- p + geom_hline(yintercept = proposed_end_h,   colour = "#2f9e56", linetype = "dashed", linewidth = 0.6)
-  if (!is.null(window_marker_date)) p <- p + geom_vline(xintercept = as.numeric(as.Date(window_marker_date)), colour = "white", linewidth = 0.8)
+  if (!is.null(window_marker_date)) p <- p + geom_vline(xintercept = as.Date(window_marker_date), colour = "white", linewidth = 0.8)
 
   p +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
