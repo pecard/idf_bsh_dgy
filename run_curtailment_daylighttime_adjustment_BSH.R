@@ -26,16 +26,16 @@ project_settings_file <- "userSettings_BSH.R"
 ## de forcar. Muda para FALSE se quiseres reutilizar a cache em disco sem
 ## reler (ex: varias corridas seguidas so' a ajustar os parametros da
 ## analise abaixo, mesmos dados brutos).
-force_reread_cache <- TRUE
+force_reread_cache <- F
 
 ## Opcoes da analise (todas opcionais -- ver
 ## explore_curtailment_daylighttime_adjustment.R para os valores por
 ## omissao de cada uma se nao definidas aqui):
 # window_months <- 6              # janela de decisao -- ultimos N meses
-# proposed_start_clock <- "07:00" # janela fixa proposta a testar
-# proposed_end_clock   <- "18:00"
+proposed_start_clock <- "07:00" # janela fixa proposta a testar
+proposed_end_clock   <- "19:00"
 # plot_context_months <- 12       # so' para o contexto visual dos graficos
-# edge_period   <- "month"        # "month" ou "week" -- bordos robustos (secção 2)
+edge_period   <- "week"        # "month" ou "week" -- bordos robustos (secção 2)
 # edge_bin_mins <- 10
 # edge_pct      <- 0.01
 # edge_min_n    <- 20
