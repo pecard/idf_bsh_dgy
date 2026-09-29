@@ -10,6 +10,8 @@
 
 // ============================ CONFIGURAÇÃO ============================
 var CONFIG = {
+  runLabel: 'base',     // etiqueta desta corrida (ex.: 'base', 'mndwi', 'l9'); entra nos nomes dos ficheiros
+  timestamp: true,      // acrescentar data/hora ao run_id, para nunca repetir nomes entre corridas
   years: [2025],        // anos a mapear; janela = 1 dez (ano-1) a 15 jan (ano)
   useL9: false,         // juntar Landsat 9 (só anos >= 2022); false reproduz o mapa anterior
   cloudCoverMax: 100,   // filtro CLOUD_COVER (100 = sem filtro, como no script anterior)
@@ -31,6 +33,13 @@ var CONFIG = {
   exportAreas: false,   // áreas calculadas em R a partir do GeoTIFF (gee/areas_from_geotiff.R)
   printAreas: false     // imprimir áreas na consola dá timeout (modo interativo)
 };
+
+// Identificador da corrida: etiqueta + data/hora (ex.: base_20260929_1435)
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+var NOW = new Date();
+var STAMP = NOW.getFullYear() + pad2(NOW.getMonth() + 1) + pad2(NOW.getDate()) +
+            '_' + pad2(NOW.getHours()) + pad2(NOW.getMinutes());
+var RUN_ID = CONFIG.runLabel + (CONFIG.timestamp ? '_' + STAMP : '');
 
 var PALETTE = [
   'BD4BD5', // 1 mangal
@@ -188,7 +197,7 @@ function areaTable(img, fc, nameProp, level, year) {
       var key = ee.String('km2_').cat(ee.Number(g.get('class')).toInt().format('%d'));
       return ee.Dictionary(acc).set(key, g.get('sum'));
     }, zeros));
-    return ee.Feature(null, res.set('year', year).set('level', level)
+    return ee.Feature(null, res.set('year', year).set('run_id', RUN_ID).set('level', level)
       .set('name', f.get(nameProp)));
   });
 }
@@ -240,7 +249,11 @@ function runYear(year) {
   });
 
   var info = {
+    run_id: RUN_ID,
     year: year,
+    use_l9: CONFIG.useL9,
+    extra_indices: CONFIG.extraIndices,
+    seed: CONFIG.seed,
     window_start: lc.start,
     window_end: lc.end,
     sensors: lc.sensors,
@@ -265,7 +278,7 @@ function runYear(year) {
     ee.Feature(null, ee.Dictionary(info).combine(summary))
   ]);
   var importanceFc = ee.FeatureCollection([
-    ee.Feature(null, relImportance.set('year', year))
+    ee.Feature(null, relImportance.set('year', year).set('run_id', RUN_ID))
   ]);
 
   // Mapa
@@ -300,7 +313,7 @@ function runYear(year) {
   if (CONFIG.exportImages) {
     Export.image.toDrive({
       image: filtered.toByte(),
-      description: 'mangal_gnb_' + year,
+      description: 'mangal_gnb_' + year + '_' + RUN_ID,
       folder: CONFIG.folder,
       scale: 30,
       crs: 'EPSG:32628',
@@ -318,7 +331,7 @@ function runYear(year) {
     Object.keys(tables).forEach(function(name) {
       Export.table.toDrive({
         collection: tables[name],
-        description: 'mangal_gnb_' + name + '_' + year,
+        description: 'mangal_gnb_' + name + '_' + year + '_' + RUN_ID,
         folder: CONFIG.folder,
         fileFormat: 'CSV'
       });
@@ -333,4 +346,5 @@ Map.addLayer(admin1, {}, 'Regioes Admin', 0);
 Map.addLayer(area_mangais, {}, 'Area_cartografia', 0);
 Map.addLayer(AP, {}, 'Areas Protegidas', 0);
 
+print('run_id: ' + RUN_ID);
 CONFIG.years.forEach(runYear);

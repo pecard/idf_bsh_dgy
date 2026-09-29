@@ -11,13 +11,14 @@ invisible(lapply(pkgs, library, character.only = TRUE))
 
 # ============================ CONFIGURAÇÃO ============================
 ano        <- 2025
-raster_tif <- sprintf("mangal_gnb_%d.tif", ano)   # exportado pelo GEE (EPSG:32628, 30 m)
+run_id     <- "base_20260929_1435"                # o run_id impresso na consola do GEE
+raster_tif <- sprintf("mangal_gnb_%d_%s.tif", ano, run_id)   # exportado pelo GEE (EPSG:32628, 30 m)
 camadas <- list(                                   # nível = ficheiro vetorial + coluna com o nome
   admin1         = list(ficheiro = "GNB_admin1.shp",         coluna = "name_1"),
   protected_area = list(ficheiro = "GNB_AP_Mangal_UTM28N.shp", coluna = "NAME")
 )
 area_mangais_shp <- "Area_Mangais_GNB_Rev2.shp"    # extensão total do mapa
-saida_csv  <- sprintf("mangal_gnb_areas_%d.csv", ano)
+saida_csv  <- sprintf("mangal_gnb_areas_%d_%s.csv", ano, run_id)
 classes    <- 1:4
 # ======================================================================
 
@@ -41,7 +42,7 @@ area_por_classe <- function(poligonos, coluna, nivel) {
   tabela <- as.data.frame(t(tabela))
   names(tabela) <- paste0("km2_", classes)
   tabela[] <- lapply(tabela, `*`, km2_pixel)
-  data.frame(year = ano, level = nivel, name = as.character(poligonos[[coluna]]), tabela)
+  data.frame(year = ano, run_id = run_id, level = nivel, name = as.character(poligonos[[coluna]]), tabela)
 }
 
 # Total (união das features da cartografia de referência)
