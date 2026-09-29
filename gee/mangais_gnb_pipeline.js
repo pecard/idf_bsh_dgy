@@ -28,7 +28,8 @@ var CONFIG = {
   folder: 'MangaisGEEngine',
   exportImages: true,
   exportTables: true,
-  printAreas: false     // imprimir áreas na consola dá timeout (modo interativo); usar o export CSV
+  exportAreas: false,   // áreas calculadas em R a partir do GeoTIFF (gee/areas_from_geotiff.R)
+  printAreas: false     // imprimir áreas na consola dá timeout (modo interativo)
 };
 
 var PALETTE = [
@@ -310,8 +311,10 @@ function runYear(year) {
   if (CONFIG.exportTables) {
     var tables = {
       metrics: metrics, cv_repeats: reps,
-      importance: importanceFc, areas: areas
+      importance: importanceFc
     };
+    // Áreas: por omissão calculadas fora do GEE (gee/areas_from_geotiff.R)
+    if (CONFIG.exportAreas) { tables.areas = areas; }
     Object.keys(tables).forEach(function(name) {
       Export.table.toDrive({
         collection: tables[name],
