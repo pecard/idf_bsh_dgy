@@ -27,7 +27,8 @@ var CONFIG = {
   classes: [1, 2, 3, 4],
   folder: 'MangaisGEEngine',
   exportImages: true,
-  exportTables: true
+  exportTables: true,
+  printAreas: false     // imprimir áreas na consola dá timeout (modo interativo); usar o export CSV
 };
 
 var PALETTE = [
@@ -177,7 +178,7 @@ function areaTable(img, fc, nameProp, level, year) {
         crs: 'EPSG:32628',
         scale: 30,
         maxPixels: 1e13,
-        tileScale: 4
+        tileScale: 8
       });
     var groups = ee.List(ee.Algorithms.If(d.contains('groups'), d.get('groups'), []));
     var zeros = ee.Dictionary.fromLists(KM_KEYS, ee.List.repeat(0, CONFIG.classes.length));
@@ -282,7 +283,9 @@ function runYear(year) {
   print('== ' + year + ' == metricas', metrics);
   print('== ' + year + ' == validacao por repeticao', reps);
   print('== ' + year + ' == importancia relativa (%)', relImportance);
-  print('== ' + year + ' == areas (km2)', areas);
+  if (CONFIG.printAreas) {
+    print('== ' + year + ' == areas (km2)', areas);
+  }
 
   // Mapa
   Map.addLayer(nObs, {min: 1, max: 10, palette: ['red', 'yellow', 'green']},
