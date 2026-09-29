@@ -16,6 +16,8 @@ var CONFIG = {
   useL9: false,         // juntar Landsat 9 (só anos >= 2022); false reproduz o mapa anterior
   cloudCoverMax: 100,   // filtro CLOUD_COVER (100 = sem filtro, como no script anterior)
   extraIndices: false,  // acrescentar MNDWI e NDWI aos preditores
+  compositeMode: 'median',  // 'median' (todas as observações) ou 'lowWater' (só as mais secas por pixel)
+  waterPercentile: 25,      // lowWater: mantém observações com MNDWI <= este percentil, por pixel
 
   trees: 2001,          // árvores do modelo final
   seed: 123,
@@ -100,6 +102,23 @@ var addIndices = function(image) {
   return image.addBands(ndvi).addBands(ndbi).addBands(mndwi)
     .addBands(ndwi).addBands(savi).addBands(evi);
 };
+
+// Composite: mediana de todas as observações, ou mediana só das observações de
+// "baixa água" (MNDWI abaixo do percentil por pixel), que favorece a maré baixa.
+function buildComposite(prepared) {
+  var base = prepared;
+  if (CONFIG.compositeMode === 'lowWater') {
+    var limite = prepared.select('MNDWI')
+      .reduce(ee.Reducer.percentile([CONFIG.waterPercentile]));
+    base = prepared.map(function(img) {
+      return img.updateMask(img.select('MNDWI').lte(limite));
+    });
+  }
+  return {
+    image: base.median().clip(area_mangais).select(PRED_BANDS),
+    nObs: base.select('SR_B4').count().clip(area_mangais).rename('n_obs')
+  };
+}
 
 function windowFor(year) {
   return {start: (year - 1) + '-12-01', end: year + '-01-15'};
@@ -206,8 +225,9 @@ function areaTable(img, fc, nameProp, level, year) {
 function runYear(year) {
   var lc = landsatCollection(year);
   var prepared = lc.col.map(prepSrL8).map(addIndices);
-  var image = prepared.median().clip(area_mangais).select(PRED_BANDS);
-  var nObs = prepared.select('SR_B4').count().clip(area_mangais).rename('n_obs');
+  var comp = buildComposite(prepared);
+  var image = comp.image;
+  var nObs = comp.nObs;
   var nImages = lc.col.size();
 
   // Amostra: valores dos preditores nos pontos (pontos em pixéis mascarados são descartados)
@@ -253,6 +273,8 @@ function runYear(year) {
     year: year,
     use_l9: CONFIG.useL9,
     extra_indices: CONFIG.extraIndices,
+    composite_mode: CONFIG.compositeMode,
+    water_percentile: CONFIG.waterPercentile,
     seed: CONFIG.seed,
     window_start: lc.start,
     window_end: lc.end,
