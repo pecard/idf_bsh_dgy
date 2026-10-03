@@ -85,21 +85,10 @@ heartbeats_pattern   <- "Heartbeats_.+csv"  # ex: Heartbeats_20260201_....csv
 ## coverage"): IDF60 (79.5%), IDF58 (43.1%), IDF53 (31.9%), IDF66 (21.8%).
 ## IDF65 fica de fora (2.7%, abaixo do limiar de 20%).
 ##
-## A CONFIRMAR (Paulo/Claude, 2026-10): os codigos BRUTOS
-## ("GW<turbina que aloja a unidade>-<numero>", formato confirmado para o
-## T35 em "GW32-22" etc.) AINDA NAO estao confirmados para estas 4
-## unidades -- esse codigo so' existe nos ficheiros brutos de heartbeats
-## (instance_name), nao no shapefile, por isso
-## check_turbine_idf_coverage_ZRF.R (so' le os 2 shapefiles) nao o pode
-## calcular. ANTES de correr o relatorio real: le os heartbeats brutos
-## (ex: unique(heartb_dt_unfilt$idf) depois de um 1o load_or_read_cache(),
-## ou abre um ficheiro Heartbeats_*.csv diretamente) e procura os
-## instance_name que terminam em "-60", "-58", "-53", "-66" -- substitui
-## os placeholders "GW??-60" etc. abaixo pelos valores reais. Os 2 checks
-## AVISO ja' existentes em run_incident_zrshan.R (secção "2. Turbine/IDF
-## coverage") apanham um mismatch se isto ficar por corrigir, mas nao
-## travam a corrida -- confirmar ANTES, nao depois.
-heartbeat_idf_units <- c("GW??-60", "GW??-58", "GW??-53", "GW??-66")
+## Codigos BRUTOS ("GW<turbina que aloja a unidade>-<numero>", formato
+## confirmado para o T35 em "GW32-22" etc.) CONFIRMADOS pelo Paulo a
+## partir dos heartbeats brutos (instance_name), 2026-10.
+heartbeat_idf_units <- c("GW94-60", "GW89-58", "GW82-53", "GW105-66")
 names(heartbeat_idf_units) <- c("IDF60", "IDF58", "IDF53", "IDF66")
 
 

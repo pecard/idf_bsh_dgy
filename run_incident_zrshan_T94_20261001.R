@@ -14,9 +14,8 @@
 ##
 ## NUNCA copiar as linhas abaixo para dentro de run_incident_zrshan.R.
 ##
-## ANTES de correr a serio: confirmar heartbeat_idf_units em
-## inputs/userSettings_ZRF_T94_20261001.R (codigos brutos "GW??-<NN>" ainda
-## por preencher -- ver nota "A CONFIRMAR" nesse ficheiro).
+## heartbeat_idf_units (IDF60/58/53/66, rotulos e codigos brutos) ja'
+## confirmados em inputs/userSettings_ZRF_T94_20261001.R.
 ##
 
 project_settings_file <- "userSettings_ZRF_T94_20261001.R"
