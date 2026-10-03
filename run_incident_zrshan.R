@@ -150,11 +150,16 @@ source("R/read_heartbeats.R")
 source("R/data_cache.R")
 source("R/write_utils.R")
 
-## Pasta UNICA e dedicada -- ao contrario de BSH/DGY, so 1 elemento em
-## databases_dirs e farm_pattern fica NULL (list_files_multi_dir(), R/
-## read_utils.R, so aplica esse filtro quando ha mais de 1 parque na mesma
-## pasta, o que nao e' o caso aqui)
+## CORRIGIDO (Paulo, 2026-10): a pasta deixou de ser dedicada/unica a este
+## parque -- databases_dir aponta agora para a mesma pasta partilhada
+## "data-raw" do BSH/DGY (ver userSettings_ZRF_T94_20261001.R), por isso
+## farm_pattern (2a camada de filtro, list_files_multi_dir(), R/
+## read_utils.R) tem de vir do settings file tal como no BSH/DGY, NAO ficar
+## sempre NULL como antes (pressuposto antigo, de pasta dedicada, ja nao
+## valido). farm_pattern so fica NULL se o settings file nao o definir
+## (ex: um futuro incidente deste parque que volte a usar pasta dedicada).
 databases_dirs <- databases_dir
+farm_pattern_zrf <- if (exists("farm_pattern")) farm_pattern else NULL
 
 if (!exists("force_reread_cache")) force_reread_cache <- FALSE
 
@@ -169,25 +174,25 @@ if (!exists("generate_report")) generate_report <- TRUE
 track_dt_unfilt <- reuse_or_load_cache(
   if (exists("track_dt_unfilt")) track_dt_unfilt else NULL,
   "track_dt_unfilt", file.path(folder_cache, "track_dt_unfilt.fst"),
-  function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone, farm_pattern = NULL),
+  function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone, farm_pattern = farm_pattern_zrf),
   force_reread = force_reread_cache, tz = proj_timezone
 )
 curtl_dt_unfilt <- reuse_or_load_cache(
   if (exists("curtl_dt_unfilt")) curtl_dt_unfilt else NULL,
   "curtl_dt_unfilt", file.path(folder_cache, "curtl_dt_unfilt.fst"),
-  function() read_curtailments_data(databases_dirs, curtailments_pattern, tz = proj_timezone, farm_pattern = NULL),
+  function() read_curtailments_data(databases_dirs, curtailments_pattern, tz = proj_timezone, farm_pattern = farm_pattern_zrf),
   force_reread = force_reread_cache, tz = proj_timezone
 )
 scada_dt_unfilt <- reuse_or_load_cache(
   if (exists("scada_dt_unfilt")) scada_dt_unfilt else NULL,
   "scada_dt_unfilt", file.path(folder_cache, "scada_dt_unfilt.fst"),
-  function() read_scada_data(databases_dirs, scada_pattern, tz = proj_timezone, farm_pattern = NULL),
+  function() read_scada_data(databases_dirs, scada_pattern, tz = proj_timezone, farm_pattern = farm_pattern_zrf),
   force_reread = force_reread_cache, tz = proj_timezone
 )
 heartb_dt_unfilt <- reuse_or_load_cache(
   if (exists("heartb_dt_unfilt")) heartb_dt_unfilt else NULL,
   "heartb_dt_unfilt", file.path(folder_cache, "heartb_dt_unfilt.fst"),
-  function() read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone, farm_pattern = NULL),
+  function() read_heartbeats_data(databases_dirs, heartbeats_pattern, tz = proj_timezone, farm_pattern = farm_pattern_zrf),
   force_reread = force_reread_cache, tz = proj_timezone
 )
 
