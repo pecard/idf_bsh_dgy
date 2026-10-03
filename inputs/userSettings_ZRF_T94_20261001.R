@@ -76,11 +76,6 @@ databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 farm_pattern <- "ZRF"
 
 ## Identificador curto -- usado em cache/ e outputs/AAAAMMDD_<farm_code>/.
-<<<<<<< HEAD
-## MESMO farm_code do T35 -- cache partilhada entre incidentes deste
-## parque (tracks/curtailments/SCADA/heartbeats sao os mesmos dados
-## brutos, so' a janela/turbina de interesse e' que muda por incidente).
-=======
 ## MUDADO de "ZRSHAN" (userSettings_ZRF.R, incidente T35) para "ZRF" --
 ## codigo oficial do projeto (Paulo, 2026-10). Este incidente passa a ter
 ## a sua PROPRIA cache (cache/ZRF/), NAO partilhada com a cache/ZRSHAN/ do
@@ -89,7 +84,6 @@ farm_pattern <- "ZRF"
 ## diferenca pratica para esta corrida: cache/ZRF/ ainda nao existe, por
 ## isso le sempre os brutos da pasta certa, force_reread_cache seja TRUE
 ## ou FALSE.
->>>>>>> c01c08c66790b96e9c7fcdc9bf5ed64add0a6b84
 farm_code <- "ZRF"
 
 ## Nomes confirmados pelo Paulo, 2026-10, ja' na pasta partilhada
