@@ -108,7 +108,14 @@ if (!dir.exists(folder_input) || !dir.exists("R")) {
     folder_input, getwd()
   ))
 }
-source(file.path(folder_input, "userSettings_ZRF.R"))
+## project_settings_file: "userSettings_ZRF.R" por omissao (comportamento
+## antigo, preservado) -- define-o ANTES de source() (consola, ou num
+## lancador dedicado, ex: run_incident_zrshan_T94_20261001.R) para apontar
+## a um settings file de outro incidente (ex: "userSettings_ZRF_T94_20261001.R")
+## sem sobrescrever o incidente anterior -- mesmo padrao de
+## project_settings_file em IDF_analysis.R (BSH/DGY).
+if (!exists("project_settings_file")) project_settings_file <- "userSettings_ZRF.R"
+source(file.path(folder_input, project_settings_file))
 
 folder_output <- file.path("outputs", paste0(format(Sys.time(), "%Y%m%d"), "_", farm_code))
 dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
