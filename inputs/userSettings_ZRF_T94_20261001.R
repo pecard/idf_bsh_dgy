@@ -12,9 +12,12 @@
 ## relatorio mais tarde sem reconstruir os parametros.
 ##
 ## O que mudou face a userSettings_ZRF.R (T35): fatality_incidents,
-## turbinas_scada, wtg_3d_coverage, heartbeat_idf_units (ver nota "A
-## CONFIRMAR" abaixo), end/scada_end (alargados para cobrir o incidente,
-## 2026-10-01 -- o ficheiro do T35 so' ia ate' 2026-08-15). Tudo o resto
+## turbinas_scada, wtg_3d_coverage, heartbeat_idf_units, end/scada_end
+## (alargados para cobrir o incidente, 2026-10-01 -- o ficheiro do T35 so'
+## ia ate' 2026-08-15), e a secção "Raw databases" abaixo (databases_dir,
+## farm_code, farm_pattern, *_pattern -- corrigido, Paulo, 2026-10: a pasta
+## dedicada "idf_zrfshan" assumida inicialmente estava errada, os brutos
+## ficam na mesma pasta partilhada "data-raw" do BSH/DGY). Tudo o resto
 ## (shapefiles, timezone, especies, parametros de analise "NAO ALTERAR") e'
 ## identico -- mesmo parque, mesma metodologia.
 ##
@@ -54,23 +57,42 @@ crs_projection_plannar <- 32641
 
 ##
 ## Raw databases (tracks, curtailments, SCADA, heartbeats)
-## Pasta UNICA e dedicada a este parque (ao contrario de BSH/DGY, que
-## partilham pasta) -- por isso, ao contrario dessas, NAO se define
-## databases_dir_alt nem farm_pattern.
+## CORRIGIDO (Paulo, 2026-10): afinal os brutos NAO ficam numa pasta
+## dedicada "idf_zrfshan" (assumido inicialmente, por analogia com o
+## resto deste ficheiro face ao T35 -- esse pressuposto estava errado) --
+## ficam na MESMA pasta partilhada "data-raw" ja' usada pelo BSH/DGY (ver
+## databases_dir em userSettings_BSH.R/userSettings_DGY.R). Por isso,
+## como o BSH/DGY, precisa de farm_pattern como 2a camada de filtro (ver
+## list_files_multi_dir(), R/read_utils.R) -- ao contrario do que a nota
+## antiga aqui dizia.
 ##
 
-databases_dir <- "G:/O meu disco/datasets/idf_zrfshan"
+databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
+
+## farm_pattern filtra por substring "ZRF" -- 2a camada de filtro,
+## redundante de proposito com "ZRF" ja' embutido em cada *_pattern
+## abaixo (mesma logica de farm_pattern em userSettings_DGY.R: protege
+## mesmo que um dos padroes venha a ser relaxado no futuro).
+farm_pattern <- "ZRF"
 
 ## Identificador curto -- usado em cache/ e outputs/AAAAMMDD_<farm_code>/.
-## MESMO farm_code do T35 -- cache partilhada entre incidentes deste
-## parque (tracks/curtailments/SCADA/heartbeats sao os mesmos dados
-## brutos, so' a janela/turbina de interesse e' que muda por incidente).
-farm_code <- "ZRSHAN"
+## MUDADO de "ZRSHAN" (userSettings_ZRF.R, incidente T35) para "ZRF" --
+## codigo oficial do projeto (Paulo, 2026-10). Este incidente passa a ter
+## a sua PROPRIA cache (cache/ZRF/), NAO partilhada com a cache/ZRSHAN/ do
+## T35 -- essa fica intacta (construida a partir da pasta antiga, que
+## pode ou nao ainda ser valida para o T35; nao mexido aqui). Sem
+## diferenca pratica para esta corrida: cache/ZRF/ ainda nao existe, por
+## isso le sempre os brutos da pasta certa, force_reread_cache seja TRUE
+## ou FALSE.
+farm_code <- "ZRF"
 
-trackreport_pattern  <- "TrackReport_"      # ex: TrackReport_20260201_....csv
-curtailments_pattern <- "Curtailments_"     # ex: Curtailments_20260201_....xlsx
-scada_pattern        <- "SCADA_.+csv"       # ex: SCADA_20260201_....csv
-heartbeats_pattern   <- "Heartbeats_.+csv"  # ex: Heartbeats_20260201_....csv
+## Nomes confirmados pelo Paulo, 2026-10, ja' na pasta partilhada
+## data-raw acima: "TrackReport_Default_ZRF_...", "Curtailments_ZRF_...",
+## "SCADA_ZRF_...", "Heartbeats_ZRF_...".
+trackreport_pattern  <- "TrackReport_Default_ZRF" # ex: TrackReport_Default_ZRF_20260901_....csv
+curtailments_pattern <- "^Curtailments_ZRF"       # ex: Curtailments_ZRF_20260901_....xlsx -- ^ para nao apanhar um eventual "Coverage_Curtailments_ZRF.csv" (mesmo bug do BSH/DGY, 2026-09)
+scada_pattern        <- "SCADA_ZRF.+csv"          # ex: SCADA_ZRF_20260901_....csv
+heartbeats_pattern   <- "Heartbeats_ZRF.+csv"     # ex: Heartbeats_ZRF_20260901_....csv
 
 ## So as unidades IDF de interesse para ESTE incidente (T94, nao T35) --
 ## usadas como fallback_idf_units em summarise_fatality_windows() (R/
