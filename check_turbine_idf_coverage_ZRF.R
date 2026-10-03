@@ -32,11 +32,11 @@ for (p in packages) {
 turbine_id       <- "T94"                             # turbina a verificar
 min_pct_coverage <- 20                                 # % minima do buffer da turbina coberto pelo buffer da unidade IDF
 buffer_m         <- 1000                               # raio (m) dos 2 buffers -- turbina E unidade IDF, o MESMO valor para ambos
-## "IDF8" (1 digito) -> "IDF08": a normalizacao real (run_incident_zrshan.R
-## e abaixo) usa sempre sprintf("IDF%02d", ...), 2 digitos -- sem este
-## ajuste a comparacao mais abaixo nunca bateria certo so' por formatacao,
-## mesmo com o numero de unidade correto.
-expected_idf     <- c("IDF60", "IDF53", "IDF08", "IDF66") # a confirmar/contradizer pelo calculo abaixo
+## CONFIRMADO (Paulo/Claude, 2026-10, apos corrigir o bug do regex
+## guloso acima): IDF60 (79.5%), IDF58 (43.1%), IDF53 (31.9%), IDF66
+## (21.8%) -- ver inputs/userSettings_ZRF_T94_20261001.R. IDF65 fica de
+## fora (2.7%, abaixo do limiar de 20%).
+expected_idf     <- c("IDF60", "IDF58", "IDF53", "IDF66")
 
 folder_input <- "inputs"
 source(file.path(folder_input, "userSettings_ZRF.R")) # so' para wtg_filename/idf_filename/*_source_id_col/crs_projection_plannar -- partilhados por TODOS os incidentes deste parque (geometria do parque, nao do incidente)

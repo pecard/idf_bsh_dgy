@@ -77,25 +77,30 @@ heartbeats_pattern   <- "Heartbeats_.+csv"  # ex: Heartbeats_20260201_....csv
 ## fatality_window_analysis.R), no calendario de disponibilidade e para
 ## restringir a reconciliacao de tracks candidatos (R/track_harmonization.R).
 ##
-## A CONFIRMAR (Paulo/Claude, 2026-10): os ROTULOS "IDF<NN>" (60, 53, 8,
-## 66) foram confirmados por calculo geometrico (buffers de 1000m,
-## cobertura >= 20% do buffer da turbina T94 -- ver
-## check_turbine_idf_coverage_ZRF.R, corrido com turbine_id <- "T94").
-## Os codigos BRUTOS ("GW<turbina que aloja a unidade>-<numero>", formato
-## confirmado para o T35 em "GW32-22" etc.) AINDA NAO estao confirmados
-## para estas 4 unidades -- esse codigo so' existe nos ficheiros brutos de
-## heartbeats (instance_name), nao no shapefile, por isso
+## ROTULOS "IDF<NN>" CONFIRMADOS (Paulo/Claude, 2026-10) por calculo
+## geometrico (buffers de 1000m, cobertura >= 20% do buffer da turbina
+## T94 -- check_turbine_idf_coverage_ZRF.R, corrido com turbine_id <-
+## "T94", apos corrigir o bug do regex guloso que truncava rotulos de 2+
+## digitos -- ver run_incident_zrshan.R, secção "2. Turbine/IDF
+## coverage"): IDF60 (79.5%), IDF58 (43.1%), IDF53 (31.9%), IDF66 (21.8%).
+## IDF65 fica de fora (2.7%, abaixo do limiar de 20%).
+##
+## A CONFIRMAR (Paulo/Claude, 2026-10): os codigos BRUTOS
+## ("GW<turbina que aloja a unidade>-<numero>", formato confirmado para o
+## T35 em "GW32-22" etc.) AINDA NAO estao confirmados para estas 4
+## unidades -- esse codigo so' existe nos ficheiros brutos de heartbeats
+## (instance_name), nao no shapefile, por isso
 ## check_turbine_idf_coverage_ZRF.R (so' le os 2 shapefiles) nao o pode
 ## calcular. ANTES de correr o relatorio real: le os heartbeats brutos
 ## (ex: unique(heartb_dt_unfilt$idf) depois de um 1o load_or_read_cache(),
 ## ou abre um ficheiro Heartbeats_*.csv diretamente) e procura os
-## instance_name que terminam em "-60", "-53", "-8", "-66" -- substitui os
-## placeholders "GW??-60" etc. abaixo pelos valores reais. Os 2 checks
+## instance_name que terminam em "-60", "-58", "-53", "-66" -- substitui
+## os placeholders "GW??-60" etc. abaixo pelos valores reais. Os 2 checks
 ## AVISO ja' existentes em run_incident_zrshan.R (secção "2. Turbine/IDF
 ## coverage") apanham um mismatch se isto ficar por corrigir, mas nao
 ## travam a corrida -- confirmar ANTES, nao depois.
-heartbeat_idf_units <- c("GW??-60", "GW??-53", "GW??-8", "GW??-66")
-names(heartbeat_idf_units) <- c("IDF60", "IDF53", "IDF08", "IDF66")
+heartbeat_idf_units <- c("GW??-60", "GW??-58", "GW??-53", "GW??-66")
+names(heartbeat_idf_units) <- c("IDF60", "IDF58", "IDF53", "IDF66")
 
 
 ##
