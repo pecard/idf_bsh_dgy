@@ -56,9 +56,13 @@ wtg$InternalNa <- {
 }
 
 ## idf -- mesma normalizacao de run_incident_zrshan.R (sequencia de digitos
-## no FIM da string -> "IDF<NN>", 2 digitos)
+## no FIM da string -> "IDF<NN>", 2 digitos). ".*?" (preguicoso), NAO ".*"
+## (guloso) -- ver nota/bug corrigido em run_incident_zrshan.R: ".*" so'
+## capturava o ULTIMO digito de numeros com 2+ digitos (ex: "IDF-60" dava
+## "IDF00" em vez de "IDF60"), colapsando varias unidades diferentes no
+## mesmo rotulo errado.
 idf <- sf::read_sf(file.path(folder_input, idf_filename))
-idf$imaging_he <- sprintf("IDF%02d", as.integer(sub(".*([0-9]+)$", "\\1", idf[[idf_source_id_col]])))
+idf$imaging_he <- sprintf("IDF%02d", as.integer(sub(".*?([0-9]+)$", "\\1", idf[[idf_source_id_col]])))
 idf <- sf::st_transform(idf, crs_projection_plannar)
 
 if (!turbine_id %in% wtg$InternalNa) {

@@ -271,8 +271,19 @@ idf <- sf::read_sf(file.path(folder_input, idf_filename))
 ## shapefile" abaixo. Digitos-no-fim (nao "apos o ultimo hifen") por ser
 ## idempotente -- ver nota sobre sessão R persistente na normalizacao de
 ## heartb_dt_unfilt$idf acima.
+##
+## BUG corrigido (2026-10, Claude -- apanhado pelo Paulo ao confirmar a
+## cobertura geometrica da T94): ".*([0-9]+)$" com ".*" guloso so' recua
+## UM caracter de cada vez ate' o resto do padrao conseguir validar, e
+## como "[0-9]+" so' precisa de 1 digito para ser valido, o motor de regex
+## para assim que sobra so' o ULTIMO digito -- nunca chega a capturar
+## numeros de 2+ digitos inteiros. Ex: "IDF-53" dava "3" (-> "IDF03"),
+## "IDF-60" dava "0" (-> "IDF00") -- varias unidades diferentes colapsavam
+## no mesmo rotulo errado. ".*?" (preguicoso) resolve: recua ate' a PRIMEIRA
+## posicao onde o resto do padrao consegue validar ate' ao fim da string, e
+## so' ai' "[0-9]+" (ainda guloso) consome TODOS os digitos finais de uma vez.
 idf_source_id_col <- if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"
-idf$imaging_he <- sprintf("IDF%02d", as.integer(sub(".*([0-9]+)$", "\\1", idf[[idf_source_id_col]])))
+idf$imaging_he <- sprintf("IDF%02d", as.integer(sub(".*?([0-9]+)$", "\\1", idf[[idf_source_id_col]])))
 idf <- sf::st_transform(idf, crs_projection_plannar)
 
 message("Unidades IDF encontradas no shapefile (apos normalizacao): ", paste(sort(unique(idf$imaging_he)), collapse = ", "))
