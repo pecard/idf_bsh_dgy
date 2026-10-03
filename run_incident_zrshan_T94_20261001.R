@@ -23,7 +23,7 @@ project_settings_file <- "userSettings_ZRF_T94_20261001.R"
 ## Deixar FALSE na maioria das corridas -- so' TRUE na 1a corrida a seguir
 ## a descarregar dados novos (mesma cache/ZRSHAN/ partilhada com o
 ## incidente T35, ver farm_code em userSettings_ZRF_T94_20261001.R).
-force_reread_cache <- FALSE
+force_reread_cache <- TRUE
 
 ## TRUE por omissao (gera o .docx final). FALSE so' para testar/depurar
 ## uma secção sem esperar pelo rmarkdown::render().

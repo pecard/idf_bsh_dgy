@@ -65,7 +65,7 @@ databases_dir <- "G:/O meu disco/datasets/idf_zrfshan"
 ## MESMO farm_code do T35 -- cache partilhada entre incidentes deste
 ## parque (tracks/curtailments/SCADA/heartbeats sao os mesmos dados
 ## brutos, so' a janela/turbina de interesse e' que muda por incidente).
-farm_code <- "ZRSHAN"
+farm_code <- "ZRF"
 
 trackreport_pattern  <- "TrackReport_"      # ex: TrackReport_20260201_....csv
 curtailments_pattern <- "Curtailments_"     # ex: Curtailments_20260201_....xlsx
@@ -101,11 +101,11 @@ names(heartbeat_idf_units) <- c("IDF60", "IDF58", "IDF53", "IDF66")
 ## ter de voltar a alargar manualmente a cada novo incidente.
 ##
 
-ini <- as.POSIXct('2026-01-01 00:00:00', tz = proj_timezone)
-end <- as.POSIXct('2026-12-31 23:59:59', tz = proj_timezone)
+ini <- as.POSIXct('2026-09-01 00:00:00', tz = proj_timezone)
+end <- as.POSIXct('2026-10-01 23:59:59', tz = proj_timezone)
 
-scada_ini <- as.POSIXct('2026-01-01 00:00:00', tz = proj_timezone)
-scada_end <- as.POSIXct('2026-12-31 23:59:59', tz = proj_timezone)
+scada_ini <- as.POSIXct('2026-09-01 00:00:00', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-10-01 23:59:59', tz = proj_timezone)
 
 ## So a turbina do incidente -- e' o unico foco deste relatorio
 turbinas_scada <- c("T94")
