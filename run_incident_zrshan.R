@@ -412,11 +412,15 @@ if (file.exists(dem_file)) {
   ## (Word nao suporta plotly interativo), MAIS uma versao screenshot (.png,
   ## via webshot2/Chrome headless) da turbina do incidente, para poder ser
   ## embebida diretamente no .docx (pedido do Paulo, 2026-08, secção "3D
-  ## Coverage" do relatorio)
+  ## Coverage" do relatorio). idf_sf = idf (ja' carregado/normalizado na
+  ## secção "2. Turbine/IDF coverage" acima, coluna imaging_he) marca,
+  ## nos 2 plots de cada turbina, as unidades IDF dentro de
+  ## idf_op_detection_range (1000m) -- pedido do Paulo, 2026-10.
   coverage3d_png_paths <- save_coverage_3d_plots(
     cov_all, file.path(folder_output, "coverage_3d"),
     radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
-    screenshot = TRUE
+    screenshot = TRUE,
+    idf_sf = idf, idf_max_dist_m = idf_op_detection_range, idf_id_col = "imaging_he"
   )
 
   coverage3d_covered_png     <- coverage3d_png_paths[[fatality_incidents$turbine]]$covered

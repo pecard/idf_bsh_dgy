@@ -549,10 +549,139 @@ summarise_priority_quadrant_coverage <- function(by_turbine_risk_dist_band,
 }
 
 
+## Mesma caixa de texto, mas para o plot "debug"/not-covered -- apanhado
+## pelo Paulo, 2026-10: esse plot mostra os pontos NAO cobertos, mas
+## reutilizava tal e qual o texto do plot covered (cobertura, nao
+## indisponibilidade) -- confuso, já que os numeros (cobertura) nao
+## batiam certo com o que o plot em si mostra (os pontos SEM cobertura).
+## Sample size fica igual (nao e' especifico de cobertura); os restantes 3
+## campos (mesh total, overall, por banda de risco) invertidos para
+## "uncovered" (100% - pct_covered / n_air_mesh - n_covered).
+.coverage_title_text_uncovered <- function(wtg_id, metrics, by_risk_band) {
+
+  sample_note <- if (isTRUE(metrics$low_sample)) " -- AMOSTRA BAIXA, interpretar com cautela" else ""
+
+  n_not_covered   <- metrics$n_air_mesh - metrics$n_covered
+  pct_not_covered <- 100 - metrics$pct_covered
+
+  risk_lines <- paste(
+    sprintf("Uncovered %s: %.1f%%", by_risk_band$risk_band, 100 - by_risk_band$pct_covered),
+    collapse = "<br>"
+  )
+
+  sprintf(
+    "WTG: %s<br>Sample size: %d track records (%d valid)%s<br>Uncovered air mesh: %d / %d (%.1f%%)<br>%s",
+    wtg_id, metrics$n_records, metrics$n_valid, sample_note,
+    n_not_covered, metrics$n_air_mesh, pct_not_covered,
+    risk_lines
+  )
+}
+
+
+## 4b. Posicao das unidades IDF dentro de um raio de interesse, no
+## referencial LOCAL (AEQD centrado na turbina) de um terrain_mesh -- para
+## marcar essas unidades nos 2 plots 3D (coverage + debug), pedido do
+## Paulo (2026-10): "a representacao da torre da unidade [IDF], com 10m de
+## altura", restrita as unidades dentro do limite de deteção (omissao:
+## 1000m, idf_op_detection_range) -- NAO o raio mais largo do proprio
+## cilindro/mesh (coverage_cylinder_wider_radius, tipicamente 1100m), que e'
+## so' a margem de desenho, nao um limite operacional.
+##
+## idf_sf: shapefile de unidades IDF (coluna idf_id_col com o rotulo
+## "IDF<NN>" ja' normalizado, mesma convencao do resto do projeto) --
+## qualquer CRS, e' reprojetado aqui para crs_local. crs_local:
+## terrain_mesh$crs_local (AEQD, origem = a propria turbina -- ver
+## build_terrain_mesh()), por isso x/y saem directamente no mesmo
+## referencial "X/Y to WTG (m)" dos 2 plots, sem calculo extra do lado do
+## chamador.
+idf_units_in_local_frame <- function(idf_sf, crs_local, max_dist_m = 1000, idf_id_col = "imaging_he") {
+
+  idf_local <- sf::st_transform(idf_sf, crs_local)
+  coords <- sf::st_coordinates(idf_local)
+
+  out <- data.table::data.table(
+    idf = idf_local[[idf_id_col]],
+    x   = coords[, "X"],
+    y   = coords[, "Y"]
+  )
+  out[, dist := sqrt(x^2 + y^2)]
+  out[dist <= max_dist_m][]
+}
+
+
+## 4c. Elementos estruturais comuns aos 2 plots 3D (torre+nacelle da
+## turbina, seta+rotulos de orientacao, torres das unidades IDF dentro do
+## raio de interesse) -- extraido para deixar de duplicar parcialmente esta
+## logica entre plot_mesh_coverage_3d() (cobertura) e
+## plot_mesh_coverage_debug() (inverso/debug): ate agora cada um so' tinha
+## um subconjunto destes elementos (seta+rotulos so' no 1º, torre+nacelle
+## so' no 2º) -- pedido do Paulo, 2026-10, para os 2 ficarem simetricos.
+##
+## idf_units_local: data.table (idf, x, y[, dist]) ja' no referencial local
+## da turbina (ver idf_units_in_local_frame() acima) -- NULL/0 linhas
+## desliga esta camada (comportamento antigo, sem unidades IDF marcadas).
+## As torres das unidades IDF usam quebras NA entre segmentos (1 unica
+## trace "lines", em vez de 1 trace por unidade) -- tecnica padrao do
+## plotly para desenhar varios segmentos DESLIGADOS entre si numa so' trace.
+.add_structure_traces <- function(p, wtg_tower_height, bearing_line, bearing_labels,
+                                  idf_units_local = NULL, idf_tower_height = 10) {
+
+  wtg_line    <- data.table::data.table(x = c(0, 0), y = c(0, 0), z = c(0, wtg_tower_height))
+  wtg_nacelle <- data.table::data.table(x = 0, y = 0, z = wtg_tower_height)
+
+  p <- p %>%
+    plotly::add_trace(
+      data = wtg_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
+      line = list(color = "red", width = 10), name = "WTG tower"
+    ) %>%
+    plotly::add_markers(
+      data = wtg_nacelle, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "markers",
+      marker = list(size = 5, color = "darkred"), name = "WTG nacelle"
+    ) %>%
+    plotly::add_trace(
+      data = bearing_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
+      line = list(color = "black", width = 4),
+      name = paste0("View axis ", bearing_line$label[1], "->", bearing_line$label[2]),
+      showlegend = FALSE
+    ) %>%
+    plotly::add_trace(
+      data = bearing_labels, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "text",
+      text = ~label, textposition = "middle center", textfont = list(size = 16, color = "black"),
+      showlegend = FALSE, hoverinfo = "skip"
+    )
+
+  if (!is.null(idf_units_local) && nrow(idf_units_local) > 0) {
+
+    idf_lines <- data.table::rbindlist(lapply(seq_len(nrow(idf_units_local)), function(i) {
+      u <- idf_units_local[i]
+      data.table::data.table(x = c(u$x, u$x, NA_real_), y = c(u$y, u$y, NA_real_), z = c(0, idf_tower_height, NA_real_))
+    }))
+
+    idf_labels <- data.table::copy(idf_units_local)
+    idf_labels[, z := idf_tower_height + 15]
+
+    p <- p %>%
+      plotly::add_trace(
+        data = idf_lines, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
+        line = list(color = "blue", width = 8),
+        name = "IDF unit tower", showlegend = TRUE
+      ) %>%
+      plotly::add_trace(
+        data = idf_labels, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "text",
+        text = ~idf, textposition = "top center", textfont = list(size = 12, color = "blue"),
+        showlegend = FALSE, hoverinfo = "text"
+      )
+  }
+
+  p
+}
+
+
 ## 5. Plot 3D (Plotly) da malha "air" coberta, terreno e cilindro, para UMA turbina ----
 
 plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
-                                  step_z = 50, bearing_deg = 135, z_pad_lower = 50) {
+                                  step_z = 50, bearing_deg = 135, z_pad_lower = 50,
+                                  wtg_tower_height = 90, idf_units_local = NULL) {
 
   wtg_id  <- terrain_mesh$wtg_id
   metrics <- coverage$metrics
@@ -581,7 +710,7 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
   z_min <- surf$z_min_cyl
   z_max <- surf$z_max_cyl
 
-  plotly::plot_ly() %>%
+  p <- plotly::plot_ly() %>%
     plotly::add_surface(
       x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.95, showscale = FALSE,
       colorscale = "Viridis",
@@ -596,18 +725,11 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
       i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
       type = "mesh3d", opacity = 0.02, color = I("grey"),
       name = paste0(radius, " m cylinder boundary"), showlegend = FALSE, hoverinfo = "skip"
-    ) %>%
-    plotly::add_trace(
-      data = bearing_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
-      line = list(color = "black", width = 4),
-      name = paste0("View axis ", bearing_line$label[1], "→", bearing_line$label[2]),
-      showlegend = FALSE
-    ) %>%
-    plotly::add_trace(
-      data = bearing_labels, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "text",
-      text = ~label, textposition = "middle center", textfont = list(size = 16, color = "black"),
-      showlegend = FALSE, hoverinfo = "skip"
-    ) %>%
+    )
+
+  p <- .add_structure_traces(p, wtg_tower_height, bearing_line, bearing_labels, idf_units_local)
+
+  p %>%
     plotly::layout(
       title = list(text = plot_title, x = 0.05, y = 0.95, font = list(size = 12)),
       legend = list(x = 0.02, y = 0.85, xanchor = "left", yanchor = "top",
@@ -629,7 +751,7 @@ plot_mesh_coverage_3d <- function(terrain_mesh, coverage, radius, cyl_height,
 
 plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
                                      step_z = 50, bearing_deg = 135, z_pad_lower = 50,
-                                     wtg_tower_height = 90) {
+                                     wtg_tower_height = 90, idf_units_local = NULL) {
 
   wtg_id  <- terrain_mesh$wtg_id
   metrics <- coverage$metrics
@@ -639,10 +761,15 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
 
   surf <- .build_plot_surfaces(terrain_mesh, coverage$mesh_air$z_rel_turbine, radius, cyl_height, step_z, z_pad_lower)
 
-  wtg_line    <- data.table::data.table(x = c(0, 0), y = c(0, 0), z = c(0, wtg_tower_height))
-  wtg_nacelle <- data.table::data.table(x = 0, y = 0, z = wtg_tower_height)
+  # bearing_line/labels -- mesma logica/posicionamento de plot_mesh_coverage_3d()
+  # (secção 5 acima), extraida para .add_structure_traces() -- em falta aqui
+  # ate 2026-10 (apanhado pelo Paulo): este plot "debug"/not-covered nunca
+  # teve a seta/rotulos de orientacao, so' o plot "coverage" os tinha.
+  bearing_line <- .make_bearing_line(bearing_from_deg = bearing_deg, radius = radius, z = cyl_height + 30)
+  bearing_labels <- data.table::copy(bearing_line)
+  bearing_labels[, `:=`(x = x * 0.90, y = y * 0.90, z = z - 15)]
 
-  plotly::plot_ly() %>%
+  p <- plotly::plot_ly() %>%
     plotly::add_surface(
       x = surf$xs_surf, y = surf$ys_surf, z = surf$Zterrain_rel, opacity = 0.95, showscale = FALSE,
       colorscale = "Viridis",
@@ -654,23 +781,19 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
       name = "Mesh not covered"
     ) %>%
     plotly::add_trace(
-      data = wtg_line, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "lines",
-      line = list(color = "red", width = 10), name = "WTG tower"
-    ) %>%
-    plotly::add_markers(
-      data = wtg_nacelle, x = ~x, y = ~y, z = ~z, type = "scatter3d", mode = "markers",
-      marker = list(size = 5, color = "darkred"), name = "WTG nacelle"
-    ) %>%
-    plotly::add_trace(
       x = surf$cyl_mesh$x, y = surf$cyl_mesh$y, z = surf$cyl_mesh$z,
       i = surf$cyl_mesh$i, j = surf$cyl_mesh$j, k = surf$cyl_mesh$k,
       type = "mesh3d", opacity = 0.03, color = I("grey"), hoverinfo = "skip",
       name = "Cylinder boundary", showlegend = FALSE
-    ) %>%
+    )
+
+  p <- .add_structure_traces(p, wtg_tower_height, bearing_line, bearing_labels, idf_units_local)
+
+  p %>%
     plotly::layout(
       title = list(
-        text = sprintf("Debug view - full air mesh and covered points<br>%s",
-                       .coverage_title_text(wtg_id, metrics, coverage$by_risk_band)),
+        text = sprintf("Debug View - full air mesh and uncovered points<br>%s",
+                       .coverage_title_text_uncovered(wtg_id, metrics, coverage$by_risk_band)),
         x = 0.05, y = 0.95, font = list(size = 12)
       ),
       legend = list(x = 0.01, y = 0.85, xanchor = "left", yanchor = "top",
@@ -700,10 +823,20 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
 ## continua sem PNG (o HTML interativo fica sempre disponivel de qualquer forma).
 ## Devolve, para cada turbina, os caminhos dos PNG gravados (NULL se a
 ## captura falhou/nao foi pedida).
+##
+## idf_sf (opcional, omissao NULL -- comportamento antigo, sem unidades IDF
+## marcadas): shapefile de unidades IDF, para marcar nos 2 plots (coverage +
+## debug) de CADA turbina as unidades dentro de idf_max_dist_m (omissao
+## 1000m, idf_op_detection_range) -- pedido do Paulo, 2026-10, "a
+## representacao da torre da unidade [IDF], com 10m de altura". Recalculado
+## por turbina (idf_units_in_local_frame(), secção 4b acima), ja que cada
+## terrain_mesh tem o seu proprio referencial local (crs_local, AEQD
+## centrado nessa turbina).
 
 save_coverage_3d_plots <- function(cov_all, folder_out, radius, cyl_height,
                                    screenshot = FALSE, screenshot_width = 1200,
-                                   screenshot_height = 900, screenshot_delay = 2) {
+                                   screenshot_height = 900, screenshot_delay = 2,
+                                   idf_sf = NULL, idf_max_dist_m = 1000, idf_id_col = "imaging_he") {
 
   dir.create(folder_out, showWarnings = FALSE, recursive = TRUE)
 
@@ -730,12 +863,16 @@ save_coverage_3d_plots <- function(cov_all, folder_out, radius, cyl_height,
     terrain_mesh_i <- cov_all[[wtg_id]]$terrain_mesh
     coverage_i     <- cov_all[[wtg_id]]$coverage
 
+    idf_units_local_i <- if (!is.null(idf_sf)) {
+      idf_units_in_local_frame(idf_sf, terrain_mesh_i$crs_local, max_dist_m = idf_max_dist_m, idf_id_col = idf_id_col)
+    } else NULL
+
     html_cov <- file.path(folder_out, paste0("coverage_3d_", wtg_id, ".html"))
-    p_cov <- plot_mesh_coverage_3d(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height)
+    p_cov <- plot_mesh_coverage_3d(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height, idf_units_local = idf_units_local_i)
     htmlwidgets::saveWidget(p_cov, html_cov, selfcontained = TRUE)
 
     html_notcov <- file.path(folder_out, paste0("coverage_3d_not_covered_", wtg_id, ".html"))
-    p_notcov <- plot_mesh_coverage_debug(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height)
+    p_notcov <- plot_mesh_coverage_debug(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height, idf_units_local = idf_units_local_i)
     htmlwidgets::saveWidget(p_notcov, html_notcov, selfcontained = TRUE)
 
     if (isTRUE(screenshot)) {
