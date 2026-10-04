@@ -23,7 +23,13 @@
 ## R/availability_daylight.R, R/curtailment_response.R,
 ## R/curtailment_response_latency.R (fazer source destes 3 antes) --
 ## R/track_min_individuals.R tambem, para a comparacao pre/pos-incidente
-## (secao 5 deste ficheiro)
+## (secao 5 deste ficheiro), e R/offline_curtailment_check.R para a
+## evidencia offline (curtailment/SCADA), secao 2b abaixo -- pedido do
+## Paulo, 2026-10: trazer para o relatorio de incidente a MESMA metodologia
+## de cruzamento heartbeat+curtailments+SCADA ja usada no relatorio mensal
+## (R/offline_curtailment_check.R, secção "Unavailability Summary"/"Offline
+## Evidence" do relatorio), restrita a janela/baseline do incidente em vez
+## de farm-wide.
 ##
 ## Uso:
 ##   source("R/fatality_window_analysis.R")
@@ -59,6 +65,8 @@
 ##     global_response_from = scada_ini, global_response_to = scada_end
 ##   )
 ##   all_windows$BSH_0002$abundance # pre/pos-incidente, so' esse incidente
+##   all_windows$BSH_0002$offline_evidence$overall  # evidencia offline, janela
+##   all_windows$BSH_0002$offline_evidence_global$overall  # idem, baseline global
 ##
 
 
@@ -113,6 +121,77 @@ summarise_availability_window <- function(heartb_dt, idf_units, window_from, win
   by_idf   <- summarise_availability(daily_dt)$by_idf
 
   list(daily = daily_dt, by_idf = by_idf, idf_units = idf_units)
+}
+
+
+## 2b. Evidencia offline (curtailment/SCADA durante os gaps de heartbeat),
+## restrita a uma janela + unidades IDF + turbina -- MESMA metodologia de
+## R/offline_curtailment_check.R ja usada no relatorio mensal (secção
+## "Unavailability Summary"/"Offline Evidence") -- pedido do Paulo, 2026-10.
+##
+## Ao contrario do uso farm-wide dessas funcoes no relatorio mensal (onde
+## idf_turbines_dt precisa de resolve_idf_turbines(), matriz manual OU
+## fallback geometrico, porque ha' varias turbinas a atribuir), aqui so' ha'
+## 1 turbina (a do proprio incidente) e as unidades IDF ja' resolvidas para
+## ela (idf_units, mesmo vetor usado por summarise_availability_window()
+## acima) -- idf_turbines_dt e' por isso construido diretamente, sem
+## ambiguidade nenhuma a resolver.
+##
+## Depende de R/offline_curtailment_check.R estar sourced pelo chamador
+## (check_offline_curtailment_overlap(), check_offline_scada_presence(),
+## classify_offline_evidence(), summarise_offline_evidence()) -- mesmo
+## padrao de dependencia "sourced pelo chamador" das restantes funcoes
+## deste ficheiro (ver cabecalho).
+##
+## combined: intervalos offline classificados (idf, off_start, off_end,
+## classification) -- usado a jusante pelo calendario categorico
+## (offline_evidence_slot_grid()/plot_offline_evidence_slots(),
+## R/availability_daylight.R). overall/by_idf: ver summarise_offline_evidence(),
+## R/offline_curtailment_check.R.
+
+summarise_offline_evidence_window <- function(heartb_dt, idf_units, turbine_id, window_from, window_to,
+                                              curtl_dt, scada_dt, lat, lon, tz,
+                                              offline_gap_min = 60, online_grace_min = 30) {
+
+  empty <- list(
+    combined = data.table::data.table(
+      idf = character(), off_start = as.POSIXct(character()), off_end = as.POSIXct(character()),
+      classification = character()
+    ),
+    overall = data.table::data.table(
+      classification = character(), n_intervals = integer(), total_mins = numeric(), pct_of_total = numeric()
+    ),
+    by_idf = data.table::data.table(
+      idf = character(), classification = character(), n_intervals = integer(), total_mins = numeric()
+    )
+  )
+
+  if (length(idf_units) == 0L) return(empty)
+
+  # mesmo bug de tz ja documentado em summarise_availability_window() acima
+  daylight_cal <- build_daylight_calendar(as.Date(window_from, tz = tz), as.Date(window_to, tz = tz), lat, lon, tz)
+
+  hb <- heartb_dt[idf %in% idf_units & timestamp >= window_from & timestamp <= window_to]
+  if (nrow(hb) == 0L) return(empty)
+
+  offline_dt <- compute_offline_intervals(hb, offline_gap_min, online_grace_min)
+  if (nrow(offline_dt) == 0L) return(empty)
+
+  # so' a porcao DIURNA de cada gap -- OBRIGATORIO antes de classificar,
+  # mesma razao ja documentada em R/offline_curtailment_check.R (senao o
+  # total classificado pode exceder offline_mins_total, dando
+  # net_offline_pct negativo em summarise_net_availability())
+  offline_dt_daylight <- clip_offline_intervals_to_daylight(offline_dt, daylight_cal, tz)
+  if (nrow(offline_dt_daylight) == 0L) return(empty)
+
+  idf_turbines_dt <- data.table::data.table(idf = idf_units, turbine = turbine_id)
+
+  curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, idf_turbines_dt)
+  scada_checked_dt <- check_offline_scada_presence(offline_dt_daylight, scada_dt, idf_turbines_dt)
+  combined_dt       <- classify_offline_evidence(curtl_checked_dt, scada_checked_dt)
+  evidence_summary  <- summarise_offline_evidence(combined_dt)
+
+  list(combined = combined_dt, overall = evidence_summary$overall, by_idf = evidence_summary$by_idf)
 }
 
 
@@ -197,6 +276,12 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
       offline_gap_min = offline_gap_min, online_grace_min = online_grace_min
     )
 
+    offline_evidence <- summarise_offline_evidence_window(
+      heartb_dt, idf_units, inc$turbine, window_from, window_to,
+      curtl_dt, scada_dt, lat, lon, tz,
+      offline_gap_min = offline_gap_min, online_grace_min = online_grace_min
+    )
+
     response <- summarise_curtailment_response_window(
       curtl_dt, scada_dt, inc$turbine, window_from, window_to,
       start_end_gap_sec = start_end_gap_sec, decline_pct_threshold = decline_pct_threshold,
@@ -204,9 +289,15 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
     )
 
     avail_global <- NULL
+    offline_evidence_global <- NULL
     if (!is.null(global_avail_from) && !is.null(global_avail_to)) {
       avail_global <- summarise_availability_window(
         heartb_dt, idf_units, global_avail_from, global_avail_to, lat, lon, tz,
+        offline_gap_min = offline_gap_min, online_grace_min = online_grace_min
+      )
+      offline_evidence_global <- summarise_offline_evidence_window(
+        heartb_dt, idf_units, inc$turbine, global_avail_from, global_avail_to,
+        curtl_dt, scada_dt, lat, lon, tz,
         offline_gap_min = offline_gap_min, online_grace_min = online_grace_min
       )
     }
@@ -232,8 +323,9 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
     list(
       incident_id = inc$incident_id, turbine = inc$turbine, idf_units = idf_units,
       window_from = window_from, window_to = window_to,
-      availability = avail, curtailment_response = response,
-      availability_global = avail_global, curtailment_response_global = response_global,
+      availability = avail, offline_evidence = offline_evidence, curtailment_response = response,
+      availability_global = avail_global, offline_evidence_global = offline_evidence_global,
+      curtailment_response_global = response_global,
       abundance = abundance
     )
   })

@@ -33,7 +33,13 @@ params:
   fatality_example_curtailment_track_id: !r NULL
   fatality_window_availability: !r NULL
   fatality_global_availability: !r NULL
-  fatality_availability_calendar_plot: !r NULL
+  fatality_offline_evidence_calendar_plot: !r NULL
+  fatality_window_offline_evidence_overall: !r NULL
+  fatality_window_offline_evidence_by_idf: !r NULL
+  fatality_window_net_availability: !r NULL
+  fatality_global_offline_evidence_overall: !r NULL
+  fatality_global_offline_evidence_by_idf: !r NULL
+  fatality_global_net_availability: !r NULL
   fatality_window_response_summary: !r NULL
   fatality_abundance_pre_post: !r NULL
 
@@ -347,11 +353,21 @@ Heartbeat-based offline percentage for the IDF unit(s) covering the incident tur
 cat("### Investigation Window\n\n")
 ```
 
-The figures below cover the period from the first to the last heartbeat received from each IDF unit of interest within the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), counting only daylight hours (sunrise to sunset, computed from the project coordinates) -- night-time gaps are not counted as unavailability, since detection is not expected to operate then. Each IDF unit sends a heartbeat approximately every `r params$heartbeat_interval_min` minutes when operational; a unit is considered offline once `r params$heartbeat_offline_gap_min` minutes pass without a heartbeat (i.e. two consecutive missed signals).
+The figures below cover the period from the first to the last heartbeat received from each IDF unit of interest within the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), counting only daylight hours (sunrise to sunset, computed from the project coordinates) -- night-time gaps are not counted as unavailability, since detection is not expected to operate then. Each IDF unit sends a heartbeat approximately every `r params$heartbeat_interval_min` minutes when operational; a unit is considered offline once `r params$heartbeat_offline_gap_min` minutes pass without a heartbeat (i.e. two consecutive missed signals). A gap without a heartbeat is not necessarily a gap in bird protection -- it can also be a communication fault in the heartbeat signal itself, with the detection/curtailment system still operating. The calendar and tables below classify every such gap by the evidence available for that period, the same methodology used in the monthly reports (whether a curtailment was triggered by the turbine during the gap, whether SCADA still recorded RPM readings, both, or neither).
 
-```{r fatality-availability-calendar-plot, fig.width=6.30, fig.height=5, results='asis'}
-if (!is.null(params$fatality_availability_calendar_plot)) {
-  print(params$fatality_availability_calendar_plot)
+Each slot in the calendar below is colored by one of six statuses:
+
+- **Online**: a heartbeat was received for this slot.
+- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered by the turbine during the gap -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.
+- **Turbine operational, no detection**: no heartbeat and no curtailment, but SCADA still recorded RPM readings from the turbine -- mechanically operational, simply with no bird triggering a response.
+- **No evidence (heartbeat and SCADA both missing)**: neither signal is available for this slot; requires manual review, since it can reflect a genuine gap in bird-protection coverage or a data gap affecting heartbeat and SCADA at the same time.
+- **Night**: outside daylight hours, when bird protection is not evaluated.
+- **No data**: no underlying calendar data available for this slot, independent of the evidence check above.
+
+<!-- Source: offline_evidence_slot_grid()/plot_offline_evidence_slots(), R/availability_daylight.R; classification from summarise_offline_evidence_window(), R/fatality_window_analysis.R (same methodology as classify_offline_evidence(), R/offline_curtailment_check.R, used in the monthly reports) -->
+```{r fatality-offline-evidence-calendar-plot, fig.width=6.30, fig.height=5, results='asis'}
+if (!is.null(params$fatality_offline_evidence_calendar_plot)) {
+  print(params$fatality_offline_evidence_calendar_plot)
 } else {
   cat("No heartbeat records were found for the IDF unit(s) of interest within the investigation window -- this points to a data issue (e.g. an IDF unit naming/format mismatch between the heartbeat file and the units of interest) rather than a genuine absence of heartbeats.\n\n")
 }
@@ -368,11 +384,57 @@ if (!is.null(params$fatality_window_availability) && nrow(params$fatality_window
   )
 }
 ```
+
+**Unavailability Summary**
+
+Three related but distinct numbers are relevant when assessing IDF unavailability in this window, since they answer different questions: **Raw offline** (any heartbeat gap of at least `r params$heartbeat_offline_gap_min` minutes, regardless of other evidence), **Net / confirmed offline** (raw offline minus minutes where a curtailment was triggered during the gap -- strong evidence the detection/decision system was still operating despite the heartbeat failure), and **No evidence, pending manual review** (minutes where neither a curtailment nor a SCADA RPM reading was recorded -- already included within net offline above, shown separately since it needs case-by-case review rather than being resolved automatically).
+
+<!-- Source: summarise_net_availability(), R/offline_curtailment_check.R -- fatality_window_net_availability_dt, run_incident_zrshan.R -->
+```{r fatality-window-net-availability-table}
+if (!is.null(params$fatality_window_net_availability) && nrow(params$fatality_window_net_availability) > 0) {
+  x <- params$fatality_window_net_availability
+  report_table(data.frame(
+    Metric = c("Raw offline", "Net / confirmed offline", "No evidence (pending review; included in net offline above)"),
+    `Minutes` = c(x$raw_offline_mins[1], x$net_offline_mins[1], x$no_evidence_mins[1]),
+    `% of Daylight Monitoring Time` = c(x$raw_offline_pct[1], x$net_offline_pct[1], x$no_evidence_pct[1]),
+    check.names = FALSE
+  ))
+}
+```
+
+**Offline Evidence**
+
+Breakdown of every offline interval for the IDF unit(s) of interest during the investigation window, by the evidence available for that period -- see the calendar above for the same classification laid out over time.
+
+<!-- Source: summarise_offline_evidence_window()$overall/$by_idf, R/fatality_window_analysis.R -->
+```{r fatality-window-offline-evidence-overall-table}
+if (!is.null(params$fatality_window_offline_evidence_overall) && nrow(params$fatality_window_offline_evidence_overall) > 0) {
+  report_table(rename_display(
+    drop_cols(params$fatality_window_offline_evidence_overall, "incident_id"),
+    c(classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)", pct_of_total = "% of Total")
+  ))
+}
+```
+```{r fatality-window-offline-evidence-by-idf-table}
+if (!is.null(params$fatality_window_offline_evidence_by_idf) && nrow(params$fatality_window_offline_evidence_by_idf) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_window_offline_evidence_by_idf, "incident_id"),
+      c(idf = "IDF Unit", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
+    ),
+    max_col_width_cm = 4
+  )
+}
+```
+```{r fatality-window-offline-evidence-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
+
 ```{r fatality-availability-global-heading, results='asis'}
 cat("### Overall Baseline\n\n")
 ```
 
-Same calculation as above (daylight-only, same offline definition), but for the IDF units of interest over the full data coverage period (`r params$report_start` to `r params$report_end`) instead of just the investigation window -- this is the baseline the window figures above are compared against. A materially worse offline percentage in the window than in this baseline may indicate reduced detection capability around the time of the incident.
+Same calculation as above (daylight-only, same offline definition, same evidence cross-check), but for the IDF units of interest over the full data coverage period (`r params$report_start` to `r params$report_end`) instead of just the investigation window -- this is the baseline the window figures above are compared against. A materially worse offline percentage in the window than in this baseline may indicate reduced detection capability around the time of the incident.
 
 ```{r fatality-availability-global-table}
 if (!is.null(params$fatality_global_availability) && nrow(params$fatality_global_availability) > 0) {
@@ -385,6 +447,44 @@ if (!is.null(params$fatality_global_availability) && nrow(params$fatality_global
   )
 } else {
   cat("No heartbeat records were found for the IDF unit(s) of interest over the full data coverage period -- this points to a data issue (e.g. an IDF unit naming/format mismatch between the heartbeat file and the units of interest) rather than a genuine absence of availability data, since the Investigation Window figures above are a subset of this same period and unit list.\n\n")
+}
+```
+
+**Unavailability Summary**
+
+<!-- Source: summarise_net_availability(), R/offline_curtailment_check.R -- fatality_global_net_availability_dt, run_incident_zrshan.R -->
+```{r fatality-global-net-availability-table}
+if (!is.null(params$fatality_global_net_availability) && nrow(params$fatality_global_net_availability) > 0) {
+  x <- params$fatality_global_net_availability
+  report_table(data.frame(
+    Metric = c("Raw offline", "Net / confirmed offline", "No evidence (pending review; included in net offline above)"),
+    `Minutes` = c(x$raw_offline_mins[1], x$net_offline_mins[1], x$no_evidence_mins[1]),
+    `% of Daylight Monitoring Time` = c(x$raw_offline_pct[1], x$net_offline_pct[1], x$no_evidence_pct[1]),
+    check.names = FALSE
+  ))
+}
+```
+
+**Offline Evidence**
+
+<!-- Source: summarise_offline_evidence_window()$overall/$by_idf, R/fatality_window_analysis.R -->
+```{r fatality-global-offline-evidence-overall-table}
+if (!is.null(params$fatality_global_offline_evidence_overall) && nrow(params$fatality_global_offline_evidence_overall) > 0) {
+  report_table(rename_display(
+    drop_cols(params$fatality_global_offline_evidence_overall, "incident_id"),
+    c(classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)", pct_of_total = "% of Total")
+  ))
+}
+```
+```{r fatality-global-offline-evidence-by-idf-table}
+if (!is.null(params$fatality_global_offline_evidence_by_idf) && nrow(params$fatality_global_offline_evidence_by_idf) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_global_offline_evidence_by_idf, "incident_id"),
+      c(idf = "IDF Unit", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
+    ),
+    max_col_width_cm = 4
+  )
 }
 ```
 ```{r fatality-availability-annex, results='asis'}

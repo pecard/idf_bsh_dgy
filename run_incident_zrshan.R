@@ -495,6 +495,14 @@ source("R/curtailment_response.R")
 source("R/curtailment_response_latency.R")
 source("R/curtailment_forensic_trace.R") # plot_curtailment_events_rpm() -- reutilizado na secção "Curtailment Response & Latency -- Overall" abaixo
 source("R/track_min_individuals.R")
+## offline_curtailment_check.R/monthly_technical_summary.R: evidencia
+## offline (curtailment/SCADA) + numeros raw/net/sem-evidencia -- mesma
+## metodologia do relatorio mensal (secção "Unavailability Summary"/
+## "Offline Evidence"), trazida para a secção "IDF Unit Availability"
+## deste relatorio -- pedido do Paulo, 2026-10 (ver summarise_offline_evidence_window(),
+## R/fatality_window_analysis.R).
+source("R/offline_curtailment_check.R")
+source("R/monthly_technical_summary.R") # summarise_availability_overall()
 source("R/fatality_window_analysis.R")
 
 fatality_windows <- summarise_fatality_windows(
@@ -537,6 +545,53 @@ fatality_global_availability_dt <- data.table::rbindlist(lapply(names(fatality_w
   dt[, incident_id := id]; dt[]
 }), fill = TRUE)
 
+## Evidencia offline (curtailment/SCADA) + "Unavailability Summary"
+## (raw/net/sem-evidencia) -- MESMA metodologia do relatorio mensal,
+## restrita aqui a janela de investigacao e ao baseline global, em vez de
+## farm-wide -- pedido do Paulo, 2026-10 (ver summarise_offline_evidence_window(),
+## R/fatality_window_analysis.R, e summarise_net_availability()/
+## summarise_availability_overall(), R/offline_curtailment_check.R e
+## R/monthly_technical_summary.R respetivamente -- ja sourced acima).
+fatality_window_offline_evidence_overall_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+  dt <- fatality_windows[[id]]$offline_evidence$overall
+  if (is.null(dt) || nrow(dt) == 0L) return(NULL)
+  dt[, incident_id := id]; dt[]
+}), fill = TRUE)
+
+fatality_window_offline_evidence_by_idf_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+  dt <- fatality_windows[[id]]$offline_evidence$by_idf
+  if (is.null(dt) || nrow(dt) == 0L) return(NULL)
+  dt[, incident_id := id]; dt[]
+}), fill = TRUE)
+
+fatality_window_net_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+  by_idf_dt <- fatality_windows[[id]]$availability$by_idf
+  if (is.null(by_idf_dt) || nrow(by_idf_dt) == 0L) return(NULL)
+  availability_overall_i <- summarise_availability_overall(by_idf_dt)
+  net_dt <- summarise_net_availability(availability_overall_i, fatality_windows[[id]]$offline_evidence$overall)
+  net_dt[, incident_id := id]; net_dt[]
+}), fill = TRUE)
+
+fatality_global_offline_evidence_overall_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+  dt <- fatality_windows[[id]]$offline_evidence_global$overall
+  if (is.null(dt) || nrow(dt) == 0L) return(NULL)
+  dt[, incident_id := id]; dt[]
+}), fill = TRUE)
+
+fatality_global_offline_evidence_by_idf_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+  dt <- fatality_windows[[id]]$offline_evidence_global$by_idf
+  if (is.null(dt) || nrow(dt) == 0L) return(NULL)
+  dt[, incident_id := id]; dt[]
+}), fill = TRUE)
+
+fatality_global_net_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
+  by_idf_dt <- fatality_windows[[id]]$availability_global$by_idf
+  if (is.null(by_idf_dt) || nrow(by_idf_dt) == 0L) return(NULL)
+  availability_overall_i <- summarise_availability_overall(by_idf_dt)
+  net_dt <- summarise_net_availability(availability_overall_i, fatality_windows[[id]]$offline_evidence_global$overall)
+  net_dt[, incident_id := id]; net_dt[]
+}), fill = TRUE)
+
 ## Diagnostico -- janela vs. baseline global usam exatamente as mesmas
 ## unidades IDF (idf_units) e o mesmo heartb_dt, com o periodo global a ser
 ## um SUPERCONJUNTO estrito do periodo da janela (ver R/fatality_window_analysis.R)
@@ -554,19 +609,32 @@ message(sprintf(
   paste(unique(fatality_global_availability_dt$idf), collapse = ", ")
 ))
 
-## Calendario de disponibilidade (% offline em horas de luz, por dia) das
-## unidades IDF de interesse, restrito a janela de investigacao -- pedido
-## do Paulo (2026-08), secção "Investigation Window" do relatorio de
-## incidente. idf_sel = names(heartbeat_idf_units) (rotulo "IDF<NN>", o
-## mesmo formato de fatality_window_daily_dt$idf apos o relabel de
-## heartb_dt acima), nao top_n por omissao, para mostrar SEMPRE todas as
-## unidades de interesse, nao so as com mais tempo offline -- ver
-## R/availability_daylight.R, plot_availability_calendar()
-fatality_window_daily_dt <- fatality_windows[[1]]$availability$daily
-p_fatality_availability_calendar <- if (!is.null(fatality_window_daily_dt) && nrow(fatality_window_daily_dt) > 0) {
-  plot_availability_calendar(
-    fatality_window_daily_dt, fatality_windows[[1]]$availability$by_idf,
-    idf_sel = names(heartbeat_idf_units)
+## Calendario categorico de evidencia offline ("punch card": Online/3
+## categorias de evidencia/Night/No data), restrito a janela de
+## investigacao -- SUBSTITUI o antigo calendario de gradiente continuo
+## (plot_availability_calendar(), so' % offline sem evidencia nenhuma) pelo
+## MESMO calendario categorico ja usado no relatorio mensal (secção
+## "Availability Calendar"/2.2) -- pedido do Paulo, 2026-10. idf_sel =
+## names(heartbeat_idf_units) (rotulo "IDF<NN>"), nao top_n por omissao,
+## para mostrar SEMPRE todas as unidades de interesse -- ver
+## offline_evidence_slot_grid()/plot_offline_evidence_slots(),
+## R/availability_daylight.R.
+fatality_window_daylight_cal <- build_daylight_calendar(
+  as.Date(fatality_windows[[1]]$window_from, tz = proj_timezone),
+  as.Date(fatality_windows[[1]]$window_to, tz = proj_timezone),
+  proj_lat, proj_lon, proj_timezone
+)
+fatality_window_offline_evidence_combined_dt <- fatality_windows[[1]]$offline_evidence$combined
+p_fatality_offline_evidence_calendar <- if (!is.null(fatality_window_offline_evidence_combined_dt) && nrow(fatality_window_offline_evidence_combined_dt) > 0) {
+  fatality_window_offline_evidence_slots_dt <- offline_evidence_slot_grid(
+    fatality_window_daylight_cal, proj_timezone,
+    as.Date(fatality_windows[[1]]$window_from, tz = proj_timezone),
+    as.Date(fatality_windows[[1]]$window_to, tz = proj_timezone),
+    fatality_window_offline_evidence_combined_dt,
+    idf_sel = names(heartbeat_idf_units), slot_mins = heartbeat_interval_min
+  )
+  plot_offline_evidence_slots(
+    fatality_window_offline_evidence_slots_dt, slot_mins = heartbeat_interval_min, date_breaks = "1 day"
   )
 } else NULL
 
@@ -588,9 +656,15 @@ write_xlsx_local(
     Fatality_signal_counts     = fatality_summary$counts_by_signal,
     Fatality_top_candidates    = fatality_summary$top_candidates,
     Window_availability_by_idf = fatality_window_availability_dt,
+    Window_net_availability    = fatality_window_net_availability_dt,
+    Window_offline_evidence_overall = fatality_window_offline_evidence_overall_dt,
+    Window_offline_evidence_by_idf  = fatality_window_offline_evidence_by_idf_dt,
     Window_response_detail     = fatality_window_response_dt,
     Window_response_summary    = fatality_window_response_summary_dt,
     Global_availability_by_idf = fatality_global_availability_dt,
+    Global_net_availability    = fatality_global_net_availability_dt,
+    Global_offline_evidence_overall = fatality_global_offline_evidence_overall_dt,
+    Global_offline_evidence_by_idf  = fatality_global_offline_evidence_by_idf_dt,
     Global_response_summary    = fatality_global_response_summary_dt,
     Abundance_pre_post         = fatality_abundance_pre_post_dt
   ),
@@ -820,7 +894,13 @@ report_params <- list(
   fatality_example_curtailment_track_id    = if (nrow(fatality_example_curtailment_dt) > 0) fatality_example_curtailment_dt$track_id else NULL,
   fatality_window_availability     = fatality_window_availability_dt,
   fatality_global_availability     = fatality_global_availability_dt,
-  fatality_availability_calendar_plot = p_fatality_availability_calendar,
+  fatality_offline_evidence_calendar_plot = p_fatality_offline_evidence_calendar,
+  fatality_window_offline_evidence_overall = fatality_window_offline_evidence_overall_dt,
+  fatality_window_offline_evidence_by_idf  = fatality_window_offline_evidence_by_idf_dt,
+  fatality_window_net_availability         = fatality_window_net_availability_dt,
+  fatality_global_offline_evidence_overall = fatality_global_offline_evidence_overall_dt,
+  fatality_global_offline_evidence_by_idf  = fatality_global_offline_evidence_by_idf_dt,
+  fatality_global_net_availability         = fatality_global_net_availability_dt,
   fatality_window_response_summary = fatality_window_response_summary_dt,
   fatality_abundance_pre_post      = fatality_abundance_pre_post_dt,
 
