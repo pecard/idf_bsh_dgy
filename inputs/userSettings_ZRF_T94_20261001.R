@@ -96,8 +96,7 @@ heartbeats_pattern   <- "Heartbeats_ZRF.+csv"     # ex: Heartbeats_ZRF_20260901_
 
 ## So as unidades IDF de interesse para ESTE incidente (T94, nao T35) --
 ## usadas como fallback_idf_units em summarise_fatality_windows() (R/
-## fatality_window_analysis.R), no calendario de disponibilidade e para
-## restringir a reconciliacao de tracks candidatos (R/track_harmonization.R).
+## fatality_window_analysis.R) e no calendario de disponibilidade.
 ##
 ## ROTULOS "IDF<NN>" CONFIRMADOS (Paulo/Claude, 2026-10) por calculo
 ## geometrico (buffers de 1000m, cobertura >= 20% do buffer da turbina
@@ -255,16 +254,6 @@ fatality_post_incident_days <- 3
 
 min_individuals_bin_min      <- 2
 min_individuals_merge_dist_m <- 200
-
-## Limiares de harmonizacao de tracks (R/track_harmonization.R) -- mesmos
-## valores usados na exploracao BSH (2026-08), ainda genericos/nao
-## validados para este parque especificamente.
-harmonization_handoff_time_window_sec <- 30
-harmonization_handoff_max_dist_m      <- 50
-harmonization_duplicate_max_median_dist_m <- 300
-harmonization_duplicate_max_spread_m      <- 50
-harmonization_duplicate_min_overlap_frac  <- 0.8
-harmonization_duplicate_min_overlap_sec   <- 10
 
 
 ##

@@ -156,6 +156,17 @@ count_min_individuals_per_bin <- function(track_dt, species, bin_min = 2, merge_
 ##    "nonzero" no nome refere-se a esse desenho dos dados de entrada, nao a
 ##    um filtro ativo aqui). Ou seja: em media, quantos individuos distintos
 ##    estao simultaneamente presentes num bin em que a especie aparece.
+##
+##    peak_bin_start -- fica NA quando NAO ha pico real a assinalar: se TODOS
+##    os bins empatam no valor maximo (ex: sempre exatamente 1 individuo em
+##    todos os bins da janela, caso real do T94/Zarafshan, 2026-10), which.max()
+##    apontava sempre para o 1º bin da serie, dando a entender erradamente que
+##    esse bin especifico foi "o pico" quando na realidade a contagem nunca
+##    variou -- pedido do Paulo, 2026-10 ("quando o pico e' constante... nao
+##    devemos preencher Peak Time, deve ficar em branco ou '-'"). So' fica NA
+##    quando a contagem e' PLANA a serio (zero variacao); um pico empatado
+##    entre VARIOS bins mas acima do resto da serie continua a ser um pico
+##    genuino, e mantem o comportamento antigo (1º bin empatado).
 
 summarise_min_individuals <- function(bins_dt) {
 
@@ -168,10 +179,12 @@ summarise_min_individuals <- function(bins_dt) {
 
   out <- bins_dt[, {
     i_max <- which.max(n_individuals_min)
+    peak_val <- n_individuals_min[i_max]
+    flat_series <- all(n_individuals_min == peak_val)
     .(
       n_bins = .N,
-      peak_individuals = n_individuals_min[i_max],
-      peak_bin_start = bin_start[i_max],
+      peak_individuals = peak_val,
+      peak_bin_start = if (flat_series) bin_start[NA_integer_] else bin_start[i_max],
       mean_individuals_nonzero = round(mean(n_individuals_min[n_individuals_min > 0]), 2)
     )
   }, by = spec]

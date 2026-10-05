@@ -59,11 +59,6 @@ params:
   min_indiv_summary: !r NULL
   min_indiv_plot_daily: !r NULL
 
-  candidate_tracks_reconciliation_summary: !r NULL
-  candidate_tracks_plot: !r NULL
-  candidate_tracks_group_detail: !r NULL
-  candidate_tracks_biggest_group: ""
-
   heartbeat_interval_min: !r NULL
   heartbeat_offline_gap_min: !r NULL
   curtailment_start_end_gap_sec: !r NULL
@@ -77,18 +72,12 @@ params:
   fatality_post_incident_days: !r NULL
   min_individuals_bin_min: !r NULL
   min_individuals_merge_dist_m: !r NULL
-  harmonization_handoff_time_window_sec: !r NULL
-  harmonization_handoff_max_dist_m: !r NULL
-  harmonization_duplicate_max_median_dist_m: !r NULL
-  harmonization_duplicate_max_spread_m: !r NULL
 
   xlsx_coverage: !r NULL
   xlsx_coverage3d: !r NULL
   xlsx_fatality: !r NULL
   xlsx_latency: !r NULL
   xlsx_min_indiv: !r NULL
-  xlsx_candidate_tracks: !r NULL
-  candidate_tracks_html: !r NULL
 ---
 
 ```{r setup, include=FALSE}
@@ -295,19 +284,21 @@ annex_note(params$xlsx_fatality)
 
 ## Top Candidate Tracks
 
-The tracks most likely associated with the incident -- those whose last recorded position ends closest to the turbine, among the candidate signal categories above. `last_height_m` is the bird's height above ground at that last recorded position (`min_height_m` is the lowest height reached anywhere in the track) -- for reference against the `r params$curtailment_trigger_height_m` m curtailment-trigger height used above. The full table (point counts, distances, timestamps) is in the accompanying workbook. A fatality can occur with no curtailment ever triggered for the responsible track, particularly when the bird is detected already close to the turbine.
+The tracks most likely associated with the incident -- those whose last recorded position ends closest to the turbine, among the candidate signal categories above. `last_height_m` is the bird's height above ground at that last recorded position (`min_height_m` is the lowest height reached anywhere in the track) -- for reference against the `r params$curtailment_trigger_height_m` m curtailment-trigger height used above. `RPM at Identification` is the nearest SCADA RPM reading to the moment the species was first identified in this track (blank if no reading within the matching tolerance); `Curtailment Already Active` flags whether the turbine was already under a curtailment order -- from this track or any other -- that started at least 1 second before that moment and was still running at it, distinguishing a track that triggered no new curtailment because the turbine was already safely curtailed from one where no curtailment was in effect at all. The full table (point counts, distances, timestamps) is in the accompanying workbook. A fatality can occur with no curtailment ever triggered for the responsible track, particularly when the bird is detected already close to the turbine.
 
 <!-- Source: fatality_summary$top_candidates, R/fatality_track_investigation.R -->
 ```{r fatality-top-candidates-table}
 if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candidates) > 0) {
   dt <- as.data.frame(params$fatality_top_candidates)
-  dt <- dt[, intersect(c("incident_id", "track_id", "turbine", "species", "last_height_m", "min_height_m", "triggered_curtailment", "signal"), names(dt)), drop = FALSE]
+  dt <- dt[, intersect(c("incident_id", "track_id", "turbine", "species", "last_height_m", "min_height_m",
+                        "triggered_curtailment", "rpm_at_identification", "curtailment_active_at_identification", "signal"), names(dt)), drop = FALSE]
   dt$signal <- unname(fatality_signal_labels[dt$signal])
   report_table(rename_display(
     dt,
     c(incident_id = "Incident", track_id = "Track ID", turbine = "Turbine", species = "Species",
       last_height_m = "Last Height (m AGL)", min_height_m = "Min Height (m AGL)",
-      triggered_curtailment = "Triggered Curtailment", signal = "Signal")
+      triggered_curtailment = "Triggered Curtailment", rpm_at_identification = "RPM at Identification",
+      curtailment_active_at_identification = "Curtailment Already Active", signal = "Signal")
   ))
 }
 ```
@@ -406,15 +397,7 @@ if (!is.null(params$fatality_window_net_availability) && nrow(params$fatality_wi
 
 Breakdown of every offline interval for the IDF unit(s) of interest during the investigation window, by the evidence available for that period -- see the calendar above for the same classification laid out over time.
 
-<!-- Source: summarise_offline_evidence_window()$overall/$by_idf, R/fatality_window_analysis.R -->
-```{r fatality-window-offline-evidence-overall-table}
-if (!is.null(params$fatality_window_offline_evidence_overall) && nrow(params$fatality_window_offline_evidence_overall) > 0) {
-  report_table(rename_display(
-    drop_cols(params$fatality_window_offline_evidence_overall, "incident_id"),
-    c(classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)", pct_of_total = "% of Total")
-  ))
-}
-```
+<!-- Source: summarise_offline_evidence_window()$by_idf, R/fatality_window_analysis.R (mesmas colunas da folha Window_offline_evidence_by_idf, fatality_track_investigation.xlsx) -->
 ```{r fatality-window-offline-evidence-by-idf-table}
 if (!is.null(params$fatality_window_offline_evidence_by_idf) && nrow(params$fatality_window_offline_evidence_by_idf) > 0) {
   report_table(
@@ -467,15 +450,7 @@ if (!is.null(params$fatality_global_net_availability) && nrow(params$fatality_gl
 
 **Offline Evidence**
 
-<!-- Source: summarise_offline_evidence_window()$overall/$by_idf, R/fatality_window_analysis.R -->
-```{r fatality-global-offline-evidence-overall-table}
-if (!is.null(params$fatality_global_offline_evidence_overall) && nrow(params$fatality_global_offline_evidence_overall) > 0) {
-  report_table(rename_display(
-    drop_cols(params$fatality_global_offline_evidence_overall, "incident_id"),
-    c(classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)", pct_of_total = "% of Total")
-  ))
-}
-```
+<!-- Source: summarise_offline_evidence_window()$by_idf, R/fatality_window_analysis.R (mesmas colunas da folha Global_offline_evidence_by_idf, fatality_track_investigation.xlsx) -->
 ```{r fatality-global-offline-evidence-by-idf-table}
 if (!is.null(params$fatality_global_offline_evidence_by_idf) && nrow(params$fatality_global_offline_evidence_by_idf) > 0) {
   report_table(
@@ -616,11 +591,13 @@ Minimum number of distinct individuals of `r params$incident_species` detected i
 
 ## Summary
 
-<!-- Source: summarise_min_individuals(min_indiv_bins_dt), R/track_min_individuals.R -->
+<!-- Source: summarise_min_individuals(min_indiv_bins_dt), R/track_min_individuals.R -- peak_bin_start is NA when the count never varies (no real peak to point to) -->
 ```{r min-indiv-summary-table}
 if (!is.null(params$min_indiv_summary) && nrow(params$min_indiv_summary) > 0) {
+  dt <- as.data.frame(params$min_indiv_summary)
+  dt$peak_bin_start <- ifelse(is.na(dt$peak_bin_start), "-", format(dt$peak_bin_start, "%Y-%m-%d %H:%M"))
   report_table(rename_display(
-    params$min_indiv_summary,
+    dt,
     c(spec = "Species", n_bins = "Bins", peak_individuals = "Peak Individuals",
       peak_bin_start = "Peak Time", mean_individuals_nonzero = "Mean (Non-zero Bins)")
   ))
@@ -646,56 +623,6 @@ if (!is.null(params$min_indiv_plot_daily)) {
 }
 ```
 
-# Candidate Duplicate/Fragmented Tracks Around the Incident
-
-The IdentiFlight system can register the same individual bird as several different `track_id`s -- either a sequential handoff (one track ends, a new one starts moments later nearby) or a duplicate (two IDF units track the same bird at the same time, offset from each other by a unit-pair-specific calibration bias). Both patterns are reconciled here into candidate single-individual groups, restricted to `r params$incident_species` tracks near the investigated turbine(s) (`r params$investigated_turbines`) during the investigation window (handoff: gap under `r params$harmonization_handoff_time_window_sec` s and `r params$harmonization_handoff_max_dist_m` m; duplicate: overlapping tracks from different units whose offset stays stable, not necessarily small, over the overlap). This is exploratory: candidate groupings should be checked visually (see the accompanying interactive plot) before being treated as confirmed single-individual tracks.
-
-<!-- Source: summarise_reconciliation(reconciliation_incident$groups), R/track_harmonization.R -->
-```{r candidate-tracks-summary-table}
-if (!is.null(params$candidate_tracks_reconciliation_summary) && nrow(params$candidate_tracks_reconciliation_summary) > 0) {
-  report_table(
-    rename_display(
-      params$candidate_tracks_reconciliation_summary,
-      c(n_synth_tracks = "Synthetic Tracks", n_orig_tracks_total = "Original Tracks",
-        n_merged_synth_tracks = "Merged Groups", max_tracks_in_1_group = "Largest Group")
-    )
-  )
-} else {
-  cat("Fewer than 2 candidate track_ids were found in the investigation window for this species/IDF-unit combination -- no reconciliation to report.\n\n")
-}
-```
-```{r candidate-tracks-annex, results='asis'}
-annex_note(params$xlsx_candidate_tracks)
-if (!is.null(params$candidate_tracks_html)) {
-  cat(sprintf(
-    "\n\n*The largest reconciled group's trajectory is also available as an interactive plot: `%s` (open in a browser -- Word cannot embed interactive plots).*\n",
-    params$candidate_tracks_html
-  ))
-}
-```
-
-```{r candidate-tracks-plot-heading, results='asis'}
-if (!is.null(params$candidate_tracks_plot)) {
-  cat(sprintf("## Largest Reconciled Group -- %s\n\n", params$candidate_tracks_biggest_group))
-  cat("Trajectory of the largest reconciled group -- the candidate most likely to be the same individual fragmented across several `track_id`s. Grey lines/points are the original raw fragments; the black line is the reconciled synthetic path; coloured points mark whether that stretch of the path came from a single original track (`single`) or from averaging two overlapping tracks from different IDF units (`merged_duplicate`).\n\n")
-}
-```
-```{r candidate-tracks-plot, fig.width=6.30, fig.height=6}
-if (!is.null(params$candidate_tracks_plot)) print(params$candidate_tracks_plot)
-```
-```{r candidate-tracks-group-detail-table}
-if (!is.null(params$candidate_tracks_group_detail) && nrow(params$candidate_tracks_group_detail) > 0) {
-  report_table(
-    rename_display(
-      drop_cols(params$candidate_tracks_group_detail, c("utm_x_range", "utm_y_range")),
-      c(track_id = "Original Track ID", n_points = "Points", idf_units = "IDF Unit(s)",
-        first_time = "First Time", last_time = "Last Time")
-    ),
-    max_col_width_cm = 3
-  )
-}
-```
-
 # Annexes
 
-The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: turbine/IDF coverage, fatality investigation (full track/window detail), curtailment response & latency (overall), minimum individuals per bin, and candidate/duplicate track reconciliation (plus its interactive HTML plot).
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: turbine/IDF coverage, fatality investigation (full track/window detail), curtailment response & latency (overall), and minimum individuals per bin.

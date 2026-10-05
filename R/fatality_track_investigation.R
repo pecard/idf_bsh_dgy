@@ -22,22 +22,28 @@
 ## ser maior consoante o caso) E o proprio dia do registo, como um unico
 ## periodo continuo (nao se trata o dia do registo à parte).
 ##
-## Depende de: data.table, sf, ggplot2 (so' plot_fatality_track_rpm())
+## Depende de: data.table, sf, ggplot2 (so' plot_fatality_track_rpm()) --
+## E R/curtailment_response.R (match_nearest_rpm(), fazer source ANTES),
+## so' se scada_dt for passado (ver secção 1, rpm_at_identification/
+## curtailment_active_at_identification abaixo).
 ##
 ## Uso:
+##   source("R/curtailment_response.R") # match_nearest_rpm()
 ##   source("R/fatality_track_investigation.R")
 ##
 ##   tracks_i <- investigate_fatality_tracks(
 ##     turbine_id = "BSH54", species = "Steppe-Eagle",
 ##     incident_date = as.Date("2025-10-31"), days_before = 8,
 ##     track_dt = track_dt, curtl_dt = curtl_dt, wtg_sf = wtg,
-##     proximity_threshold_m = track_proximity_threshold_m
+##     proximity_threshold_m = track_proximity_threshold_m,
+##     scada_dt = scada_dt # opcional -- ver nota na secção 1
 ##   )
 ##
 ##   # varios incidentes de uma vez -- ver fatality_incidents em userSettings_BSH.R
 ##   all_tracks_i <- investigate_fatality_incidents(
 ##     fatality_incidents, track_dt, curtl_dt, wtg,
-##     proximity_threshold_m = track_proximity_threshold_m
+##     proximity_threshold_m = track_proximity_threshold_m,
+##     scada_dt = scada_dt # opcional
 ##   )
 ##
 ##   # sumario -- contagens por sinal e candidatos mais provaveis a colisao
@@ -53,7 +59,8 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
                                         track_dt, curtl_dt, wtg_sf,
                                         proximity_threshold_m = 100,
                                         height_threshold_m = NULL,
-                                        wtg_id_col = "InternalNa", tz = NULL) {
+                                        wtg_id_col = "InternalNa", tz = NULL,
+                                        scada_dt = NULL, rpm_max_gap_sec = 15) {
 
   incident_date <- as.Date(incident_date)
   if (is.null(tz)) tz <- attr(track_dt$timestamp, "tzone")
@@ -76,7 +83,8 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
       first_dist_m = numeric(), last_dist_m = numeric(), min_dist_m = numeric(),
       last_height_m = numeric(), min_height_m = numeric(),
       within_threshold = logical(), last_within_threshold = logical(),
-      triggered_curtailment = logical(), signal = character()
+      triggered_curtailment = logical(), signal = character(),
+      rpm_at_identification = numeric(), curtailment_active_at_identification = logical()
     )
   }
 
@@ -144,6 +152,38 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
     default = "far_from_turbine"
   )]
 
+  ## RPM mais proxima + indicador de curtailment ja' ATIVO no momento em que
+  ## a especie foi identificada no track (first_time, ja' calculado acima,
+  ## primeiro ponto classificado como a especie de interesse) -- pedido do
+  ## Paulo, 2026-10 (relatorio de incidente, secção "Top Candidate Tracks"):
+  ## nos 3 candidatos do T94, a turbina ja' estava sob curtailment ANTES da
+  ## deteção -- sem isto a tabela nao distingue "sem curtailment disparado
+  ## por ESTE track" (triggered_curtailment, acima) de "ja' estava curtailed
+  ## por outro motivo quando a ave foi vista" -- mesma distincao, por
+  ## principio, do calendario de evidencia offline (heartbeat x curtailment
+  ## x SCADA, secção "IDF Unit Availability"). "Ativo" definido pelo Paulo
+  ## como um curtailment desta turbina (qualquer track_id) iniciado pelo
+  ## menos 1s ANTES de first_time e ainda a decorrer nesse instante
+  ## (end >= first_time) -- nao apenas "existiu algures antes".
+  ##
+  ## scada_dt = NULL (omissao): preserva o comportamento antigo desta funcao
+  ## (BSH/DGY, IDF_analysis.R secção 4 -- nao pediram esta coluna) --
+  ## rpm_at_identification fica NA, so' curtailment_active_at_identification
+  ## e' sempre calculada (so' precisa de curtl_dt, ja' obrigatorio).
+  if (!is.null(scada_dt)) {
+    rpm_events  <- out[, .(id = track_id, turbine = turbine_id, event_time = first_time)]
+    rpm_matched <- match_nearest_rpm(rpm_events, scada_dt, max_gap_sec = rpm_max_gap_sec)
+    out[rpm_matched, on = c(track_id = "id"), rpm_at_identification := i.rpm]
+  } else {
+    out[, rpm_at_identification := NA_real_]
+  }
+
+  turbine_curtl <- curtl_dt[turbine == turbine_id]
+  out[, curtailment_active_at_identification := vapply(first_time, function(ft) {
+    if (nrow(turbine_curtl) == 0L) return(FALSE)
+    any(turbine_curtl$start <= (ft - 1) & turbine_curtl$end >= ft)
+  }, logical(1))]
+
   data.table::setorder(out, min_dist_m)
   out[]
 }
@@ -155,7 +195,8 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
 investigate_fatality_incidents <- function(fatality_incidents, track_dt, curtl_dt, wtg_sf,
                                            proximity_threshold_m = 100,
                                            height_threshold_m = NULL,
-                                           wtg_id_col = "InternalNa", tz = NULL) {
+                                           wtg_id_col = "InternalNa", tz = NULL,
+                                           scada_dt = NULL, rpm_max_gap_sec = 15) {
 
   res <- lapply(seq_len(nrow(fatality_incidents)), function(i) {
     inc <- fatality_incidents[i]
@@ -164,6 +205,7 @@ investigate_fatality_incidents <- function(fatality_incidents, track_dt, curtl_d
       incident_date = inc$incident_date, days_before = inc$days_before,
       track_dt = track_dt, curtl_dt = curtl_dt, wtg_sf = wtg_sf,
       proximity_threshold_m = proximity_threshold_m, height_threshold_m = height_threshold_m,
+      scada_dt = scada_dt, rpm_max_gap_sec = rpm_max_gap_sec,
       wtg_id_col = wtg_id_col, tz = tz
     )
     dt[, `:=`(incident_id = inc$incident_id, turbine = inc$turbine, species = inc$species)]

@@ -23,9 +23,10 @@
 ##      farm-wide, todo o periodo (secção 6.4 do relatorio anual, aqui so
 ##      para esta especie) + abundancia pre/pos-incidente (ja' incluida no
 ##      ponto 2) -- R/track_min_individuals.R
-##   6. Tracks candidatos duplicados/fragmentados na janela do incidente,
-##      restrito as unidades IDF de interesse -- R/track_harmonization.R
-##      (modulo exploratorio, 2026-08 -- ver esse ficheiro para a logica)
+##
+## (Ponto 6, tracks candidatos duplicados/fragmentados -- R/track_harmonization.R
+## -- removido do pipeline e do relatorio, 2026-10, pedido do Paulo: "it is
+## not useful".)
 ##
 ## Gera um .docx com o MESMO template da empresa usado no BSH/DGY (ver
 ## R/report.R), a partir de um Rmd mais pequeno dedicado a este incidente
@@ -440,12 +441,17 @@ if (file.exists(dem_file)) {
 ##      e R/fatality_window_analysis.R tal como IDF_analysis.R secção 4 ----
 ##
 
+source("R/curtailment_response.R") # match_nearest_rpm() -- usado por investigate_fatality_tracks() abaixo (rpm_at_identification)
 source("R/fatality_track_investigation.R")
 
+## scada_dt = scada_dt_unfilt (secção 1, "NAO FILTRAR") -- rpm_at_identification/
+## curtailment_active_at_identification (secção "Top Candidate Tracks" do
+## relatorio) pedidos pelo Paulo, 2026-10.
 fatality_tracks_dt <- investigate_fatality_incidents(
   fatality_incidents, track_dt, curtl_dt, wtg,
   proximity_threshold_m = track_proximity_threshold_m,
-  height_threshold_m = if (exists("curtailment_trigger_height_m")) curtailment_trigger_height_m else NULL
+  height_threshold_m = if (exists("curtailment_trigger_height_m")) curtailment_trigger_height_m else NULL,
+  scada_dt = scada_dt, rpm_max_gap_sec = curtailment_start_end_gap_sec
 )
 fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
 
@@ -757,109 +763,13 @@ write_xlsx_local(
 )
 
 
-##
-## 6. Candidate/duplicate tracks for the incident -- R/track_harmonization.R,
-##    restrito a especie Egyptian-Vulture, janela do incidente, turbina(s)
-##    investigada(s) ----
-##
-
-source("R/track_min_individuals.R") # .uf_components()
-source("R/track_harmonization.R")
-
+## incident_window_start/end -- usados em report_params (secção "7. Word
+## report" abaixo). A secção "6. Candidate/duplicate tracks" que existia
+## aqui (R/track_harmonization.R) foi removida do pipeline e do relatorio
+## (pedido do Paulo, 2026-10 -- "it is not useful"); estas 2 linhas ficam,
+## isoladas, por serem usadas por outras partes do relatorio.
 incident_window_start <- as.POSIXct(paste(fatality_incidents$incident_date - fatality_incidents$days_before, "00:00:00"), tz = proj_timezone)
 incident_window_end   <- as.POSIXct(paste(fatality_incidents$incident_date, "23:59:59"), tz = proj_timezone)
-
-## Restringe por turbine (NearestTurbine3d), nao por idf (TowerNumber) --
-## ver nota na secção 5 acima sobre track_dt$idf nunca ter sido confirmado
-## como coincidindo com heartbeat_idf_units. A logica interna de
-## handoff/duplicado (find_handoff_edges()/find_duplicate_edges(),
-## R/track_harmonization.R) continua a usar os valores brutos de idf para
-## diferenciar unidades -- so' o filtro EXTERNO de "que tracks entram nesta
-## analise" mudou.
-track_dt_incident_window <- track_dt[
-  spec == fatality_incidents$species &
-    turbine %in% turbinas_scada &
-    timestamp >= incident_window_start & timestamp <= incident_window_end
-]
-
-message(sprintf(
-  "Janela do incidente (%s a %s): %d pontos de %s em %d track_ids, turbina(s) %s.",
-  format(incident_window_start), format(incident_window_end), nrow(track_dt_incident_window),
-  fatality_incidents$species, data.table::uniqueN(track_dt_incident_window$track_id),
-  paste(turbinas_scada, collapse = ", ")
-))
-
-## Nomes de ficheiro condicionais -- so ficam definidos (nao-NULL) se o
-## ficheiro correspondente for mesmo escrito no bloco abaixo, para o Rmd
-## nunca apontar num "annex_note"/nota de ficheiro que nao existe (ver
-## report/incident_report_template.rmd, secção Candidate Duplicate/
-## Fragmented Tracks)
-xlsx_candidate_tracks_name <- NULL
-candidate_tracks_html_name <- NULL
-
-if (data.table::uniqueN(track_dt_incident_window$track_id) >= 2L) {
-
-  handoff_edges_incident <- find_handoff_edges(
-    track_dt_incident_window, fatality_incidents$species,
-    time_window_sec = harmonization_handoff_time_window_sec, max_dist_m = harmonization_handoff_max_dist_m
-  )
-  duplicate_edges_incident <- find_duplicate_edges(
-    track_dt_incident_window, fatality_incidents$species,
-    max_median_dist_m = harmonization_duplicate_max_median_dist_m, max_spread_m = harmonization_duplicate_max_spread_m,
-    min_overlap_frac = harmonization_duplicate_min_overlap_frac, min_overlap_sec = harmonization_duplicate_min_overlap_sec
-  )
-  reconciliation_incident <- build_reconciliation_groups(
-    track_dt_incident_window, fatality_incidents$species, handoff_edges_incident, duplicate_edges_incident
-  )
-  reconciliation_summary_incident_dt <- summarise_reconciliation(reconciliation_incident$groups)
-
-  synth_incident_dt <- stitch_synthetic_tracks(
-    track_dt_incident_window, fatality_incidents$species, reconciliation_incident$groups, duplicate_edges_incident
-  )
-
-  xlsx_candidate_tracks_name <- "candidate_tracks_incident_window.xlsx"
-  write_xlsx_local(
-    list(
-      Groups              = reconciliation_incident$groups,
-      Edges               = reconciliation_incident$edges,
-      Reconciliation_summary = reconciliation_summary_incident_dt,
-      Synthetic_tracks    = synth_incident_dt
-    ),
-    file.path(folder_output, xlsx_candidate_tracks_name)
-  )
-
-  ## Plot interativo (plotly, html) do maior grupo reconciliado (candidato
-  ## mais provavel a ter sido fragmentado em varios track_ids) -- gravado a
-  ## parte (nao entra no .docx, que nao suporta plotly interativo)
-  biggest_group_incident <- reconciliation_incident$groups[, .N, by = synth_track_id][N == max(N), synth_track_id][1]
-  p_candidate_tracks_incident <- plot_synthetic_track(track_dt_incident_window, synth_incident_dt, biggest_group_incident)
-  candidate_tracks_html_name <- "candidate_tracks_incident_biggest_group.html"
-  htmlwidgets::saveWidget(
-    p_candidate_tracks_incident,
-    file.path(folder_output, candidate_tracks_html_name),
-    selfcontained = TRUE
-  )
-
-  ## Versao estatica (ggplot2) do mesmo grupo, para embeber diretamente no
-  ## .docx -- pedido do Paulo, 2026-08 ("is there any print screen... a
-  ## plot or a table with syntetic tracks merged?") -- mais a tabela de
-  ## detalhe dos tracks originais que compoem o grupo (mesma que
-  ## inspect_reconciliation_group() ja calcula para inspecao manual)
-  p_candidate_tracks_static <- plot_synthetic_track_static(
-    track_dt_incident_window, synth_incident_dt, biggest_group_incident,
-    title = sprintf("Largest Reconciled Group -- %s", biggest_group_incident)
-  )
-  candidate_tracks_group_detail_dt <- inspect_reconciliation_group(
-    track_dt_incident_window, reconciliation_incident$groups, reconciliation_incident$edges, biggest_group_incident
-  )$tracks
-
-} else {
-  message("Menos de 2 track_ids de ", fatality_incidents$species, " na janela do incidente -- harmonizacao de tracks saltada.")
-  reconciliation_summary_incident_dt <- data.table::data.table()
-  p_candidate_tracks_static <- NULL
-  candidate_tracks_group_detail_dt <- data.table::data.table()
-  biggest_group_incident <- NA_character_
-}
 
 
 ##
@@ -924,11 +834,6 @@ report_params <- list(
   min_indiv_summary    = min_indiv_summary_dt,
   min_indiv_plot_daily = p_min_indiv_daily,
 
-  candidate_tracks_reconciliation_summary = reconciliation_summary_incident_dt,
-  candidate_tracks_plot          = p_candidate_tracks_static,
-  candidate_tracks_group_detail  = candidate_tracks_group_detail_dt,
-  candidate_tracks_biggest_group = biggest_group_incident,
-
   heartbeat_interval_min    = heartbeat_interval_min,
   heartbeat_offline_gap_min = heartbeat_offline_gap_min,
   curtailment_start_end_gap_sec  = curtailment_start_end_gap_sec,
@@ -942,18 +847,12 @@ report_params <- list(
   fatality_post_incident_days     = fatality_post_incident_days,
   min_individuals_bin_min         = min_individuals_bin_min,
   min_individuals_merge_dist_m    = min_individuals_merge_dist_m,
-  harmonization_handoff_time_window_sec = harmonization_handoff_time_window_sec,
-  harmonization_handoff_max_dist_m      = harmonization_handoff_max_dist_m,
-  harmonization_duplicate_max_median_dist_m = harmonization_duplicate_max_median_dist_m,
-  harmonization_duplicate_max_spread_m      = harmonization_duplicate_max_spread_m,
 
   xlsx_coverage      = "turbine_idf_coverage.xlsx",
   xlsx_coverage3d    = if (!is.null(summary_cov)) "coverage_3d_summary.xlsx" else NULL,
   xlsx_fatality      = "fatality_track_investigation.xlsx",
   xlsx_latency       = paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end), ".xlsx"),
-  xlsx_min_indiv     = "min_individuals_egyptian_vulture.xlsx",
-  xlsx_candidate_tracks = xlsx_candidate_tracks_name,
-  candidate_tracks_html = candidate_tracks_html_name
+  xlsx_min_indiv     = "min_individuals_egyptian_vulture.xlsx"
 )
 
 if (isTRUE(generate_report)) {
