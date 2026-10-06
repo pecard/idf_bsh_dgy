@@ -56,6 +56,10 @@ params:
   latency_n_no_response_examples: !r NULL
   latency_n_slowest_examples: !r NULL
 
+  shutdown_by_turbine: !r NULL
+  shutdown_bands: !r NULL
+  shutdown_plot: !r NULL
+
   min_indiv_summary: !r NULL
   min_indiv_plot_daily: !r NULL
 
@@ -66,6 +70,9 @@ params:
   curtailment_cutin_rpm: !r NULL
   safe_shutdown_rpm: !r NULL
   shutdown_time_buffer_sec: !r NULL
+  shutdown_time_thresholds: !r NULL
+  shutdown_time_low_cut: !r NULL
+  shutdown_time_high_cut: !r NULL
   track_proximity_threshold_m: !r NULL
   curtailment_trigger_height_m: !r NULL
   coverage_cylinder_inner_radius: !r NULL
@@ -77,6 +84,7 @@ params:
   xlsx_coverage3d: !r NULL
   xlsx_fatality: !r NULL
   xlsx_latency: !r NULL
+  xlsx_shutdown: !r NULL
   xlsx_min_indiv: !r NULL
 ---
 
@@ -178,13 +186,13 @@ Data coverage used for the overall/context figures in this report: `r params$rep
 
 Analysis date: `r params$analysis_date` | Responsible Team: `r params$username` | Code version: `r params$code_version`
 
-This report is descriptive and fully automated, generated end-to-end by an R code pipeline. The recorded incident date is when the carcass was found during a turbine ground survey, not the date of collision -- this is why the investigation covers a window of days before that date, not the single day.
+This report is descriptive and fully automated, generated end-to-end by an R code pipeline. The recorded incident date is when the carcass or injured bird was reported, not the date of collision, and this is why the investigation covers a window of days before that date, not the single day.
 
 ---
 
 # Turbine / IDF Unit Coverage
 
-Geometric overlap between the incident turbine's detection buffer and each IDF unit's detection buffer, for turbine `r params$incident_turbine` -- one row per IDF unit whose buffer overlaps this turbine's buffer, with the % of the turbine's buffer area covered by that unit (`r params$track_proximity_threshold_m` m is a separate, narrower proximity threshold used further below for candidate tracks; the coverage buffer radius used here is the IDF operational detection range). No manually-curated Primary/Secondary IDF matrix exists yet for this farm, so the table below is the geometric computation directly, not a comparison against one; the full matrix (all turbines) is in the accompanying workbook.
+Geometric overlap between the incident turbine's detection buffer and each IDF unit's detection buffer, for turbine `r params$incident_turbine` -- one row per IDF unit whose buffer overlaps this turbine's buffer, with the % of the turbine's buffer area covered by that unit. No manually curated Primary/Secondary/Other Level IDF matrix was available for the analysis, so the table below is the geometric computation directly; the full matrix (all turbines if evaluated) is in the accompanying workbook.
 
 <!-- Source: turbine_idf_coverage_dt[turbine == incident_turbine], R/turbine_idf_coverage.R -->
 ```{r coverage-turbine-table}
@@ -204,7 +212,7 @@ annex_note(params$xlsx_coverage)
 
 ## 3D Coverage (Topography-corrected)
 
-Coverage of the risk airspace around the incident turbine, corrected for terrain, based on IDF bird track detections, run here only for `r params$incident_turbine` rather than farm-wide, since it is the most computationally expensive analysis in the pipeline and only the incident turbine is in scope for this report.
+Coverage of the airspace around the incident turbine, corrected for terrain, based on IDF bird position detections, run here only for `r params$incident_turbine` rather than farm-wide, since it is the most computationally expensive analysis in the pipeline and only the incident turbine is in scope for this report.
 
 <!-- Source: summary_cov <- summarise_mesh_coverage(...), R/coverage_3d_topography.R -->
 ```{r coverage3d-table}
@@ -218,7 +226,9 @@ if (!is.null(params$coverage3d_by_turbine) && nrow(params$coverage3d_by_turbine)
 }
 ```
 
-The overall figure above blends cells at every height and distance from the turbine. The breakdown below splits it by height (below vs. at/above `r params$curtailment_trigger_height_m` m AGL, the height under which a curtailment is triggered) and by horizontal distance (within vs. beyond `r params$coverage_cylinder_inner_radius` m, the radius under which the system triggers an immediate response) -- coverage of the "at risk" / "inner" combination, the highest-priority quadrant, is the most relevant figure for assessing detection capability around a collision.
+&nbsp;
+
+The overall figure above blends cells at every height and distance from the turbine. The breakdown below splits it by height (below vs. at/above `r params$curtailment_trigger_height_m` m AGL, the height under which a curtailment is triggered) and by horizontal distance (within vs. beyond `r params$coverage_cylinder_inner_radius` m, the radius under which the system triggers an immediate response) -- coverage of the "at risk"/"inner" combination, the highest-priority quadrant, is the most relevant figure for assessing detection capability around a collision.
 
 ```{r coverage3d-risk-dist-table}
 if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_risk_dist_band) > 0) {
@@ -227,18 +237,24 @@ if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_r
     c(risk_band = "Height Band", dist_band = "Distance Band", n_mesh = "Air Mesh Cells",
       n_covered = "Covered Cells", pct_covered = "% Covered")
   ))
+} else {
+  cat("No height x distance breakdown available for this run -- this needs `dist_band_breaks` to have been passed to `run_coverage_3d_all_turbines()` (R/coverage_3d_topography.R) in addition to the risk-band breaks; without it, only the overall table above is computed.\n\n")
 }
 ```
 ```{r coverage3d-covered-image, results='asis'}
 if (!is.null(params$coverage3d_covered_png) && file.exists(params$coverage3d_covered_png)) {
   cat("Covered air mesh (bird detections within the proximity threshold of a mesh node):\n\n")
   knitr::include_graphics(params$coverage3d_covered_png)
+} else {
+  cat("No static image available for this run -- the interactive HTML plot (folder `coverage_3d/`) could not be captured as a PNG, most likely because the screenshot step (`webshot2`, which needs a Chrome/Edge install) is unavailable on the machine that generated this report. The interactive HTML itself is unaffected and still shows this view.\n\n")
 }
 ```
 ```{r coverage3d-not-covered-image, results='asis'}
 if (!is.null(params$coverage3d_not_covered_png) && file.exists(params$coverage3d_not_covered_png)) {
   cat("\n\nAir mesh nodes without any detection within the proximity threshold (not covered):\n\n")
   knitr::include_graphics(params$coverage3d_not_covered_png)
+} else {
+  cat("\n\nNo static image available for this run -- same reason as above (the interactive HTML plot is unaffected).\n\n")
 }
 ```
 ```{r coverage3d-annex, results='asis'}
@@ -284,22 +300,31 @@ annex_note(params$xlsx_fatality)
 
 ## Top Candidate Tracks
 
-The tracks most likely associated with the incident -- those whose last recorded position ends closest to the turbine, among the candidate signal categories above. `last_height_m` is the bird's height above ground at that last recorded position (`min_height_m` is the lowest height reached anywhere in the track) -- for reference against the `r params$curtailment_trigger_height_m` m curtailment-trigger height used above. `RPM at Identification` is the nearest SCADA RPM reading to the moment the species was first identified in this track (blank if no reading within the matching tolerance); `Curtailment Already Active` flags whether the turbine was already under a curtailment order -- from this track or any other -- that started at least 1 second before that moment and was still running at it, distinguishing a track that triggered no new curtailment because the turbine was already safely curtailed from one where no curtailment was in effect at all. The full table (point counts, distances, timestamps) is in the accompanying workbook. A fatality can occur with no curtailment ever triggered for the responsible track, particularly when the bird is detected already close to the turbine.
+The tracks most likely associated with the incident -- those whose last recorded position ends closest to the turbine, among the candidate signal categories above (species is omitted below, since this report covers a single species, stated at the top of this report). `last_height_m` is the bird's height above ground at that last recorded position (`min_height_m` is the lowest height reached anywhere in the track) -- for reference against the `r params$curtailment_trigger_height_m` m curtailment-trigger height used above. `RPM at Identification` is the nearest SCADA RPM reading to the moment the species was first identified in this track, and `Blade Tip Speed` the corresponding speed at the tip of the rotor blade (both blank if no RPM reading within the matching tolerance); `Curtailment Already Active` flags whether the turbine was already under a curtailment order -- from this track or any other -- that started at least 1 second before that moment and was still running at it, distinguishing a track that triggered no new curtailment because the turbine was already safely curtailed from one where no curtailment was in effect at all. The full table (point counts, distances, timestamps) is in the accompanying workbook. A fatality can occur with no curtailment ever triggered for the responsible track, particularly when the bird is detected already close to the turbine.
 
 <!-- Source: fatality_summary$top_candidates, R/fatality_track_investigation.R -->
 ```{r fatality-top-candidates-table}
 if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candidates) > 0) {
   dt <- as.data.frame(params$fatality_top_candidates)
-  dt <- dt[, intersect(c("incident_id", "track_id", "turbine", "species", "last_height_m", "min_height_m",
-                        "triggered_curtailment", "rpm_at_identification", "curtailment_active_at_identification", "signal"), names(dt)), drop = FALSE]
+  dt <- dt[, intersect(c("incident_id", "track_id", "turbine", "last_height_m", "min_height_m",
+                        "triggered_curtailment", "rpm_at_identification", "blade_tip_speed_ms",
+                        "curtailment_active_at_identification", "signal"), names(dt)), drop = FALSE]
   dt$signal <- unname(fatality_signal_labels[dt$signal])
-  report_table(rename_display(
-    dt,
-    c(incident_id = "Incident", track_id = "Track ID", turbine = "Turbine", species = "Species",
-      last_height_m = "Last Height (m AGL)", min_height_m = "Min Height (m AGL)",
-      triggered_curtailment = "Triggered Curtailment", rpm_at_identification = "RPM at Identification",
-      curtailment_active_at_identification = "Curtailment Already Active", signal = "Signal")
-  ))
+  report_table(
+    rename_display(
+      dt,
+      c(incident_id = "Incident", track_id = "Track ID", turbine = "Turbine",
+        last_height_m = "Last Height (m AGL)", min_height_m = "Min Height (m AGL)",
+        triggered_curtailment = "Triggered Curtailment", rpm_at_identification = "RPM at Identification",
+        blade_tip_speed_ms = "Blade Tip Speed (m/s)",
+        curtailment_active_at_identification = "Curtailment Already Active", signal = "Signal")
+    ),
+    col_widths_cm = c(
+      "Incident" = 1.5, "Track ID" = 1.5, "Turbine" = 1.5, "Last Height (m AGL)" = 1.5,
+      "Min Height (m AGL)" = 1.5, "Triggered Curtailment" = 1.5, "RPM at Identification" = 1.5,
+      "Blade Tip Speed (m/s)" = 1.5, "Curtailment Already Active" = 1.5, "Signal" = 1.5
+    )
+  )
 }
 ```
 ```{r fatality-top-candidates-empty, results='asis'}
@@ -311,7 +336,7 @@ if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candida
 annex_note(params$xlsx_fatality)
 ```
 
-Two examples below illustrate the RPM behaviour of the turbine around a candidate track: the first track found with no curtailment triggered, and the first track found with a curtailment triggered (both from the table above, ordered by distance to the turbine). For the no-curtailment example, a candidate is skipped if the turbine was already under a curtailment order triggered by a *different* track during the plotted window -- otherwise an unrelated RPM drop could look like a missed response, when the turbine was in fact already safely curtailed for another detection. "Track first position"/"Track last position" mark the timestamps of the first and last recorded points of the track; "Curtailment start"/"Curtailment stop" (when present) mark the actual curtailment order recorded for that track at this turbine.
+The examples below illustrate the RPM behaviour of the turbine around a candidate track: the first track found with no curtailment triggered (when available), and the first track found with a curtailment triggered (both from the table above, ordered by distance to the turbine). For the no-curtailment example, a candidate is skipped if the turbine was already under a curtailment order triggered by a different track during the plotted window -- otherwise an unrelated RPM drop could look like a missed response, when the turbine was in fact already safely curtailed for another detection. "Track first position"/"Track last position" mark the timestamps of the first and last recorded points of the track; "Curtailment start"/"Curtailment stop" (when present) mark the actual curtailment order recorded for that track at this turbine.
 
 ```{r fatality-example-no-curtailment-heading, results='asis'}
 if (!is.null(params$fatality_example_no_curtailment_plot)) {
@@ -585,6 +610,59 @@ if (!is.null(params$latency_slowest_examples_plot)) {
 annex_note(params$xlsx_latency)
 ```
 
+## Shutdown Time
+
+Time from curtailment signal to reaching each RPM threshold, for the incident turbine over the full data coverage period (`r params$report_start` to `r params$report_end`) -- 3 thresholds evaluated: `r paste(params$shutdown_time_thresholds, collapse = ", ")` rpm. Bands below/above the agreed cut-offs are reported as-is, without further interpretation. Uses the same population as Response Latency above: curtailments with no SCADA baseline within `r params$curtailment_start_end_gap_sec` s of the signal, or already below the cut-in speed at the start of the order, are excluded (see the counts stated at the top of this section).
+
+### Time to Threshold by Turbine
+
+<!-- Source: summarise_time_to_threshold(tt_dt), R/curtailment_shutdown_time.R -->
+```{r shutdown-turbine-table}
+if (!is.null(params$shutdown_by_turbine)) {
+  report_table(
+    rename_display(
+      drop_cols(params$shutdown_by_turbine, c("median_time_sec")),
+      c(
+        turbine = "Turbine", threshold = "Thresh. (rpm)", n_curtailments = "Curtailments",
+        n_reached = "Reached", pct_reached = "% Reached", mean_time_sec = "Mean (s)",
+        sd_time_sec = "SD (s)", min_time_sec = "Min (s)", max_time_sec = "Max (s)"
+      )
+    ),
+    max_col_width_cm = 1.5
+  )
+}
+```
+```{r shutdown-turbine-annex, results='asis'}
+annex_note(params$xlsx_shutdown)
+```
+
+### Time to Threshold Bands
+
+A curtailment counts as "below cut" when it reached the threshold in under `r params$shutdown_time_low_cut` s (fast), and "above cut" when it took more than `r params$shutdown_time_high_cut` s (slow); cases in between count towards neither band.
+
+<!-- Source: summarise_time_to_threshold_bands(tt_dt), R/curtailment_shutdown_time.R -->
+```{r shutdown-bands-table}
+if (!is.null(params$shutdown_bands)) {
+  report_table(rename_display(
+    params$shutdown_bands,
+    stats::setNames(
+      c("Thresh. (rpm)", "Reached", sprintf("%% < %ss", params$shutdown_time_low_cut), sprintf("%% > %ss", params$shutdown_time_high_cut)),
+      c("threshold", "n_reached", "pct_below_cut", "pct_above_cut")
+    )
+  ))
+}
+```
+```{r shutdown-bands-annex, results='asis'}
+annex_note(params$xlsx_shutdown)
+```
+
+### Time to Threshold Distribution
+
+<!-- Source: plot_time_to_threshold(), R/curtailment_shutdown_time.R -->
+```{r shutdown-plot, fig.width=6.30, fig.height=6}
+if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
+```
+
 # `r params$incident_species` Activity
 
 Minimum number of distinct individuals of `r params$incident_species` detected in the same `r params$min_individuals_bin_min`-minute time bin, around the investigated turbines (`r params$investigated_turbines`), summarised by day over the full data coverage period. Two or more tracks are counted as a single individual when their positions are within `r params$min_individuals_merge_dist_m` m of each other in the same bin -- this is a lower-bound estimate of how many individuals were present, not a true count.
@@ -625,4 +703,4 @@ if (!is.null(params$min_indiv_plot_daily)) {
 
 # Annexes
 
-The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: turbine/IDF coverage, fatality investigation (full track/window detail), curtailment response & latency (overall), and minimum individuals per bin.
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: turbine/IDF coverage, fatality investigation (full track/window detail), curtailment response & latency (overall), shutdown time, and minimum individuals per bin.

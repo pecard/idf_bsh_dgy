@@ -36,14 +36,15 @@
 ##     incident_date = as.Date("2025-10-31"), days_before = 8,
 ##     track_dt = track_dt, curtl_dt = curtl_dt, wtg_sf = wtg,
 ##     proximity_threshold_m = track_proximity_threshold_m,
-##     scada_dt = scada_dt # opcional -- ver nota na secção 1
+##     scada_dt = scada_dt, # opcional -- ver nota na secção 1
+##     rotor_radius_m = rotor_radius_m # opcional, so' com scada_dt (blade tip speed)
 ##   )
 ##
 ##   # varios incidentes de uma vez -- ver fatality_incidents em userSettings_BSH.R
 ##   all_tracks_i <- investigate_fatality_incidents(
 ##     fatality_incidents, track_dt, curtl_dt, wtg,
 ##     proximity_threshold_m = track_proximity_threshold_m,
-##     scada_dt = scada_dt # opcional
+##     scada_dt = scada_dt, rotor_radius_m = rotor_radius_m # opcionais
 ##   )
 ##
 ##   # sumario -- contagens por sinal e candidatos mais provaveis a colisao
@@ -60,7 +61,8 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
                                         proximity_threshold_m = 100,
                                         height_threshold_m = NULL,
                                         wtg_id_col = "InternalNa", tz = NULL,
-                                        scada_dt = NULL, rpm_max_gap_sec = 15) {
+                                        scada_dt = NULL, rpm_max_gap_sec = 15,
+                                        rotor_radius_m = NULL) {
 
   incident_date <- as.Date(incident_date)
   if (is.null(tz)) tz <- attr(track_dt$timestamp, "tzone")
@@ -84,7 +86,8 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
       last_height_m = numeric(), min_height_m = numeric(),
       within_threshold = logical(), last_within_threshold = logical(),
       triggered_curtailment = logical(), signal = character(),
-      rpm_at_identification = numeric(), curtailment_active_at_identification = logical()
+      rpm_at_identification = numeric(), curtailment_active_at_identification = logical(),
+      blade_tip_speed_ms = numeric()
     )
   }
 
@@ -178,6 +181,22 @@ investigate_fatality_tracks <- function(turbine_id, species, incident_date, days
     out[, rpm_at_identification := NA_real_]
   }
 
+  ## Velocidade na ponta da pa (blade tip speed), no mesmo instante de
+  ## rpm_at_identification -- pedido do Paulo, 2026-10, para perceber a
+  ## velocidade real da pa (nao so' o RPM) no momento em que a ave foi
+  ## identificada. tip_speed (m/s) = RPM * 2*pi*rotor_radius_m / 60 -- RPM
+  ## e' em rotacoes/minuto, por isso /60 converte para rotacoes/segundo
+  ## antes de multiplicar pela circunferencia (2*pi*raio). rotor_radius_m =
+  ## NULL (omissao, ex: BSH/DGY que nao pediram esta coluna) deixa a coluna
+  ## em NA -- nao e' um raio generico/farm-wide, tem de vir explicito do
+  ## settings do parque/turbina (ver rotor_radius_m em
+  ## userSettings_ZRF_T94_20261001.R).
+  if (!is.null(rotor_radius_m)) {
+    out[, blade_tip_speed_ms := rpm_at_identification * 2 * pi * rotor_radius_m / 60]
+  } else {
+    out[, blade_tip_speed_ms := NA_real_]
+  }
+
   turbine_curtl <- curtl_dt[turbine == turbine_id]
   out[, curtailment_active_at_identification := vapply(first_time, function(ft) {
     if (nrow(turbine_curtl) == 0L) return(FALSE)
@@ -196,7 +215,8 @@ investigate_fatality_incidents <- function(fatality_incidents, track_dt, curtl_d
                                            proximity_threshold_m = 100,
                                            height_threshold_m = NULL,
                                            wtg_id_col = "InternalNa", tz = NULL,
-                                           scada_dt = NULL, rpm_max_gap_sec = 15) {
+                                           scada_dt = NULL, rpm_max_gap_sec = 15,
+                                           rotor_radius_m = NULL) {
 
   res <- lapply(seq_len(nrow(fatality_incidents)), function(i) {
     inc <- fatality_incidents[i]
@@ -205,7 +225,7 @@ investigate_fatality_incidents <- function(fatality_incidents, track_dt, curtl_d
       incident_date = inc$incident_date, days_before = inc$days_before,
       track_dt = track_dt, curtl_dt = curtl_dt, wtg_sf = wtg_sf,
       proximity_threshold_m = proximity_threshold_m, height_threshold_m = height_threshold_m,
-      scada_dt = scada_dt, rpm_max_gap_sec = rpm_max_gap_sec,
+      scada_dt = scada_dt, rpm_max_gap_sec = rpm_max_gap_sec, rotor_radius_m = rotor_radius_m,
       wtg_id_col = wtg_id_col, tz = tz
     )
     dt[, `:=`(incident_id = inc$incident_id, turbine = inc$turbine, species = inc$species)]

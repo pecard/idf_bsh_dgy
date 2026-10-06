@@ -446,12 +446,14 @@ source("R/fatality_track_investigation.R")
 
 ## scada_dt = scada_dt_unfilt (secção 1, "NAO FILTRAR") -- rpm_at_identification/
 ## curtailment_active_at_identification (secção "Top Candidate Tracks" do
-## relatorio) pedidos pelo Paulo, 2026-10.
+## relatorio) pedidos pelo Paulo, 2026-10. rotor_radius_m (userSettings_ZRF_T94_20261001.R)
+## so' se existir (BSH/DGY nao pediram blade_tip_speed_ms) -- fica NA sem ele.
 fatality_tracks_dt <- investigate_fatality_incidents(
   fatality_incidents, track_dt, curtl_dt, wtg,
   proximity_threshold_m = track_proximity_threshold_m,
   height_threshold_m = if (exists("curtailment_trigger_height_m")) curtailment_trigger_height_m else NULL,
-  scada_dt = scada_dt, rpm_max_gap_sec = curtailment_start_end_gap_sec
+  scada_dt = scada_dt, rpm_max_gap_sec = curtailment_start_end_gap_sec,
+  rotor_radius_m = if (exists("rotor_radius_m")) rotor_radius_m else NULL
 )
 fatality_summary <- summarise_fatality_tracks(fatality_tracks_dt, top_n = 10)
 
@@ -732,6 +734,32 @@ write_xlsx_local(
   file.path(folder_output, paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end), ".xlsx"))
 )
 
+## 4b. Tempo ate atingir limiares de RPM (shutdown time) -- mesma analise
+## ja feita no relatorio anual BSH/DGY (IDF_analysis.R secção 3.6), ate
+## agora em falta neste relatorio de incidente -- pedido do Paulo, 2026-10
+## ("We are not evaluating shutdown time here"). MESMA populacao/janela de
+## curtl_scada_dt usada na latencia acima (so' a turbina do incidente,
+## scada_ini/scada_end) -- os 3 limiares configurados
+## (shutdown_time_thresholds, por omissao 2/1/0 rpm, userSettings_ZRF_T94_20261001.R).
+source("R/curtailment_shutdown_time.R")
+
+tt_dt <- time_to_rpm_thresholds(
+  curtl_scada_dt, scada_dt, thresholds = shutdown_time_thresholds,
+  start_end_gap_sec = curtailment_start_end_gap_sec, buffer_after_end_sec = shutdown_time_buffer_sec,
+  cutin_rpm = curtailment_cutin_rpm
+)
+summary_tt_by_turbine <- summarise_time_to_threshold(tt_dt)
+summary_tt_bands      <- summarise_time_to_threshold_bands(
+  tt_dt, low_cut = shutdown_time_low_cut, high_cut = shutdown_time_high_cut
+)
+
+write_xlsx_local(
+  list(Time_to_threshold = tt_dt, By_turbine = summary_tt_by_turbine, Bands = summary_tt_bands),
+  file.path(folder_output, paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+)
+
+p_shutdown_time <- plot_time_to_threshold(tt_dt)
+
 
 ##
 ## 5. Egyptian-Vulture activity -- min. individuos por bin de 2min,
@@ -831,6 +859,10 @@ report_params <- list(
   latency_n_no_response_examples    = nrow(no_response_examples_dt),
   latency_n_slowest_examples        = nrow(slowest_response_examples_dt),
 
+  shutdown_by_turbine = summary_tt_by_turbine,
+  shutdown_bands      = summary_tt_bands,
+  shutdown_plot       = p_shutdown_time,
+
   min_indiv_summary    = min_indiv_summary_dt,
   min_indiv_plot_daily = p_min_indiv_daily,
 
@@ -841,6 +873,9 @@ report_params <- list(
   curtailment_cutin_rpm           = curtailment_cutin_rpm,
   safe_shutdown_rpm               = safe_shutdown_rpm,
   shutdown_time_buffer_sec        = shutdown_time_buffer_sec,
+  shutdown_time_thresholds        = shutdown_time_thresholds,
+  shutdown_time_low_cut           = shutdown_time_low_cut,
+  shutdown_time_high_cut          = shutdown_time_high_cut,
   track_proximity_threshold_m     = track_proximity_threshold_m,
   curtailment_trigger_height_m    = if (exists("curtailment_trigger_height_m")) curtailment_trigger_height_m else NULL,
   coverage_cylinder_inner_radius  = coverage_cylinder_inner_radius,
@@ -852,6 +887,7 @@ report_params <- list(
   xlsx_coverage3d    = if (!is.null(summary_cov)) "coverage_3d_summary.xlsx" else NULL,
   xlsx_fatality      = "fatality_track_investigation.xlsx",
   xlsx_latency       = paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end), ".xlsx"),
+  xlsx_shutdown      = paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end), ".xlsx"),
   xlsx_min_indiv     = "min_individuals_egyptian_vulture.xlsx"
 )
 

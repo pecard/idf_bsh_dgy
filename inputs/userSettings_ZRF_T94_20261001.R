@@ -241,6 +241,15 @@ curtailment_example_window_after_min  <- 3
 fatality_example_window_before_min <- 3
 fatality_example_window_after_min  <- 3
 
+## em metros; raio do rotor da turbina do incidente -- usado so' para
+## calcular a velocidade na ponta da pa (blade tip speed) na tabela "Top
+## Candidate Tracks" do relatorio de incidente (rpm_at_identification *
+## 2*pi*rotor_radius_m / 60, R/fatality_track_investigation.R), pedido do
+## Paulo, 2026-10. Especifico da turbina/modelo, NAO um valor generico do
+## parque -- confirmar se outras turbinas do Zarafshan (ex: um 2º
+## incidente) usam o mesmo modelo antes de reutilizar este valor.
+rotor_radius_m <- 77.5
+
 ## em metros; limiar de proximidade a turbina para identificar candidatos a
 ## colisao (rotor-swept zone, distancia horizontal/2D)
 track_proximity_threshold_m <- 100
