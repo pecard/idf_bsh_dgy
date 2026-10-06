@@ -502,6 +502,89 @@ p_fatality_example_curtailment <- if (nrow(fatality_example_curtailment_dt) > 0 
   )
 } else NULL
 
+##
+## 3b. Species ID transitions + short-track curtailments -- restrito a
+## turbina(s)/janela do incidente, SNAPSHOT (sem comparacao com o
+## relatorio mensal/farm-wide, confirmado pelo Paulo, 2026-10) -- "nos 3
+## incidentes investigados ate agora, a IDF normalmente classificou mal a
+## especie nos tracks candidatos". Ajudam a perceber PORQUE' um track
+## candidato (secção "Top Candidate Tracks" acima) pode nao ter disparado
+## curtailment: especie reclassificada tarde demais (ou nunca) dentro do
+## proprio track, ou tao poucos pontos registados que o algoritmo nao
+## teve informacao suficiente para decidir -- mesmas 2 analises ja' no
+## relatorio mensal BSH/DGY (R/id_transitions.R, R/curtailment_short_track.R),
+## aqui restritas a turbina(s)+janela em vez de farm-wide/todo o periodo.
+##
+## Parametros opcionais (id_transition_late_time_sec, shorttrack_min_points,
+## shorttrack_eval_range) -- se nao existirem no settings file (ex:
+## userSettings_ZRF.R, T35, nao atualizado de proposito), estas 2 seccoes
+## ficam NULL e desaparecem do relatorio, sem erro -- mesmo padrao de
+## rotor_radius_m acima.
+if (exists("id_transition_late_time_sec") && exists("shorttrack_min_points") && exists("shorttrack_eval_range")) {
+
+  source("R/id_transitions.R")
+  source("R/curtailment_short_track.R")
+
+  ## track_dt_window: turbina(s) do incidente + janela de investigacao,
+  ## SEM filtro de especie (ao contrario de fatality_tracks_dt acima) --
+  ## as 2 analises precisam da sequencia COMPLETA de classificacoes de
+  ## cada track (incluindo especies que NAO sao a do incidente) para
+  ## detetar transicao/contar pontos corretamente.
+  track_dt_window <- track_dt[
+    turbine %in% turbinas_scada & timestamp >= incident_window_start & timestamp <= incident_window_end
+  ]
+  curtl_dt_window <- curtl_dt[
+    turbine %in% turbinas_scada & start >= incident_window_start & start <= incident_window_end
+  ]
+
+  id_richness_window_dt <- track_species_summary(track_dt_window)
+  id_risk_window_dt <- classify_id_transition_risk(
+    id_richness_window_dt, track_dt_window, curtl_dt_window, prioritysp,
+    late_time_threshold_sec = id_transition_late_time_sec, late_dist_threshold_m = track_proximity_threshold_m
+  )
+  id_risk_window_summary <- summarise_id_transition_risk(id_risk_window_dt, curtl_dt_window)
+
+  write_xlsx_local(
+    list(Risk_detail = id_risk_window_dt, By_direction = id_risk_window_summary$by_direction),
+    file.path(folder_output, "id_transitions_incident_window.xlsx")
+  )
+
+  short_track_window_dt <- classify_short_track_curtailments(
+    track_dt_window, curtl_dt_window, min_points = shorttrack_min_points, eval_range_m = shorttrack_eval_range
+  )
+  short_track_window_summary_dt <- summarise_short_track_curtailments(
+    track_dt_window, short_track_window_dt, shorttrack_min_points
+  )
+  ## summarise_short_track_curtailments() rotula a 1a linha "farm-wide" --
+  ## verdade no relatorio mensal (a funcao e' partilhada), nao aqui (so'
+  ## turbina(s)+janela do incidente) -- corrigido no proprio objeto em vez
+  ## de reescrever a funcao so' por causa de 1 string, ja' que o resto da
+  ## logica e' identica.
+  short_track_window_summary_dt[
+    metric == "Total short tracks (farm-wide, < min_points)",
+    metric := "Total short tracks (incident turbine/window, < min_points)"
+  ]
+  short_track_window_by_species_dt <- summarise_short_track_by_species(short_track_window_dt, prioritysp)
+
+  write_xlsx_local(
+    list(
+      Short_track_curtailments = short_track_window_dt,
+      Summary                  = short_track_window_summary_dt,
+      By_species               = short_track_window_by_species_dt
+    ),
+    file.path(folder_output, "short_track_curtailments_incident_window.xlsx")
+  )
+
+} else {
+  message(
+    "id_transition_late_time_sec/shorttrack_min_points/shorttrack_eval_range nao definidos neste settings file -- ",
+    "secções 'ID Transitions'/'Short-Track Curtailments' saltadas nesta ronda."
+  )
+  id_risk_window_summary <- NULL
+  short_track_window_summary_dt <- NULL
+  short_track_window_by_species_dt <- NULL
+}
+
 source("R/availability_daylight.R")
 source("R/curtailment_response.R")
 source("R/curtailment_response_latency.R")
@@ -857,6 +940,10 @@ report_params <- list(
   fatality_window_response_summary = fatality_window_response_summary_dt,
   fatality_abundance_pre_post      = fatality_abundance_pre_post_dt,
 
+  id_risk_by_direction           = if (!is.null(id_risk_window_summary)) id_risk_window_summary$by_direction else NULL,
+  short_track_summary            = short_track_window_summary_dt,
+  short_track_by_species         = short_track_window_by_species_dt,
+
   latency_by_turbine    = summary_latency_by_turbine,
   latency_bands         = summary_latency_bands,
   latency_plot          = p_latency,
@@ -893,10 +980,15 @@ report_params <- list(
   fatality_post_incident_days     = fatality_post_incident_days,
   min_individuals_bin_min         = min_individuals_bin_min,
   min_individuals_merge_dist_m    = min_individuals_merge_dist_m,
+  id_transition_late_time_sec     = if (exists("id_transition_late_time_sec")) id_transition_late_time_sec else NULL,
+  shorttrack_min_points           = if (exists("shorttrack_min_points")) shorttrack_min_points else NULL,
+  shorttrack_eval_range           = if (exists("shorttrack_eval_range")) shorttrack_eval_range else NULL,
 
   xlsx_coverage      = "turbine_idf_coverage.xlsx",
   xlsx_coverage3d    = if (!is.null(summary_cov)) "coverage_3d_summary.xlsx" else NULL,
   xlsx_fatality      = "fatality_track_investigation.xlsx",
+  xlsx_id_transitions = if (!is.null(id_risk_window_summary)) "id_transitions_incident_window.xlsx" else NULL,
+  xlsx_short_track    = if (!is.null(short_track_window_summary_dt)) "short_track_curtailments_incident_window.xlsx" else NULL,
   xlsx_latency       = paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end), ".xlsx"),
   xlsx_shutdown      = paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end), ".xlsx"),
   xlsx_min_indiv     = "min_individuals_egyptian_vulture.xlsx"

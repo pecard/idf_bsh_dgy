@@ -43,6 +43,10 @@ params:
   fatality_window_response_summary: !r NULL
   fatality_abundance_pre_post: !r NULL
 
+  id_risk_by_direction: !r NULL
+  short_track_summary: !r NULL
+  short_track_by_species: !r NULL
+
   latency_by_turbine: !r NULL
   latency_bands: !r NULL
   latency_plot: !r NULL
@@ -79,10 +83,15 @@ params:
   fatality_post_incident_days: !r NULL
   min_individuals_bin_min: !r NULL
   min_individuals_merge_dist_m: !r NULL
+  id_transition_late_time_sec: !r NULL
+  shorttrack_min_points: !r NULL
+  shorttrack_eval_range: !r NULL
 
   xlsx_coverage: !r NULL
   xlsx_coverage3d: !r NULL
   xlsx_fatality: !r NULL
+  xlsx_id_transitions: !r NULL
+  xlsx_short_track: !r NULL
   xlsx_latency: !r NULL
   xlsx_shutdown: !r NULL
   xlsx_min_indiv: !r NULL
@@ -154,6 +163,16 @@ rename_display <- function(x, mapping) {
 drop_cols <- function(x, cols) {
   x <- as.data.frame(x)
   x[, setdiff(names(x), cols), drop = FALSE]
+}
+
+# Substitui VALORES (nao nomes de coluna) de uma coluna categorica por
+# rotulos legiveis -- usado para as categorias de risk_direction (secção
+# "ID Transitions"), identico a report/monthly_report_template.rmd
+recode_values <- function(x, col, mapping) {
+  x <- as.data.frame(x)
+  hit <- x[[col]] %in% names(mapping)
+  x[[col]][hit] <- unname(mapping[x[[col]][hit]])
+  x
 }
 
 annex_note <- function(xlsx_name) {
@@ -358,6 +377,64 @@ if (!is.null(params$fatality_example_curtailment_plot)) {
 ```
 ```{r fatality-example-curtailment-plot, fig.width=6.30, fig.height=4}
 if (!is.null(params$fatality_example_curtailment_plot)) print(params$fatality_example_curtailment_plot)
+```
+
+## ID Transitions
+
+The IdentiFlight algorithm can change a track's species classification as it accumulates more detections, and the curtailment decision at any instant reflects the classification *at that instant*, not necessarily the track's final one -- a track can end up classified as the incident species only after part of it (or all of it) has already been recorded as a lower-priority species. Restricted to tracks near the incident turbine (`r params$investigated_turbines`) during the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), among tracks with more than one distinct species classification (multi-ID tracks only -- a track that never changed classification has no transition risk by definition). A reclassification to a priority species is considered "late" when it happens more than `r params$id_transition_late_time_sec` s after the curtailment start, or when the track was already within `r params$track_proximity_threshold_m` m of the turbine at the moment of reclassification. This is a snapshot of this incident alone -- it is not compared against farm-wide or monthly figures.
+
+- **P to NP (unnecessary curtailment)**: curtailment triggered while classified as priority, but the track's final classification was non-priority.
+- **NP to P, no curtailment (near)**: reclassified to a priority species, no curtailment ever triggered, and the track was already within the proximity threshold at that moment -- the most concerning case, and the one most directly relevant to a candidate track with no curtailment in the table above.
+- **NP to P, no curtailment (far)**: same, but the track was still far from the turbine when reclassified -- descriptive, not necessarily concerning on its own.
+- **NP to P, late curtailment**: curtailment was triggered, but later than the agreed time or distance criterion.
+- **No risk**: no meaningful transition risk detected (single-species track, or reclassification with a timely curtailment).
+
+<!-- Source: summarise_id_transition_risk(id_risk_window_dt, curtl_dt_window)$by_direction, R/id_transitions.R -->
+```{r id-risk-table}
+if (!is.null(params$id_risk_by_direction) && nrow(params$id_risk_by_direction) > 0) {
+  report_table(rename_display(
+    recode_values(params$id_risk_by_direction, "risk_direction", c(
+      P_to_NP_unnecessary_curtailment = "P to NP (unnecessary curtailment)",
+      NP_to_P_no_curtailment_near     = "NP to P, no curtailment (near)",
+      NP_to_P_no_curtailment_far      = "NP to P, no curtailment (far)",
+      NP_to_P_late_curtailment        = "NP to P, late curtailment",
+      no_risk                         = "No risk"
+    )),
+    c(risk_direction = "Direction", n_tracks = "Tracks", n_multi_id_tracks = "Multi-ID Tracks", pct_of_multi_id = "% of Multi-ID")
+  ))
+} else {
+  cat("No multi-ID tracks (tracks with more than one distinct species classification) were found near the incident turbine during the investigation window.\n\n")
+}
+```
+```{r id-risk-annex, results='asis'}
+annex_note(params$xlsx_id_transitions)
+```
+
+## Short-Track Curtailments
+
+Curtailments triggered by tracks with fewer than `r params$shorttrack_min_points` recorded points, considered only within `r params$shorttrack_eval_range` m of the incident turbine, during the investigation window -- few recorded points means the algorithm had little accumulated information to confirm species or trajectory before deciding on a curtailment, which matters most at close range, where that limited information carries the most weight in the decision.
+
+<!-- Source: summarise_short_track_curtailments(), R/curtailment_short_track.R (built on classify_short_track_curtailments()) -->
+```{r short-track-table}
+if (!is.null(params$short_track_summary)) report_table(params$short_track_summary)
+```
+```{r short-track-annex, results='asis'}
+annex_note(params$xlsx_short_track)
+```
+
+```{r short-track-species-heading, results='asis'}
+if (!is.null(params$short_track_by_species) && nrow(params$short_track_by_species) > 0) {
+  cat("Of the close-range short-track curtailments above, the breakdown by priority species:\n\n")
+}
+```
+<!-- Source: summarise_short_track_by_species(), R/curtailment_short_track.R -->
+```{r short-track-species-table}
+if (!is.null(params$short_track_by_species) && nrow(params$short_track_by_species) > 0) {
+  report_table(rename_display(
+    params$short_track_by_species,
+    c(species = "Species", n = "N", pct = "% of Close-Range Short-Track Curtailments")
+  ))
+}
 ```
 
 ## IDF Unit Availability -- Investigation Window vs. Overall Baseline
@@ -703,4 +780,4 @@ if (!is.null(params$min_indiv_plot_daily)) {
 
 # Annexes
 
-The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: turbine/IDF coverage, fatality investigation (full track/window detail), curtailment response & latency (overall), shutdown time, and minimum individuals per bin.
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: turbine/IDF coverage, fatality investigation (full track/window detail), ID transitions, short-track curtailments, curtailment response & latency (overall), shutdown time, and minimum individuals per bin.

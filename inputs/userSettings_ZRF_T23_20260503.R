@@ -256,6 +256,23 @@ track_proximity_threshold_m <- 100
 ## em metros AGL; altura abaixo da qual o sistema despoleta curtailment
 curtailment_trigger_height_m <- 300
 
+## segundos; gap entre o 1º registo do track ja classificado como
+## prioritaria e o inicio do curtailment, acima do qual se considera
+## "tarde demais" -- mesmo valor de partida do BSH (userSettings_BSH.R,
+## igual a shutdown_time_high_cut). Usado em classify_id_transition_risk()
+## (R/id_transitions.R), secção "ID Transitions" do relatorio de
+## incidente -- pedido do Paulo, 2026-10.
+id_transition_late_time_sec <- 50
+
+## threshold de pontos dos tracks abaixo do qual se considera short-track,
+## e distancia (m) ate a qual e' relevante avaliar curtailments de
+## short-tracks -- mesmos valores do BSH (userSettings_BSH.R). Usados em
+## classify_short_track_curtailments() (R/curtailment_short_track.R),
+## secção "Short-Track Curtailments" do relatorio de incidente -- pedido
+## do Paulo, 2026-10.
+shorttrack_min_points <- 6
+shorttrack_eval_range <- 300
+
 ## dias APOS o incidente a comparar com a janela pre-incidente, na
 ## abundancia (min individuals) da especie -- ver CLAUDE.md
 fatality_post_incident_days <- 3
