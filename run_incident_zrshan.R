@@ -825,8 +825,19 @@ report_params <- list(
   coverage_turbine_of_interest = coverage_turbine_of_interest_dt,
   coverage3d_by_turbine        = if (!is.null(summary_cov)) summary_cov$by_turbine else NULL,
   coverage3d_by_risk_dist_band = if (!is.null(summary_cov) && !is.null(summary_cov$by_turbine_risk_dist_band) && nrow(summary_cov$by_turbine_risk_dist_band) > 0) summary_cov$by_turbine_risk_dist_band else NULL,
-  coverage3d_covered_png       = if (!is.null(coverage3d_covered_png)) normalizePath(coverage3d_covered_png) else NULL,
-  coverage3d_not_covered_png   = if (!is.null(coverage3d_not_covered_png)) normalizePath(coverage3d_not_covered_png) else NULL,
+  # winslash = "/" -- OBRIGATORIO (nao e' so' cosmetica): normalizePath()
+  # no Windows devolve caminhos com "\\" por omissao, e esse caminho e'
+  # embebido tal e qual no markdown intermedio que o pandoc depois le para
+  # gravar a imagem no .docx; markdown interpreta "\\" como caracteres de
+  # escape, nao como separador de pasta, por isso o pandoc deixa de
+  # encontrar o ficheiro -- "[WARNING] Could not fetch resource
+  # coverage_3d/coverage_3d_T23.png: replacing image with description",
+  # mesmo com o PNG realmente la' (e file.exists() a confirmar TRUE no
+  # proprio knit, ja' que file.exists() nao se importa com a direcao da
+  # barra) -- caso real, Paulo, 2026-10 (Windows). "/" funciona em
+  # qualquer SO para este fim (pandoc/markdown so' exige "/").
+  coverage3d_covered_png       = if (!is.null(coverage3d_covered_png)) normalizePath(coverage3d_covered_png, winslash = "/") else NULL,
+  coverage3d_not_covered_png   = if (!is.null(coverage3d_not_covered_png)) normalizePath(coverage3d_not_covered_png, winslash = "/") else NULL,
 
   fatality_signal_counts           = fatality_summary$counts_by_signal,
   fatality_top_candidates          = fatality_summary$top_candidates,

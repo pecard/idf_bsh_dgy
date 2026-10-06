@@ -382,15 +382,22 @@ plot_heartbeat_slots <- function(slot_grid_dt, date_breaks = "2 days", title = N
     "Missing - night"      = "#252525"
   )
 
+  # Mesmo fix de plot_offline_evidence_slots() (secção 9c abaixo, ver nota
+  # completa la') -- garante 1 linha de dados real (invisivel, alpha=0)
+  # por nivel de slot_status, para a legenda nunca depender do caminho
+  # "nivel sem dados nenhures" (fragil entre versoes do ggplot2).
+  dummy_legend_dt <- data.table::data.table(
+    idf = slot_grid_dt$idf[1], date = slot_grid_dt$date[1], time_decimal = slot_grid_dt$time_decimal[1],
+    slot_status = factor(levels(slot_grid_dt$slot_status), levels = levels(slot_grid_dt$slot_status))
+  )
+
   ggplot(slot_grid_dt, aes(x = date, y = time_decimal, fill = slot_status)) +
     geom_tile(width = 0.95, height = 0.48) +
+    geom_tile(data = dummy_legend_dt, width = 0.95, height = 0.48, alpha = 0) +
     facet_wrap(~idf, ncol = 1) +
     scale_fill_manual(name = "IDF status", values = heartbeat_slot_colors, drop = FALSE) +
-    # override.aes$fill -- mesma correcao de plot_offline_evidence_slots()
-    # (secção 9c abaixo): sem forcar fill/alpha/colour explicitamente, uma
-    # categoria sem nenhum slot no periodo (ex: "Missing - night" num mes
-    # sem nenhum gap noturno) pode ficar com o quadrado da legenda
-    # transparente/invisivel, mesmo com drop=FALSE a mante-la listada.
+    # override.aes mantido como 2a camada de proteção (ver dummy_legend_dt
+    # acima para o fix principal).
     guides(fill = guide_legend(override.aes = list(alpha = 1, colour = NA, fill = unname(heartbeat_slot_colors)))) +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
     scale_y_continuous(
@@ -539,24 +546,30 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
     "No data"                                          = "#9e9e9e"
   )
 
+  # CORRIGIDO de novo, 2026-10 (apanhado pelo Paulo: o fix anterior,
+  # override.aes(fill=...), nao chegou a resolver em todas as versoes do
+  # ggplot2 -- a legenda continuava sem quadrado de cor para categorias
+  # com 0 slots no periodo). Em vez de depender do mecanismo de legenda
+  # para "inventar" uma chave a partir de um nivel do factor sem NENHUMA
+  # linha de dados em NENHUMA layer (caminho de codigo que, consoante a
+  # versao do ggplot2, pode devolver fill/alpha NA), garantimos aqui que
+  # TODOS os niveis de slot_status tem pelo menos 1 linha de dados real
+  # -- uma layer extra, totalmente invisivel (alpha=0, por cima de um
+  # slot que ja existe, sem alterar o que se ve no painel), so' para a
+  # legenda ser construida pelo MESMO caminho de codigo ja usado (e que
+  # sempre funcionou) para os niveis que tem dados reais.
+  dummy_legend_dt <- data.table::data.table(
+    idf = slot_grid_dt$idf[1], date = slot_grid_dt$date[1], time_decimal = slot_grid_dt$time_decimal[1],
+    slot_status = factor(levels(slot_grid_dt$slot_status), levels = levels(slot_grid_dt$slot_status))
+  )
+
   ggplot(slot_grid_dt, aes(x = date, y = time_decimal, fill = slot_status)) +
     geom_tile(width = 0.95, height = tile_height) +
+    geom_tile(data = dummy_legend_dt, width = 0.95, height = tile_height, alpha = 0) +
     facet_wrap(~idf, ncol = 1) +
     scale_fill_manual(name = "Slot status", values = slot_status_colors, drop = FALSE) +
-    # override.aes forca alpha/colour/fill fixos na legenda -- uma
-    # categoria com 0 slots no periodo (comum p.ex. "IDF unit communication
-    # failure" nalguns meses/parques, ou "Turbine operational, no
-    # detection"/"No evidence"/"No data" noutros) continua listada gracas a
-    # drop=FALSE, mas o seu KEY GLYPH e' construido a partir de um resumo
-    # das (zero) linhas de dados desse nivel -- alpha=1/colour=NA (fix
-    # original, 2026-09) ja nao chegou para a reaparecer (bug voltou,
-    # 2026-10, apanhado pelo Paulo): dependendo da versao do ggplot2, esse
-    # resumo pode devolver fill=NA tambem, nao so' alpha=NA, ficando o
-    # quadrado da legenda transparente/invisivel. Fixar "fill" aqui
-    # tambem, com a MESMA paleta/ordem de scale_fill_manual() acima
-    # (slot_status_colors, reaproveitada em vez de duplicada), torna a
-    # legenda imune a essa diferenca de comportamento entre versoes --
-    # nao depende de nenhuma linha de dados existir para cada categoria.
+    # override.aes mantido como 2a camada de proteção (nao faz mal a mais,
+    # ver dummy_legend_dt acima para o fix principal).
     guides(fill = guide_legend(
       nrow = 3, byrow = TRUE,
       override.aes = list(alpha = 1, colour = NA, fill = unname(slot_status_colors))

@@ -246,7 +246,7 @@ if (!is.null(params$coverage3d_covered_png) && file.exists(params$coverage3d_cov
   cat("Covered air mesh (bird detections within the proximity threshold of a mesh node):\n\n")
   knitr::include_graphics(params$coverage3d_covered_png)
 } else {
-  cat("No static image available for this run -- the interactive HTML plot (folder `coverage_3d/`) could not be captured as a PNG, most likely because the screenshot step (`webshot2`, which needs a Chrome/Edge install) is unavailable on the machine that generated this report. The interactive HTML itself is unaffected and still shows this view.\n\n")
+  cat("No static image available for this run -- the interactive HTML plot (folder `coverage_3d/`) could not be captured as a PNG, most likely because the screenshot step (`webshot2`, which needs a Chrome/Edge install) is unavailable on the machine that generated this report (a *different* issue -- a Windows path-separator bug in how that PNG's path was embedded -- was fixed in run_incident_zrshan.R, 2026-10; this fallback now only triggers in the webshot2/Chrome case). The interactive HTML itself is unaffected and still shows this view.\n\n")
 }
 ```
 ```{r coverage3d-not-covered-image, results='asis'}
