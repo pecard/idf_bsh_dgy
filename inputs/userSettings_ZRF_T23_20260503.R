@@ -121,10 +121,10 @@ names(heartbeat_idf_units) <- c("IDF13", "IDF15", "IDF19", "IDF70", "IDF20")    
 ## ter de voltar a alargar manualmente a cada novo incidente.
 ##
 
-ini <- as.POSIXct('2026-04-20 00:00:00', tz = proj_timezone)
+ini <- as.POSIXct('2026-04-03 00:00:00', tz = proj_timezone)
 end <- as.POSIXct('2026-05-03 00:00:00', tz = proj_timezone)
 
-scada_ini <- as.POSIXct('2026-04-20 00:00:00', tz = proj_timezone)
+scada_ini <- as.POSIXct('2026-04-03 00:00:00', tz = proj_timezone)
 scada_end <- as.POSIXct('2026-05-03 00:00:00', tz = proj_timezone)
 
 ## So a turbina do incidente -- e' o unico foco deste relatorio
