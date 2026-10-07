@@ -460,7 +460,13 @@ if (!is.null(params$latency_by_turbine)) {
 <!-- Source: summarise_latency_bands(latency_dt), R/curtailment_response_latency.R -->
 ```{r latency-bands-table}
 if (!is.null(params$latency_bands)) {
-  report_table(params$latency_bands, max_col_width_cm = 2)
+  report_table(
+    rename_display(
+      params$latency_bands,
+      c(cutoff_sec = "Cut-off (s)", pct_within_cutoff = "% Within Cut-off")
+    ),
+    max_col_width_cm = 2
+  )
 }
 ```
 
@@ -584,7 +590,7 @@ annex_note(params$xlsx_coverage)
 
 ### 3D Coverage (Topography-corrected)
 
-Coverage of the airspace around the incident turbine, corrected for terrain, based on IDF bird position detections, run here only for `r params$incident_turbine` rather than farm-wide, since it is the most computationally expensive analysis in the pipeline and only the incident turbine is in scope for this report.
+Coverage of the airspace around the incident turbine, corrected for terrain, based on IDF bird position detections, run here only for `r params$incident_turbine` rather than farm-wide, since it is the most computationally expensive analysis in the pipeline and only the incident turbine is in scope for this report. "Low-terrain" cells are the two lowest mesh levels above the terrain surface in each horizontal (x, y) position, regardless of height above ground level or height band -- they measure coverage of the airspace closest to the local terrain, which depends on the topography around the turbine; "% Low-Terrain Covered" is the share of those cells with at least one bird detection within the proximity threshold.
 
 &nbsp;
 
@@ -593,7 +599,9 @@ Coverage of the airspace around the incident turbine, corrected for terrain, bas
 if (!is.null(params$coverage3d_by_turbine) && nrow(params$coverage3d_by_turbine) > 0) {
   report_table(rename_display(
     drop_cols(params$coverage3d_by_turbine, c("n_records", "n_valid", "low_sample")),
-    c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered")
+    c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered",
+      n_low_terrain_mesh = "Low-Terrain Cells", n_low_terrain_covered = "Low-Terrain Covered Cells",
+      pct_low_terrain_covered = "% Low-Terrain Covered")
   ))
 } else {
   cat("DEM not available or 3D coverage not computed for this run.\n\n")

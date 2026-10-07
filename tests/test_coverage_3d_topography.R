@@ -111,3 +111,23 @@ cat("\n===== low_sample (so a formula -- compute_mesh_coverage() precisa de DEM 
 cat(sprintf("500000 registos, threshold 500000 -> low_sample = %s (esperado FALSE)\n", 500000 < 500000))
 cat(sprintf("499999 registos, threshold 500000 -> low_sample = %s (esperado TRUE)\n", 499999 < 500000))
 
+
+
+##
+## .flag_low_terrain(): os 2 niveis de malha mais baixos acima do terreno em
+## cada coluna (x, y), qualquer que seja a altura AGL / z_rel_turbine --
+## logica pura, testavel sem DEM (ver .flag_low_terrain() no topo de
+## compute_mesh_coverage())
+##
+cat("\n===== .flag_low_terrain() (2 niveis mais baixos por coluna, relativo ao terreno) =====\n")
+mesh_air_test <- data.table::copy(built_1$mesh[medium == "air"])
+mesh_air_test <- .flag_low_terrain(mesh_air_test, 2L)
+low_per_col <- mesh_air_test[, .(n_low = sum(low_terrain)), by = .(x, y)]
+cat(sprintf("Todas as colunas com exatamente 2 nos low_terrain: %s (esperado TRUE)\n",
+            all(low_per_col$n_low == 2L)))
+# na coluna D (terreno 120m abaixo da turbina), os nos low_terrain estao
+# bem abaixo de z_rel = 0, nao nos 2 primeiros niveis absolutos da malha
+low_D <- mesh_air_test[x == 0 & y == 100 & low_terrain, sort(z_rel_turbine)]
+cat(sprintf("Coluna D, z_rel_turbine dos nos low_terrain: %s -- esperado 2 niveis consecutivos acima do terreno (< -100 + 2*step_z)\n",
+            paste(low_D, collapse = ", ")))
+cat(sprintf("Todos abaixo de -120 + 2*step_z: %s (esperado TRUE)\n", all(low_D <= -120 + 2 * step_z)))

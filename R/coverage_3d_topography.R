@@ -32,6 +32,11 @@
 ## o % de coverage dessas turbinas deve ser interpretado com cautela (amostra
 ## pode ser demasiado pequena para uma estimativa fiavel).
 ##
+## pct_low_terrain_covered -- coluna extra em metrics/by_turbine: % de cobertura
+## dos nos de baixo relevo (os low_terrain_levels = 2 niveis de malha mais
+## baixos acima do terreno em cada coluna x/y, ver .flag_low_terrain()),
+## independente da altura AGL e das bandas de risco/distancia.
+##
 ## dist_band_breaks (por omissao NULL, desliga esta classificacao -- ainda
 ## nao usada por BSH/DGY/IDF_analysis.R): banda de distancia HORIZONTAL a
 ## turbina, ex: c(600) para "inner"/"outer" a 600m -- pedido do Paulo,
@@ -187,8 +192,27 @@ build_terrain_mesh <- function(wtg_id, wtg_lat, wtg_lon, dem_file,
 ## 2. Cobertura da malha "air" pelas deteções de aves, para UMA turbina ----
 ##    track_wtg: subconjunto de track_dt para esta turbina (colunas lat, lon, height)
 
+## Marca os nos "air" de BAIXO RELEVO: em cada coluna (x, y), os
+## n_levels niveis de malha mais baixos acima do terreno (os primeiros
+## n_levels valores de z_rel_turbine com medium == "air" nessa coluna),
+## qualquer que seja a altura AGL ou a banda de risco -- altura relativa ao
+## terreno local, nao uma banda de altura fixa (pedido do Paulo, 2026-10:
+## zonas de baixo relevo podem estar mal cobertas, porque as aves nao voam
+## la ou a IDF nao as ve). mesh_air so' tem nos "air", por isso o rank
+## dentro da coluna e' o rank dos niveis acima do terreno. Logica pura
+## (sem DEM/CRS), testavel com dados sinteticos.
+.flag_low_terrain <- function(mesh_air, n_levels = 2L) {
+  if (nrow(mesh_air) == 0L) {
+    mesh_air[, low_terrain := logical()]
+    return(mesh_air[])
+  }
+  mesh_air[, low_terrain := data.table::frank(z_rel_turbine, ties.method = "dense") <= n_levels,
+           by = .(x, y)]
+  mesh_air[]
+}
+
 compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, prox_thresh_m,
-                                  min_sample_records = 500000) {
+                                  min_sample_records = 500000, low_terrain_levels = 2L) {
 
   wtg_id    <- terrain_mesh$wtg_id
   mesh_air  <- data.table::copy(terrain_mesh$mesh_air)
@@ -199,6 +223,8 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
 
   has_dist_band <- "dist_band" %in% names(mesh_air)
 
+  .flag_low_terrain(mesh_air, low_terrain_levels)
+
   empty_result <- function(n_records, track_wtg_valid) {
     mesh_air[, `:=`(hits = 0L, covered = FALSE)]
     list(
@@ -206,6 +232,8 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
       metrics = data.table::data.table(
         wtg_id = wtg_id, n_records = n_records, n_valid = nrow(track_wtg_valid),
         n_air_mesh = nrow(mesh_air), n_covered = 0L, pct_covered = NA_real_,
+        n_low_terrain_mesh = sum(mesh_air$low_terrain), n_low_terrain_covered = 0L,
+        pct_low_terrain_covered = NA_real_,
         low_sample = n_records < min_sample_records
       ),
       by_risk_band = mesh_air[, .(n_mesh = .N, n_covered = 0L, pct_covered = 0), by = risk_band][, wtg_id := wtg_id][],
@@ -253,6 +281,8 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
 
   n_total <- nrow(mesh_air)
   n_cov   <- sum(mesh_air$covered)
+  n_low     <- sum(mesh_air$low_terrain)
+  n_low_cov <- sum(mesh_air$low_terrain & mesh_air$covered)
 
   by_risk_band <- mesh_air[, .(n_mesh = .N, n_covered = sum(covered)), by = risk_band]
   by_risk_band[, pct_covered := round(100 * n_covered / n_mesh, 1)]
@@ -278,6 +308,9 @@ compute_mesh_coverage <- function(terrain_mesh, track_wtg, radius, cyl_height, p
     n_air_mesh  = n_total,
     n_covered   = n_cov,
     pct_covered = round(100 * n_cov / n_total, 1),
+    n_low_terrain_mesh      = n_low,
+    n_low_terrain_covered   = n_low_cov,
+    pct_low_terrain_covered = if (n_low == 0L) NA_real_ else round(100 * n_low_cov / n_low, 1),
     low_sample  = nrow(track_wtg) < min_sample_records
   )
 
@@ -301,7 +334,8 @@ run_coverage_3d_all_turbines <- function(wtg_sf, track_dt, dem_file,
                                          wtg_id_col = "InternalNa",
                                          track_dist_buffer_m = 200,
                                          wtg_sel = NULL,
-                                         min_sample_records = 500000) {
+                                         min_sample_records = 500000,
+                                         low_terrain_levels = 2L) {
 
   # wtg_sel: subconjunto de nomes de turbina (coluna wtg_id_col) a analisar --
   # analise 3D completa (DEM + malha + KD-tree) e cara, por isso NULL = todas
@@ -355,7 +389,7 @@ run_coverage_3d_all_turbines <- function(wtg_sf, track_dt, dem_file,
       radius, cyl_height, step_xy, step_z, risk_band_breaks, risk_band_labels,
       dist_band_breaks, dist_band_labels
     )
-    coverage <- compute_mesh_coverage(terrain_mesh, track_wtg, radius, cyl_height, prox_thresh_m, min_sample_records)
+    coverage <- compute_mesh_coverage(terrain_mesh, track_wtg, radius, cyl_height, prox_thresh_m, min_sample_records, low_terrain_levels)
 
     list(terrain_mesh = terrain_mesh, coverage = coverage)
   })

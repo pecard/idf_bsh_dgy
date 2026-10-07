@@ -385,8 +385,15 @@ summarise_net_availability <- function(availability_overall, offline_evidence_ov
   # R/availability_daylight.R, sobre o caso real que motivou isto).
   net_offline_mins    <- max(0, raw_offline_mins - comm_failure_mins)
 
+  # 1 casa decimal, MAS nunca arredonda um valor positivo para 0 -- com
+  # varias unidades IDF somadas, 26 min podem ser <0.05% do total diurno e
+  # round(, 1) mostrava "0" (caso real, ZRF T94, 2026-10); nesse caso fica
+  # com 2 algarismos significativos
   pct_of_daylight <- function(mins) {
-    if (daylight_mins_total == 0) NA_real_ else round(100 * mins / daylight_mins_total, 1)
+    if (daylight_mins_total == 0) return(NA_real_)
+    p <- 100 * mins / daylight_mins_total
+    r <- round(p, 1)
+    if (p > 0 && r == 0) signif(p, 2) else r
   }
 
   data.table::data.table(
