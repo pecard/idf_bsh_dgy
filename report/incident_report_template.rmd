@@ -177,7 +177,7 @@ recode_values <- function(x, col, mapping) {
 
 annex_note <- function(xlsx_name) {
   if (!is.null(xlsx_name)) {
-    cat(sprintf("\n*The full table is available in the accompanying workbook: `%s`.*\n", xlsx_name))
+    cat(sprintf("\n\n&nbsp;\n\n*The full table is available in the accompanying workbook: `%s`.*\n", xlsx_name))
   }
 }
 
@@ -209,9 +209,362 @@ This report is descriptive and fully automated, generated end-to-end by an R cod
 
 ---
 
-# Turbine / IDF Unit Coverage
+# Performance/Accuracy
+
+## ID Transitions
+
+The IdentiFlight algorithm can change a track's species classification as it accumulates more detections, and the curtailment decision at any instant reflects the classification *at that instant*, not necessarily the track's final one -- a track can end up classified as the incident species only after part of it (or all of it) has already been recorded as a lower-priority species. Restricted to tracks near the incident turbine (`r params$investigated_turbines`) during the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), among tracks with more than one distinct species classification (multi-ID tracks only -- a track that never changed classification has no transition risk by definition). A reclassification to a priority species is considered "late" when it happens more than `r params$id_transition_late_time_sec` s after the curtailment start, or when the track was already within `r params$track_proximity_threshold_m` m of the turbine at the moment of reclassification. This is a snapshot of this incident alone -- it is not compared against farm-wide or monthly figures.
+
+- **P to NP (unnecessary curtailment)**: curtailment triggered while classified as priority, but the track's final classification was non-priority.
+- **NP to P, no curtailment (near)**: reclassified to a priority species, no curtailment ever triggered, and the track was already within the proximity threshold at that moment -- the most concerning case, and the one most directly relevant to a candidate track with no curtailment in the Candidate Tracks by Signal table (Fatality Investigation section).
+- **NP to P, no curtailment (far)**: same, but the track was still far from the turbine when reclassified -- descriptive, not necessarily concerning on its own.
+- **NP to P, late curtailment**: curtailment was triggered, but later than the agreed time or distance criterion.
+- **No risk**: no meaningful transition risk detected (single-species track, or reclassification with a timely curtailment).
+
+&nbsp;
+
+<!-- Source: summarise_id_transition_risk(id_risk_window_dt, curtl_dt_window)$by_direction, R/id_transitions.R -->
+```{r id-risk-table, results='asis'}
+if (!is.null(params$id_risk_by_direction) && nrow(params$id_risk_by_direction) > 0) {
+  report_table(rename_display(
+    recode_values(params$id_risk_by_direction, "risk_direction", c(
+      P_to_NP_unnecessary_curtailment = "P to NP (unnecessary curtailment)",
+      NP_to_P_no_curtailment_near     = "NP to P, no curtailment (near)",
+      NP_to_P_no_curtailment_far      = "NP to P, no curtailment (far)",
+      NP_to_P_late_curtailment        = "NP to P, late curtailment",
+      no_risk                         = "No risk"
+    )),
+    c(risk_direction = "Direction", n_tracks = "Tracks", n_multi_id_tracks = "Multi-ID Tracks", pct_of_multi_id = "% of Multi-ID")
+  ))
+} else {
+  cat("No multi-ID tracks (tracks with more than one distinct species classification) were found near the incident turbine during the investigation window.\n\n")
+}
+```
+```{r id-risk-annex, results='asis'}
+annex_note(params$xlsx_id_transitions)
+```
+
+# Efficacy
+
+Not covered in this report.
+
+Efficacy is evaluated as the degree to which the IDF system contributes to achieving the pre-defined zero mortality goal for PBS. The analysis combines fatality monitoring data, system functionality metrics, and exposure data to determine whether the observed outcomes can reasonably be attributed to the IDF system.
+
+# Effectiveness
+
+## IDF Unit Availability -- Investigation Window vs. Overall Baseline
+
+Heartbeat-based offline percentage for the IDF unit(s) covering the incident turbine, during the investigation window, compared against the same unit(s) over the full data coverage period (`r params$report_start` to `r params$report_end`) as a baseline -- a materially worse figure in the window than the baseline may indicate reduced detection capability around the time of the incident.
+
+<!-- Source: fatality_windows[[id]]$availability$by_idf (window) / $availability_global$by_idf (baseline), R/fatality_window_analysis.R -->
+```{r fatality-availability-window-heading, results='asis'}
+cat("### Investigation Window\n\n")
+```
+
+The figures below cover the period from the first to the last heartbeat received from each IDF unit of interest within the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), counting only daylight hours (sunrise to sunset, computed from the project coordinates) -- night-time gaps are not counted as unavailability, since detection is not expected to operate then. Each IDF unit sends a heartbeat approximately every `r params$heartbeat_interval_min` minutes when operational; a unit is considered offline once `r params$heartbeat_offline_gap_min` minutes pass without a heartbeat (i.e. two consecutive missed signals). A gap without a heartbeat is not necessarily a gap in bird protection -- it can also be a communication fault in the heartbeat signal itself, with the detection/curtailment system still operating. The calendar and tables below classify every such gap by the evidence available for that period, the same methodology used in the monthly reports (whether a curtailment was triggered by the turbine during the gap, whether SCADA still recorded RPM readings, both, or neither).
+
+Each slot in the calendar below is colored by one of six statuses:
+
+- **Online**: a heartbeat was received for this slot.
+- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered by the turbine during the gap -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.
+- **Turbine operational, no detection**: no heartbeat and no curtailment, but SCADA still recorded RPM readings from the turbine -- mechanically operational, simply with no bird triggering a response.
+- **No evidence (heartbeat and SCADA both missing)**: neither signal is available for this slot; requires manual review, since it can reflect a genuine gap in bird-protection coverage or a data gap affecting heartbeat and SCADA at the same time.
+- **Night**: outside daylight hours, when bird protection is not evaluated.
+- **No data**: no underlying calendar data available for this slot, independent of the evidence check above.
+
+&nbsp;
+
+<!-- Source: offline_evidence_slot_grid()/plot_offline_evidence_slots(), R/availability_daylight.R; classification from summarise_offline_evidence_window(), R/fatality_window_analysis.R (same methodology as classify_offline_evidence(), R/offline_curtailment_check.R, used in the monthly reports) -->
+```{r fatality-offline-evidence-calendar-plot, fig.width=6.30, fig.height=5, results='asis'}
+if (!is.null(params$fatality_offline_evidence_calendar_plot)) {
+  print(params$fatality_offline_evidence_calendar_plot)
+} else {
+  cat("No heartbeat records were found for the IDF unit(s) of interest within the investigation window -- this points to a data issue (e.g. an IDF unit naming/format mismatch between the heartbeat file and the units of interest) rather than a genuine absence of heartbeats.\n\n")
+}
+```
+
+&nbsp;
+
+```{r fatality-availability-window-table}
+if (!is.null(params$fatality_window_availability) && nrow(params$fatality_window_availability) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_window_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
+      c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
+    ),
+    max_col_width_cm = 2
+  )
+}
+```
+
+&nbsp;
+
+**Unavailability Summary**
+
+Three related but distinct numbers are relevant when assessing IDF unavailability in this window, since they answer different questions: **Raw offline** (any heartbeat gap of at least `r params$heartbeat_offline_gap_min` minutes, regardless of other evidence), **Net / confirmed offline** (raw offline minus minutes where a curtailment was triggered during the gap -- strong evidence the detection/decision system was still operating despite the heartbeat failure), and **No evidence, pending manual review** (minutes where neither a curtailment nor a SCADA RPM reading was recorded -- already included within net offline above, shown separately since it needs case-by-case review rather than being resolved automatically).
+
+&nbsp;
+
+<!-- Source: summarise_net_availability(), R/offline_curtailment_check.R -- fatality_window_net_availability_dt, run_incident_zrshan.R -->
+```{r fatality-window-net-availability-table}
+if (!is.null(params$fatality_window_net_availability) && nrow(params$fatality_window_net_availability) > 0) {
+  x <- params$fatality_window_net_availability
+  report_table(data.frame(
+    Metric = c("Raw offline", "Net / confirmed offline", "No evidence (pending review; included in net offline above)"),
+    `Minutes` = c(x$raw_offline_mins[1], x$net_offline_mins[1], x$no_evidence_mins[1]),
+    `% of Daylight Monitoring Time` = c(x$raw_offline_pct[1], x$net_offline_pct[1], x$no_evidence_pct[1]),
+    check.names = FALSE
+  ))
+}
+```
+
+&nbsp;
+
+**Offline Evidence**
+
+Breakdown of every offline interval for the IDF unit(s) of interest during the investigation window, by the evidence available for that period -- see the calendar above for the same classification laid out over time.
+
+&nbsp;
+
+<!-- Source: summarise_offline_evidence_window()$by_idf, R/fatality_window_analysis.R (mesmas colunas da folha Window_offline_evidence_by_idf, fatality_track_investigation.xlsx) -->
+```{r fatality-window-offline-evidence-by-idf-table}
+if (!is.null(params$fatality_window_offline_evidence_by_idf) && nrow(params$fatality_window_offline_evidence_by_idf) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_window_offline_evidence_by_idf, "incident_id"),
+      c(idf = "IDF Unit", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
+    ),
+    max_col_width_cm = 4
+  )
+}
+```
+```{r fatality-window-offline-evidence-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
+
+```{r fatality-availability-global-heading, results='asis'}
+cat("### Overall Baseline\n\n")
+```
+
+Same calculation as above (daylight-only, same offline definition, same evidence cross-check), but for the IDF units of interest over the full data coverage period (`r params$report_start` to `r params$report_end`) instead of just the investigation window -- this is the baseline the window figures above are compared against. A materially worse offline percentage in the window than in this baseline may indicate reduced detection capability around the time of the incident.
+
+&nbsp;
+
+```{r fatality-availability-global-table, results='asis'}
+if (!is.null(params$fatality_global_availability) && nrow(params$fatality_global_availability) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_global_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
+      c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
+    ),
+    max_col_width_cm = 2
+  )
+} else {
+  cat("No heartbeat records were found for the IDF unit(s) of interest over the full data coverage period -- this points to a data issue (e.g. an IDF unit naming/format mismatch between the heartbeat file and the units of interest) rather than a genuine absence of availability data, since the Investigation Window figures above are a subset of this same period and unit list.\n\n")
+}
+```
+
+&nbsp;
+
+**Unavailability Summary**
+
+<!-- Source: summarise_net_availability(), R/offline_curtailment_check.R -- fatality_global_net_availability_dt, run_incident_zrshan.R -->
+```{r fatality-global-net-availability-table}
+if (!is.null(params$fatality_global_net_availability) && nrow(params$fatality_global_net_availability) > 0) {
+  x <- params$fatality_global_net_availability
+  report_table(data.frame(
+    Metric = c("Raw offline", "Net / confirmed offline", "No evidence (pending review; included in net offline above)"),
+    `Minutes` = c(x$raw_offline_mins[1], x$net_offline_mins[1], x$no_evidence_mins[1]),
+    `% of Daylight Monitoring Time` = c(x$raw_offline_pct[1], x$net_offline_pct[1], x$no_evidence_pct[1]),
+    check.names = FALSE
+  ))
+}
+```
+
+&nbsp;
+
+**Offline Evidence**
+
+<!-- Source: summarise_offline_evidence_window()$by_idf, R/fatality_window_analysis.R (mesmas colunas da folha Global_offline_evidence_by_idf, fatality_track_investigation.xlsx) -->
+```{r fatality-global-offline-evidence-by-idf-table}
+if (!is.null(params$fatality_global_offline_evidence_by_idf) && nrow(params$fatality_global_offline_evidence_by_idf) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$fatality_global_offline_evidence_by_idf, "incident_id"),
+      c(idf = "IDF Unit", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
+    ),
+    max_col_width_cm = 4
+  )
+}
+```
+```{r fatality-availability-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
+
+## Short-Track Curtailments
+
+Curtailments triggered by tracks with fewer than `r params$shorttrack_min_points` recorded points, considered only within `r params$shorttrack_eval_range` m of the incident turbine, during the investigation window -- few recorded points means the algorithm had little accumulated information to confirm species or trajectory before deciding on a curtailment, which matters most at close range, where that limited information carries the most weight in the decision.
+
+&nbsp;
+
+<!-- Source: summarise_short_track_curtailments(), R/curtailment_short_track.R (built on classify_short_track_curtailments()) -->
+```{r short-track-table}
+if (!is.null(params$short_track_summary)) report_table(params$short_track_summary)
+```
+```{r short-track-annex, results='asis'}
+annex_note(params$xlsx_short_track)
+```
+
+```{r short-track-species-heading, results='asis'}
+if (!is.null(params$short_track_by_species) && nrow(params$short_track_by_species) > 0) {
+  cat("Of the close-range short-track curtailments above, the breakdown by priority species:\n\n&nbsp;\n\n")
+}
+```
+<!-- Source: summarise_short_track_by_species(), R/curtailment_short_track.R -->
+```{r short-track-species-table}
+if (!is.null(params$short_track_by_species) && nrow(params$short_track_by_species) > 0) {
+  report_table(rename_display(
+    params$short_track_by_species,
+    c(species = "Species", n = "N", pct = "% of Close-Range Short-Track Curtailments")
+  ))
+}
+```
+
+## Curtailment Response Time & Latency (`r params$incident_turbine`)
+
+Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, over the full data coverage period (`r params$report_start` to `r params$report_end`) for the incident turbine -- context for the window-specific figures in the Fatality Investigation section. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. `r params$shutdown_time_buffer_sec` s past the end of the curtailment order are allowed for this to happen. `r params$latency_n_no_data` curtailments (`r params$latency_pct_no_data`%) have no SCADA baseline within `r params$curtailment_start_end_gap_sec` s before the signal and are excluded below; of the remainder, `r params$latency_n_below_cutin` (`r params$latency_pct_below_cutin`%) were already below the cut-in speed (`r params$curtailment_cutin_rpm` rpm) at the start of the order and are also excluded, since there is no meaningful response to measure on a turbine that was not operating.
+
+In the tables below, "Curtailments" (Eligible) is the number of curtailment orders left after the two exclusions above -- these are the ones where a response could meaningfully be measured. "Reached" is how many of those eligible curtailments had RPM actually decline by the threshold within the search window (i.e. the turbine responded, however slowly); "% Reached" is that count as a percentage of the eligible curtailments. The remainder ("No Response") never showed that decline within the window at all.
+
+### Response Latency by Turbine
+
+<!-- Source: summarise_latency_by_turbine(latency_dt), R/curtailment_response_latency.R -->
+```{r latency-turbine-table}
+if (!is.null(params$latency_by_turbine)) {
+  report_table(
+    rename_display(
+      drop_cols(params$latency_by_turbine, c(
+        "n_curtailments", "n_no_data", "pct_no_data", "n_known",
+        "n_below_cutin", "pct_below_cutin", "n_no_response", "pct_no_response"
+      )),
+      c(turbine = "Turbine", n_eligible = "Curtailments", n_reached = "Reached",
+        pct_reached = "% Reached", mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)")
+    ),
+    max_col_width_cm = 2
+  )
+}
+```
+
+### Response Latency Time bands
+
+<!-- Source: summarise_latency_bands(latency_dt), R/curtailment_response_latency.R -->
+```{r latency-bands-table}
+if (!is.null(params$latency_bands)) {
+  report_table(params$latency_bands, max_col_width_cm = 2)
+}
+```
+
+### Response Latency Distribution
+
+<!-- Source: plot_latency_histogram(latency_dt), R/curtailment_response_latency.R -->
+```{r latency-hist-plot, fig.width=6.30, fig.height=4}
+if (!is.null(params$latency_plot)) print(params$latency_plot)
+```
+
+### Latency Temporal Pattern
+
+<!-- Source: plot_latency_timeline(latency_timeline_dt), R/curtailment_response_timeline.R -->
+```{r latency-timeline-plot, fig.width=6.30, fig.height=3.5}
+if (!is.null(params$latency_timeline_plot)) print(params$latency_timeline_plot)
+```
+
+```{r no-response-examples-heading, results='asis'}
+cat(sprintf("#### No-Response Events (%s example(s))\n\n", params$latency_n_no_response_examples))
+```
+<!-- Source: select_latency_examples(latency_dt, "no_response"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
+```{r no-response-examples-plot, fig.width=6.30, fig.height=5.91, results='asis'}
+if (!is.null(params$latency_no_response_examples_plot)) {
+  print(params$latency_no_response_examples_plot)
+} else {
+  cat("No no-response events were recorded in this reporting period -- no example plot is shown.\n\n")
+}
+```
+
+```{r slowest-examples-heading, results='asis'}
+cat(sprintf("#### Slowest Responses (%s example(s))\n\n", params$latency_n_slowest_examples))
+```
+<!-- Source: select_latency_examples(latency_dt, "slowest"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
+```{r slowest-examples-plot, fig.width=6.30, fig.height=5.91, results='asis'}
+if (!is.null(params$latency_slowest_examples_plot)) {
+  print(params$latency_slowest_examples_plot)
+} else {
+  cat("No curtailments with a detected response were available in this reporting period -- no example plot is shown.\n\n")
+}
+```
+```{r latency-annex, results='asis'}
+annex_note(params$xlsx_latency)
+```
+
+## Shutdown Time
+
+Time from curtailment signal to reaching each RPM threshold, for the incident turbine over the full data coverage period (`r params$report_start` to `r params$report_end`) -- 3 thresholds evaluated: `r paste(params$shutdown_time_thresholds, collapse = ", ")` rpm. Bands below/above the agreed cut-offs are reported as-is, without further interpretation. Uses the same population as Response Latency above: curtailments with no SCADA baseline within `r params$curtailment_start_end_gap_sec` s of the signal, or already below the cut-in speed at the start of the order, are excluded (see the counts stated at the top of the Curtailment Response Time & Latency section).
+
+### Time to Threshold by Turbine
+
+<!-- Source: summarise_time_to_threshold(tt_dt), R/curtailment_shutdown_time.R -->
+```{r shutdown-turbine-table}
+if (!is.null(params$shutdown_by_turbine)) {
+  report_table(
+    rename_display(
+      drop_cols(params$shutdown_by_turbine, c("median_time_sec")),
+      c(
+        turbine = "Turbine", threshold = "Thresh. (rpm)", n_curtailments = "Curtailments",
+        n_reached = "Reached", pct_reached = "% Reached", mean_time_sec = "Mean (s)",
+        sd_time_sec = "SD (s)", min_time_sec = "Min (s)", max_time_sec = "Max (s)"
+      )
+    ),
+    max_col_width_cm = 1.5
+  )
+}
+```
+```{r shutdown-turbine-annex, results='asis'}
+annex_note(params$xlsx_shutdown)
+```
+
+### Time to Threshold Bands
+
+A curtailment counts as "below cut" when it reached the threshold in under `r params$shutdown_time_low_cut` s (fast), and "above cut" when it took more than `r params$shutdown_time_high_cut` s (slow); cases in between count towards neither band.
+
+&nbsp;
+
+<!-- Source: summarise_time_to_threshold_bands(tt_dt), R/curtailment_shutdown_time.R -->
+```{r shutdown-bands-table}
+if (!is.null(params$shutdown_bands)) {
+  report_table(rename_display(
+    params$shutdown_bands,
+    stats::setNames(
+      c("Thresh. (rpm)", "Reached", sprintf("%% < %ss", params$shutdown_time_low_cut), sprintf("%% > %ss", params$shutdown_time_high_cut)),
+      c("threshold", "n_reached", "pct_below_cut", "pct_above_cut")
+    )
+  ))
+}
+```
+```{r shutdown-bands-annex, results='asis'}
+annex_note(params$xlsx_shutdown)
+```
+
+### Time to Threshold Distribution
+
+<!-- Source: plot_time_to_threshold(), R/curtailment_shutdown_time.R -->
+```{r shutdown-plot, fig.width=6.30, fig.height=6}
+if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
+```
+
+## Turbine / IDF Unit Coverage
 
 Geometric overlap between the incident turbine's detection buffer and each IDF unit's detection buffer, for turbine `r params$incident_turbine` -- one row per IDF unit whose buffer overlaps this turbine's buffer, with the % of the turbine's buffer area covered by that unit. No manually curated Primary/Secondary/Other Level IDF matrix was available for the analysis, so the table below is the geometric computation directly; the full matrix (all turbines if evaluated) is in the accompanying workbook.
+
+&nbsp;
 
 <!-- Source: turbine_idf_coverage_dt[turbine == incident_turbine], R/turbine_idf_coverage.R -->
 ```{r coverage-turbine-table}
@@ -229,12 +582,14 @@ if (!is.null(params$coverage_turbine_of_interest) && nrow(params$coverage_turbin
 annex_note(params$xlsx_coverage)
 ```
 
-## 3D Coverage (Topography-corrected)
+### 3D Coverage (Topography-corrected)
 
 Coverage of the airspace around the incident turbine, corrected for terrain, based on IDF bird position detections, run here only for `r params$incident_turbine` rather than farm-wide, since it is the most computationally expensive analysis in the pipeline and only the incident turbine is in scope for this report.
 
+&nbsp;
+
 <!-- Source: summary_cov <- summarise_mesh_coverage(...), R/coverage_3d_topography.R -->
-```{r coverage3d-table}
+```{r coverage3d-table, results='asis'}
 if (!is.null(params$coverage3d_by_turbine) && nrow(params$coverage3d_by_turbine) > 0) {
   report_table(rename_display(
     drop_cols(params$coverage3d_by_turbine, c("n_records", "n_valid", "low_sample")),
@@ -249,7 +604,9 @@ if (!is.null(params$coverage3d_by_turbine) && nrow(params$coverage3d_by_turbine)
 
 The overall figure above blends cells at every height and distance from the turbine. The breakdown below splits it by height (below vs. at/above `r params$curtailment_trigger_height_m` m AGL, the height under which a curtailment is triggered) and by horizontal distance (within vs. beyond `r params$coverage_cylinder_inner_radius` m, the radius under which the system triggers an immediate response) -- coverage of the "at risk"/"inner" combination, the highest-priority quadrant, is the most relevant figure for assessing detection capability around a collision.
 
-```{r coverage3d-risk-dist-table}
+&nbsp;
+
+```{r coverage3d-risk-dist-table, results='asis'}
 if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_risk_dist_band) > 0) {
   report_table(rename_display(
     drop_cols(params$coverage3d_by_risk_dist_band, "wtg_id"),
@@ -260,6 +617,8 @@ if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_r
   cat("No height x distance breakdown available for this run -- this needs `dist_band_breaks` to have been passed to `run_coverage_3d_all_turbines()` (R/coverage_3d_topography.R) in addition to the risk-band breaks; without it, only the overall table above is computed.\n\n")
 }
 ```
+&nbsp;
+
 ```{r coverage3d-covered-image, results='asis'}
 if (!is.null(params$coverage3d_covered_png) && file.exists(params$coverage3d_covered_png)) {
   cat("Covered air mesh (bird detections within the proximity threshold of a mesh node):\n\n")
@@ -280,10 +639,10 @@ if (!is.null(params$coverage3d_covered_png) && file.exists(params$coverage3d_cov
 ```
 ```{r coverage3d-not-covered-image, results='asis'}
 if (!is.null(params$coverage3d_not_covered_png) && file.exists(params$coverage3d_not_covered_png)) {
-  cat("\n\nAir mesh nodes without any detection within the proximity threshold (not covered):\n\n")
+  cat("\n\n&nbsp;\n\nAir mesh nodes without any detection within the proximity threshold (not covered):\n\n")
   knitr::include_graphics(params$coverage3d_not_covered_png, rel_path = FALSE)
 } else {
-  cat("\n\nNo static image available for this run -- same reason as above (the interactive HTML plot is unaffected).\n\n")
+  cat("\n\n&nbsp;\n\nNo static image available for this run -- same reason as above (the interactive HTML plot is unaffected).\n\n")
 }
 ```
 ```{r coverage3d-annex, results='asis'}
@@ -308,6 +667,8 @@ Count of tracks recorded near the incident turbine during the investigation wind
 
 "% of Incident" in the table below is the share of all tracks recorded for this incident that fall into each signal category (each column of tracks divided by the total number of tracks found in the window, times 100).
 
+&nbsp;
+
 <!-- Source: fatality_summary$counts_by_signal <- summarise_fatality_tracks(fatality_tracks_dt), R/fatality_track_investigation.R -->
 ```{r fatality-signal-counts-table}
 if (!is.null(params$fatality_signal_counts)) {
@@ -330,6 +691,8 @@ annex_note(params$xlsx_fatality)
 ## Top Candidate Tracks
 
 The tracks most likely associated with the incident -- those whose last recorded position ends closest to the turbine, among the candidate signal categories above (species is omitted below, since this report covers a single species, stated at the top of this report). `last_height_m` is the bird's height above ground at that last recorded position (`min_height_m` is the lowest height reached anywhere in the track) -- for reference against the `r params$curtailment_trigger_height_m` m curtailment-trigger height used above. `RPM at Identification` is the nearest SCADA RPM reading to the moment the species was first identified in this track, and `Blade Tip Speed` the corresponding speed at the tip of the rotor blade (both blank if no RPM reading within the matching tolerance); `Curtailment Already Active` flags whether the turbine was already under a curtailment order -- from this track or any other -- that started at least 1 second before that moment and was still running at it, distinguishing a track that triggered no new curtailment because the turbine was already safely curtailed from one where no curtailment was in effect at all. The full table (point counts, distances, timestamps) is in the accompanying workbook. A fatality can occur with no curtailment ever triggered for the responsible track, particularly when the bird is detected already close to the turbine.
+
+&nbsp;
 
 <!-- Source: fatality_summary$top_candidates, R/fatality_track_investigation.R -->
 ```{r fatality-top-candidates-table}
@@ -389,198 +752,11 @@ if (!is.null(params$fatality_example_curtailment_plot)) {
 if (!is.null(params$fatality_example_curtailment_plot)) print(params$fatality_example_curtailment_plot)
 ```
 
-## ID Transitions
-
-The IdentiFlight algorithm can change a track's species classification as it accumulates more detections, and the curtailment decision at any instant reflects the classification *at that instant*, not necessarily the track's final one -- a track can end up classified as the incident species only after part of it (or all of it) has already been recorded as a lower-priority species. Restricted to tracks near the incident turbine (`r params$investigated_turbines`) during the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), among tracks with more than one distinct species classification (multi-ID tracks only -- a track that never changed classification has no transition risk by definition). A reclassification to a priority species is considered "late" when it happens more than `r params$id_transition_late_time_sec` s after the curtailment start, or when the track was already within `r params$track_proximity_threshold_m` m of the turbine at the moment of reclassification. This is a snapshot of this incident alone -- it is not compared against farm-wide or monthly figures.
-
-- **P to NP (unnecessary curtailment)**: curtailment triggered while classified as priority, but the track's final classification was non-priority.
-- **NP to P, no curtailment (near)**: reclassified to a priority species, no curtailment ever triggered, and the track was already within the proximity threshold at that moment -- the most concerning case, and the one most directly relevant to a candidate track with no curtailment in the table above.
-- **NP to P, no curtailment (far)**: same, but the track was still far from the turbine when reclassified -- descriptive, not necessarily concerning on its own.
-- **NP to P, late curtailment**: curtailment was triggered, but later than the agreed time or distance criterion.
-- **No risk**: no meaningful transition risk detected (single-species track, or reclassification with a timely curtailment).
-
-<!-- Source: summarise_id_transition_risk(id_risk_window_dt, curtl_dt_window)$by_direction, R/id_transitions.R -->
-```{r id-risk-table}
-if (!is.null(params$id_risk_by_direction) && nrow(params$id_risk_by_direction) > 0) {
-  report_table(rename_display(
-    recode_values(params$id_risk_by_direction, "risk_direction", c(
-      P_to_NP_unnecessary_curtailment = "P to NP (unnecessary curtailment)",
-      NP_to_P_no_curtailment_near     = "NP to P, no curtailment (near)",
-      NP_to_P_no_curtailment_far      = "NP to P, no curtailment (far)",
-      NP_to_P_late_curtailment        = "NP to P, late curtailment",
-      no_risk                         = "No risk"
-    )),
-    c(risk_direction = "Direction", n_tracks = "Tracks", n_multi_id_tracks = "Multi-ID Tracks", pct_of_multi_id = "% of Multi-ID")
-  ))
-} else {
-  cat("No multi-ID tracks (tracks with more than one distinct species classification) were found near the incident turbine during the investigation window.\n\n")
-}
-```
-```{r id-risk-annex, results='asis'}
-annex_note(params$xlsx_id_transitions)
-```
-
-## Short-Track Curtailments
-
-Curtailments triggered by tracks with fewer than `r params$shorttrack_min_points` recorded points, considered only within `r params$shorttrack_eval_range` m of the incident turbine, during the investigation window -- few recorded points means the algorithm had little accumulated information to confirm species or trajectory before deciding on a curtailment, which matters most at close range, where that limited information carries the most weight in the decision.
-
-<!-- Source: summarise_short_track_curtailments(), R/curtailment_short_track.R (built on classify_short_track_curtailments()) -->
-```{r short-track-table}
-if (!is.null(params$short_track_summary)) report_table(params$short_track_summary)
-```
-```{r short-track-annex, results='asis'}
-annex_note(params$xlsx_short_track)
-```
-
-```{r short-track-species-heading, results='asis'}
-if (!is.null(params$short_track_by_species) && nrow(params$short_track_by_species) > 0) {
-  cat("Of the close-range short-track curtailments above, the breakdown by priority species:\n\n")
-}
-```
-<!-- Source: summarise_short_track_by_species(), R/curtailment_short_track.R -->
-```{r short-track-species-table}
-if (!is.null(params$short_track_by_species) && nrow(params$short_track_by_species) > 0) {
-  report_table(rename_display(
-    params$short_track_by_species,
-    c(species = "Species", n = "N", pct = "% of Close-Range Short-Track Curtailments")
-  ))
-}
-```
-
-## IDF Unit Availability -- Investigation Window vs. Overall Baseline
-
-Heartbeat-based offline percentage for the IDF unit(s) covering the incident turbine, during the investigation window, compared against the same unit(s) over the full data coverage period (`r params$report_start` to `r params$report_end`) as a baseline -- a materially worse figure in the window than the baseline may indicate reduced detection capability around the time of the incident.
-
-<!-- Source: fatality_windows[[id]]$availability$by_idf (window) / $availability_global$by_idf (baseline), R/fatality_window_analysis.R -->
-```{r fatality-availability-window-heading, results='asis'}
-cat("### Investigation Window\n\n")
-```
-
-The figures below cover the period from the first to the last heartbeat received from each IDF unit of interest within the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), counting only daylight hours (sunrise to sunset, computed from the project coordinates) -- night-time gaps are not counted as unavailability, since detection is not expected to operate then. Each IDF unit sends a heartbeat approximately every `r params$heartbeat_interval_min` minutes when operational; a unit is considered offline once `r params$heartbeat_offline_gap_min` minutes pass without a heartbeat (i.e. two consecutive missed signals). A gap without a heartbeat is not necessarily a gap in bird protection -- it can also be a communication fault in the heartbeat signal itself, with the detection/curtailment system still operating. The calendar and tables below classify every such gap by the evidence available for that period, the same methodology used in the monthly reports (whether a curtailment was triggered by the turbine during the gap, whether SCADA still recorded RPM readings, both, or neither).
-
-Each slot in the calendar below is colored by one of six statuses:
-
-- **Online**: a heartbeat was received for this slot.
-- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered by the turbine during the gap -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.
-- **Turbine operational, no detection**: no heartbeat and no curtailment, but SCADA still recorded RPM readings from the turbine -- mechanically operational, simply with no bird triggering a response.
-- **No evidence (heartbeat and SCADA both missing)**: neither signal is available for this slot; requires manual review, since it can reflect a genuine gap in bird-protection coverage or a data gap affecting heartbeat and SCADA at the same time.
-- **Night**: outside daylight hours, when bird protection is not evaluated.
-- **No data**: no underlying calendar data available for this slot, independent of the evidence check above.
-
-<!-- Source: offline_evidence_slot_grid()/plot_offline_evidence_slots(), R/availability_daylight.R; classification from summarise_offline_evidence_window(), R/fatality_window_analysis.R (same methodology as classify_offline_evidence(), R/offline_curtailment_check.R, used in the monthly reports) -->
-```{r fatality-offline-evidence-calendar-plot, fig.width=6.30, fig.height=5, results='asis'}
-if (!is.null(params$fatality_offline_evidence_calendar_plot)) {
-  print(params$fatality_offline_evidence_calendar_plot)
-} else {
-  cat("No heartbeat records were found for the IDF unit(s) of interest within the investigation window -- this points to a data issue (e.g. an IDF unit naming/format mismatch between the heartbeat file and the units of interest) rather than a genuine absence of heartbeats.\n\n")
-}
-```
-
-```{r fatality-availability-window-table}
-if (!is.null(params$fatality_window_availability) && nrow(params$fatality_window_availability) > 0) {
-  report_table(
-    rename_display(
-      drop_cols(params$fatality_window_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
-      c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
-    ),
-    max_col_width_cm = 2
-  )
-}
-```
-
-**Unavailability Summary**
-
-Three related but distinct numbers are relevant when assessing IDF unavailability in this window, since they answer different questions: **Raw offline** (any heartbeat gap of at least `r params$heartbeat_offline_gap_min` minutes, regardless of other evidence), **Net / confirmed offline** (raw offline minus minutes where a curtailment was triggered during the gap -- strong evidence the detection/decision system was still operating despite the heartbeat failure), and **No evidence, pending manual review** (minutes where neither a curtailment nor a SCADA RPM reading was recorded -- already included within net offline above, shown separately since it needs case-by-case review rather than being resolved automatically).
-
-<!-- Source: summarise_net_availability(), R/offline_curtailment_check.R -- fatality_window_net_availability_dt, run_incident_zrshan.R -->
-```{r fatality-window-net-availability-table}
-if (!is.null(params$fatality_window_net_availability) && nrow(params$fatality_window_net_availability) > 0) {
-  x <- params$fatality_window_net_availability
-  report_table(data.frame(
-    Metric = c("Raw offline", "Net / confirmed offline", "No evidence (pending review; included in net offline above)"),
-    `Minutes` = c(x$raw_offline_mins[1], x$net_offline_mins[1], x$no_evidence_mins[1]),
-    `% of Daylight Monitoring Time` = c(x$raw_offline_pct[1], x$net_offline_pct[1], x$no_evidence_pct[1]),
-    check.names = FALSE
-  ))
-}
-```
-
-**Offline Evidence**
-
-Breakdown of every offline interval for the IDF unit(s) of interest during the investigation window, by the evidence available for that period -- see the calendar above for the same classification laid out over time.
-
-<!-- Source: summarise_offline_evidence_window()$by_idf, R/fatality_window_analysis.R (mesmas colunas da folha Window_offline_evidence_by_idf, fatality_track_investigation.xlsx) -->
-```{r fatality-window-offline-evidence-by-idf-table}
-if (!is.null(params$fatality_window_offline_evidence_by_idf) && nrow(params$fatality_window_offline_evidence_by_idf) > 0) {
-  report_table(
-    rename_display(
-      drop_cols(params$fatality_window_offline_evidence_by_idf, "incident_id"),
-      c(idf = "IDF Unit", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
-    ),
-    max_col_width_cm = 4
-  )
-}
-```
-```{r fatality-window-offline-evidence-annex, results='asis'}
-annex_note(params$xlsx_fatality)
-```
-
-```{r fatality-availability-global-heading, results='asis'}
-cat("### Overall Baseline\n\n")
-```
-
-Same calculation as above (daylight-only, same offline definition, same evidence cross-check), but for the IDF units of interest over the full data coverage period (`r params$report_start` to `r params$report_end`) instead of just the investigation window -- this is the baseline the window figures above are compared against. A materially worse offline percentage in the window than in this baseline may indicate reduced detection capability around the time of the incident.
-
-```{r fatality-availability-global-table}
-if (!is.null(params$fatality_global_availability) && nrow(params$fatality_global_availability) > 0) {
-  report_table(
-    rename_display(
-      drop_cols(params$fatality_global_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
-      c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
-    ),
-    max_col_width_cm = 2
-  )
-} else {
-  cat("No heartbeat records were found for the IDF unit(s) of interest over the full data coverage period -- this points to a data issue (e.g. an IDF unit naming/format mismatch between the heartbeat file and the units of interest) rather than a genuine absence of availability data, since the Investigation Window figures above are a subset of this same period and unit list.\n\n")
-}
-```
-
-**Unavailability Summary**
-
-<!-- Source: summarise_net_availability(), R/offline_curtailment_check.R -- fatality_global_net_availability_dt, run_incident_zrshan.R -->
-```{r fatality-global-net-availability-table}
-if (!is.null(params$fatality_global_net_availability) && nrow(params$fatality_global_net_availability) > 0) {
-  x <- params$fatality_global_net_availability
-  report_table(data.frame(
-    Metric = c("Raw offline", "Net / confirmed offline", "No evidence (pending review; included in net offline above)"),
-    `Minutes` = c(x$raw_offline_mins[1], x$net_offline_mins[1], x$no_evidence_mins[1]),
-    `% of Daylight Monitoring Time` = c(x$raw_offline_pct[1], x$net_offline_pct[1], x$no_evidence_pct[1]),
-    check.names = FALSE
-  ))
-}
-```
-
-**Offline Evidence**
-
-<!-- Source: summarise_offline_evidence_window()$by_idf, R/fatality_window_analysis.R (mesmas colunas da folha Global_offline_evidence_by_idf, fatality_track_investigation.xlsx) -->
-```{r fatality-global-offline-evidence-by-idf-table}
-if (!is.null(params$fatality_global_offline_evidence_by_idf) && nrow(params$fatality_global_offline_evidence_by_idf) > 0) {
-  report_table(
-    rename_display(
-      drop_cols(params$fatality_global_offline_evidence_by_idf, "incident_id"),
-      c(idf = "IDF Unit", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
-    ),
-    max_col_width_cm = 4
-  )
-}
-```
-```{r fatality-availability-annex, results='asis'}
-annex_note(params$xlsx_fatality)
-```
-
 ## Curtailment Response Around the Incident -- Investigation Window
 
-Response latency and no-response events (same definitions as the Curtailment Response & Latency section below) restricted to the incident turbine and to the investigation window. This covers every curtailment recorded at that turbine during the window, from any track, not only the candidate track(s) identified above. The full-period baseline for this same turbine is in the Curtailment Response & Latency -- Overall section further below (Response Latency by Turbine table) -- not repeated here.
+Response latency and no-response events (same definitions as the Curtailment Response Time & Latency section above) restricted to the incident turbine and to the investigation window. This covers every curtailment recorded at that turbine during the window, from any track, not only the candidate track(s) identified above. The full-period baseline for this same turbine is in the Curtailment Response Time & Latency section above (Response Latency by Turbine table) -- not repeated here.
+
+&nbsp;
 
 <!-- Source: fatality_windows[[id]]$curtailment_response$summary, R/fatality_window_analysis.R -->
 ```{r fatality-window-response-table}
@@ -605,6 +781,8 @@ annex_note(params$xlsx_fatality)
 
 Minimum-individuals abundance of `r params$incident_species`, comparing the `r params$fatality_post_incident_days`-day window after the incident date against the investigation window used above -- descriptive only, a difference may reflect the incident or simply the natural phenology of the migration passing through, no causality is assumed.
 
+&nbsp;
+
 <!-- Source: fatality_windows[[id]]$abundance, R/fatality_window_analysis.R -->
 ```{r fatality-abundance-table}
 if (!is.null(params$fatality_abundance_pre_post) && nrow(params$fatality_abundance_pre_post) > 0) {
@@ -622,139 +800,11 @@ if (!is.null(params$fatality_abundance_pre_post) && nrow(params$fatality_abundan
 annex_note(params$xlsx_fatality)
 ```
 
-# Curtailment Response & Latency -- Overall (`r params$incident_turbine`)
-
-Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, over the full data coverage period (`r params$report_start` to `r params$report_end`) for the incident turbine -- context for the window-specific figures above. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. `r params$shutdown_time_buffer_sec` s past the end of the curtailment order are allowed for this to happen. `r params$latency_n_no_data` curtailments (`r params$latency_pct_no_data`%) have no SCADA baseline within `r params$curtailment_start_end_gap_sec` s before the signal and are excluded below; of the remainder, `r params$latency_n_below_cutin` (`r params$latency_pct_below_cutin`%) were already below the cut-in speed (`r params$curtailment_cutin_rpm` rpm) at the start of the order and are also excluded, since there is no meaningful response to measure on a turbine that was not operating.
-
-In the tables below, "Curtailments" (Eligible) is the number of curtailment orders left after the two exclusions above -- these are the ones where a response could meaningfully be measured. "Reached" is how many of those eligible curtailments had RPM actually decline by the threshold within the search window (i.e. the turbine responded, however slowly); "% Reached" is that count as a percentage of the eligible curtailments. The remainder ("No Response") never showed that decline within the window at all.
-
-## Response Latency by Turbine
-
-<!-- Source: summarise_latency_by_turbine(latency_dt), R/curtailment_response_latency.R -->
-```{r latency-turbine-table}
-if (!is.null(params$latency_by_turbine)) {
-  report_table(
-    rename_display(
-      drop_cols(params$latency_by_turbine, c(
-        "n_curtailments", "n_no_data", "pct_no_data", "n_known",
-        "n_below_cutin", "pct_below_cutin", "n_no_response", "pct_no_response"
-      )),
-      c(turbine = "Turbine", n_eligible = "Curtailments", n_reached = "Reached",
-        pct_reached = "% Reached", mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)")
-    ),
-    max_col_width_cm = 2
-  )
-}
-```
-
-## Response Latency Time bands
-
-<!-- Source: summarise_latency_bands(latency_dt), R/curtailment_response_latency.R -->
-```{r latency-bands-table}
-if (!is.null(params$latency_bands)) {
-  report_table(params$latency_bands, max_col_width_cm = 2)
-}
-```
-
-## Response Latency Distribution
-
-<!-- Source: plot_latency_histogram(latency_dt), R/curtailment_response_latency.R -->
-```{r latency-hist-plot, fig.width=6.30, fig.height=4}
-if (!is.null(params$latency_plot)) print(params$latency_plot)
-```
-
-## Latency Temporal Pattern
-
-<!-- Source: plot_latency_timeline(latency_timeline_dt), R/curtailment_response_timeline.R -->
-```{r latency-timeline-plot, fig.width=6.30, fig.height=3.5}
-if (!is.null(params$latency_timeline_plot)) print(params$latency_timeline_plot)
-```
-
-```{r no-response-examples-heading, results='asis'}
-cat(sprintf("### No-Response Events (%s example(s))\n\n", params$latency_n_no_response_examples))
-```
-<!-- Source: select_latency_examples(latency_dt, "no_response"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
-```{r no-response-examples-plot, fig.width=6.30, fig.height=5.91, results='asis'}
-if (!is.null(params$latency_no_response_examples_plot)) {
-  print(params$latency_no_response_examples_plot)
-} else {
-  cat("No no-response events were recorded in this reporting period -- no example plot is shown.\n\n")
-}
-```
-
-```{r slowest-examples-heading, results='asis'}
-cat(sprintf("### Slowest Responses (%s example(s))\n\n", params$latency_n_slowest_examples))
-```
-<!-- Source: select_latency_examples(latency_dt, "slowest"), plot_curtailment_events_rpm(), R/curtailment_forensic_trace.R -->
-```{r slowest-examples-plot, fig.width=6.30, fig.height=5.91, results='asis'}
-if (!is.null(params$latency_slowest_examples_plot)) {
-  print(params$latency_slowest_examples_plot)
-} else {
-  cat("No curtailments with a detected response were available in this reporting period -- no example plot is shown.\n\n")
-}
-```
-```{r latency-annex, results='asis'}
-annex_note(params$xlsx_latency)
-```
-
-## Shutdown Time
-
-Time from curtailment signal to reaching each RPM threshold, for the incident turbine over the full data coverage period (`r params$report_start` to `r params$report_end`) -- 3 thresholds evaluated: `r paste(params$shutdown_time_thresholds, collapse = ", ")` rpm. Bands below/above the agreed cut-offs are reported as-is, without further interpretation. Uses the same population as Response Latency above: curtailments with no SCADA baseline within `r params$curtailment_start_end_gap_sec` s of the signal, or already below the cut-in speed at the start of the order, are excluded (see the counts stated at the top of this section).
-
-### Time to Threshold by Turbine
-
-<!-- Source: summarise_time_to_threshold(tt_dt), R/curtailment_shutdown_time.R -->
-```{r shutdown-turbine-table}
-if (!is.null(params$shutdown_by_turbine)) {
-  report_table(
-    rename_display(
-      drop_cols(params$shutdown_by_turbine, c("median_time_sec")),
-      c(
-        turbine = "Turbine", threshold = "Thresh. (rpm)", n_curtailments = "Curtailments",
-        n_reached = "Reached", pct_reached = "% Reached", mean_time_sec = "Mean (s)",
-        sd_time_sec = "SD (s)", min_time_sec = "Min (s)", max_time_sec = "Max (s)"
-      )
-    ),
-    max_col_width_cm = 1.5
-  )
-}
-```
-```{r shutdown-turbine-annex, results='asis'}
-annex_note(params$xlsx_shutdown)
-```
-
-### Time to Threshold Bands
-
-A curtailment counts as "below cut" when it reached the threshold in under `r params$shutdown_time_low_cut` s (fast), and "above cut" when it took more than `r params$shutdown_time_high_cut` s (slow); cases in between count towards neither band.
-
-<!-- Source: summarise_time_to_threshold_bands(tt_dt), R/curtailment_shutdown_time.R -->
-```{r shutdown-bands-table}
-if (!is.null(params$shutdown_bands)) {
-  report_table(rename_display(
-    params$shutdown_bands,
-    stats::setNames(
-      c("Thresh. (rpm)", "Reached", sprintf("%% < %ss", params$shutdown_time_low_cut), sprintf("%% > %ss", params$shutdown_time_high_cut)),
-      c("threshold", "n_reached", "pct_below_cut", "pct_above_cut")
-    )
-  ))
-}
-```
-```{r shutdown-bands-annex, results='asis'}
-annex_note(params$xlsx_shutdown)
-```
-
-### Time to Threshold Distribution
-
-<!-- Source: plot_time_to_threshold(), R/curtailment_shutdown_time.R -->
-```{r shutdown-plot, fig.width=6.30, fig.height=6}
-if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
-```
-
-# `r params$incident_species` Activity
+## `r params$incident_species` Activity
 
 Minimum number of distinct individuals of `r params$incident_species` detected in the same `r params$min_individuals_bin_min`-minute time bin, around the investigated turbines (`r params$investigated_turbines`), summarised by day over the full data coverage period. Two or more tracks are counted as a single individual when their positions are within `r params$min_individuals_merge_dist_m` m of each other in the same bin -- this is a lower-bound estimate of how many individuals were present, not a true count.
 
-## Summary
+### Summary
 
 <!-- Source: summarise_min_individuals(min_indiv_bins_dt), R/track_min_individuals.R -- peak_bin_start is NA when the count never varies (no real peak to point to) -->
 ```{r min-indiv-summary-table}
@@ -777,7 +827,7 @@ if (is.null(params$min_indiv_summary) || nrow(params$min_indiv_summary) == 0) {
 annex_note(params$xlsx_min_indiv)
 ```
 
-## Daily Peak
+### Daily Peak
 
 <!-- Source: plot_daily_max_individuals(min_indiv_daily_dt, species_sel = incident_species, geom_type = "bar"), R/track_min_individuals.R -->
 ```{r min-indiv-daily-plot, fig.width=6.30, fig.height=4, results='asis'}
@@ -790,4 +840,4 @@ if (!is.null(params$min_indiv_plot_daily)) {
 
 # Annexes
 
-The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: turbine/IDF coverage, fatality investigation (full track/window detail), ID transitions, short-track curtailments, curtailment response & latency (overall), shutdown time, and minimum individuals per bin.
+The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: ID transitions, IDF unit availability and fatality investigation (full track/window detail), short-track curtailments, curtailment response time & latency, shutdown time, turbine/IDF coverage, and minimum individuals per bin.

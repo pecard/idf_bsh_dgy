@@ -588,7 +588,7 @@ if (exists("id_transition_late_time_sec") && exists("shorttrack_min_points") && 
 source("R/availability_daylight.R")
 source("R/curtailment_response.R")
 source("R/curtailment_response_latency.R")
-source("R/curtailment_forensic_trace.R") # plot_curtailment_events_rpm() -- reutilizado na secção "Curtailment Response & Latency -- Overall" abaixo
+source("R/curtailment_forensic_trace.R") # plot_curtailment_events_rpm() -- reutilizado na secção "Curtailment Response Time & Latency" do relatorio
 source("R/track_min_individuals.R")
 ## offline_curtailment_check.R/monthly_technical_summary.R: evidencia
 ## offline (curtailment/SCADA) + numeros raw/net/sem-evidencia -- mesma
