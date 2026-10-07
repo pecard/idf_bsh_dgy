@@ -873,7 +873,7 @@ min_indiv_bins_dt  <- count_min_individuals_per_bin(track_dt[turbine %in% turbin
 
 min_indiv_summary_dt <- summarise_min_individuals(min_indiv_bins_dt)
 min_indiv_daily_dt <- summarise_daily_max_individuals(min_indiv_bins_dt)
-p_min_indiv_daily  <- plot_daily_max_individuals(min_indiv_daily_dt, species_sel = "Egyptian-Vulture", date_breaks = "1 month", geom_type = "bar")
+p_min_indiv_daily  <- plot_daily_max_individuals(min_indiv_daily_dt, species_sel = "Egyptian-Vulture", date_breaks = "1 day", geom_type = "bar", x_text_size = 6)
 
 write_xlsx_local(
   list(Bins = min_indiv_bins_dt, Summary = min_indiv_summary_dt, Daily_peak = min_indiv_daily_dt),

@@ -268,7 +268,10 @@ summarise_daily_max_individuals <- function(bins_dt, tz = NULL) {
 
 plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vulture", "Steppe-Eagle"),
                                        date_breaks = "15 days", date_labels = "%d/%m/%Y",
-                                       geom_type = c("line", "bar")) {
+                                       geom_type = c("line", "bar"), x_text_size = 8) {
+
+  # x_text_size: tamanho do texto do eixo x (datas, na vertical) -- reduzir
+  # (ex: 6) quando date_breaks = "1 day" para caberem todas as datas
 
   geom_type <- match.arg(geom_type)
   dt <- data.table::copy(daily_dt)
@@ -314,7 +317,7 @@ plot_daily_max_individuals <- function(daily_dt, species_sel = c("Egyptian-Vultu
         angle = 90,    # Rotação vertical
         vjust = 0.5,   # Alinha o texto ao centro da marca do eixo
         hjust = 1,     # Ajusta a extremidade ao eixo
-        size = 8       # Tamanho da fonte (reduzido)
+        size = x_text_size # Tamanho da fonte (reduzido)
       ),
       # tamanho reduzido -- pedido do Paulo, 2026-09, mesma razao do
       # axis.text.x acima (varios paineis empilhados, scales="free_y")
