@@ -308,8 +308,11 @@ if (file.exists(turbine_idf_matrix_file)) {
 ## 0. Filter data for the report month (ini/end vem de monthlyReportSettings_BSH.R/_DGY.R) ----
 ##
 
-report_start <- as.Date(ini)
-report_end   <- as.Date(end)
+# tz = proj_timezone -- sem isto, as.Date() converte para UTC e, para um fuso
+# positivo (Asia/Samarkand, UTC+5), report_start fica 1 dia ATRAS da meia-noite
+# local (ex: 2026-08-01 00:00 local -> 2026-07-31)
+report_start <- as.Date(ini, tz = proj_timezone)
+report_end   <- as.Date(end, tz = proj_timezone)
 
 scada_dt <- scada_dt_unfilt # NAO FILTRAR -- mesma logica de IDF_analysis.R
 

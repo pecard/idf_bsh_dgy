@@ -562,8 +562,11 @@ coverage_turbine_dt[turbine == "BSH54", .(
 #ini --> definido no userSettings.txt
 #end --> definido no userSettings.txt
 
-report_start <- as.Date(ini)
-report_end   <- as.Date(end)
+# tz = proj_timezone -- sem isto, as.Date() converte para UTC e, para um fuso
+# positivo (Asia/Samarkand, UTC+5), report_start fica 1 dia ATRAS da meia-noite
+# local (ex: 2025-01-01 00:00 local -> 2024-12-31)
+report_start <- as.Date(ini, tz = proj_timezone)
+report_end   <- as.Date(end, tz = proj_timezone)
 
 #SCADA data
 scada_dt <- scada_dt_unfilt #NAO FILTRAR

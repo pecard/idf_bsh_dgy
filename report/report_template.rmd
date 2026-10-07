@@ -758,10 +758,14 @@ Coverage of the risk airspace around each turbine, corrected for terrain, based 
 if (!is.null(params$coverage3d_by_turbine)) {
   report_table(rename_display(
     drop_cols(params$coverage3d_by_turbine, c("n_records", "n_valid", "low_sample")),
-    c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered")
+    c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered",
+      n_low_terrain_mesh = "Low-Terrain Cells", n_low_terrain_covered = "Low-Terrain Covered Cells",
+      pct_low_terrain_covered = "% Low-Terrain Covered")
   ))
 }
 ```
+
+"Low-terrain" cells are the two lowest mesh levels above the terrain surface in each horizontal (x, y) position, regardless of height above ground level or height band -- they measure coverage of the airspace closest to the local terrain, which depends on the topography around each turbine; "% Low-Terrain Covered" is the share of those cells with at least one bird detection within the proximity threshold.
 
 The overall figure above blends cells at every height and distance from each turbine. The table below narrows this down to the highest-priority quadrant: cells below `r params$coverage_cylinder_inner_radius` m of horizontal distance from the turbine ("inner" band) that also sit within the risk height threshold ("at risk" band) -- the combination most relevant for assessing detection capability around a collision.
 
