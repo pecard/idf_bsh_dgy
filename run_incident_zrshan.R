@@ -118,7 +118,13 @@ if (!dir.exists(folder_input) || !dir.exists("R")) {
 if (!exists("project_settings_file")) project_settings_file <- "userSettings_ZRF.R"
 source(file.path(folder_input, project_settings_file))
 
-folder_output <- file.path("outputs", paste0(format(Sys.time(), "%Y%m%d"), "_", farm_code))
+## Pasta e sufixo de ficheiros POR INCIDENTE (R/output_paths.R) -- incidentes
+## distintos do mesmo parque corridos no mesmo dia ja' nao se sobrepoem
+source("R/output_paths.R")
+incident_tag  <- make_incident_tag(farm_code, fatality_incidents$turbine[1], fatality_incidents$incident_date[1])
+run_date      <- format(Sys.time(), "%Y%m%d")
+folder_output <- incident_output_folder("outputs", run_date, incident_tag)
+out_file <- function(base, ext) file.path(folder_output, out_name(base, ext, incident_tag, run_date))
 dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
 
 folder_cache <- file.path("cache", farm_code)
@@ -332,13 +338,13 @@ if (file.exists(turbine_idf_matrix_file)) {
   write_xlsx_local(
     list(Geometric_long = turbine_idf_coverage_dt, Geometric_wide = turbine_idf_coverage_wide_dt,
          Manual_matrix = turbine_idf_manual_dt, Comparison = turbine_idf_comparison_dt),
-    file.path(folder_output, "turbine_idf_coverage.xlsx")
+    out_file("turbine_idf_coverage", "xlsx")
   )
 } else {
   message("Matriz manual turbina<->IDF nao encontrada (", turbine_idf_matrix_file, ") -- gravada so a matriz GEOMETRICA.")
   write_xlsx_local(
     list(Geometric_long = turbine_idf_coverage_dt, Geometric_wide = turbine_idf_coverage_wide_dt),
-    file.path(folder_output, "turbine_idf_coverage.xlsx")
+    out_file("turbine_idf_coverage", "xlsx")
   )
 }
 
@@ -405,7 +411,7 @@ if (file.exists(dem_file)) {
       By_turbine = summary_cov$by_turbine, By_turbine_risk_band = summary_cov$by_turbine_risk_band,
       By_turbine_risk_dist_band = summary_cov$by_turbine_risk_dist_band
     ),
-    file.path(folder_output, "coverage_3d_summary.xlsx")
+    out_file("coverage_3d_summary", "xlsx")
   )
 
   ## Plots interativos (plotly, html) -- cobertura + o inverso (nos da
@@ -419,6 +425,7 @@ if (file.exists(dem_file)) {
   ## idf_op_detection_range (1000m) -- pedido do Paulo, 2026-10.
   coverage3d_png_paths <- save_coverage_3d_plots(
     cov_all, file.path(folder_output, "coverage_3d"),
+    file_suffix = paste0("_", incident_tag, "_", run_date),
     radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
     screenshot = TRUE,
     idf_sf = idf, idf_max_dist_m = idf_op_detection_range, idf_id_col = "imaging_he"
@@ -546,7 +553,7 @@ if (exists("id_transition_late_time_sec") && exists("shorttrack_min_points") && 
 
   write_xlsx_local(
     list(Risk_detail = id_risk_window_dt, By_direction = id_risk_window_summary$by_direction),
-    file.path(folder_output, "id_transitions_incident_window.xlsx")
+    out_file("id_transitions_incident_window", "xlsx")
   )
 
   short_track_window_dt <- classify_short_track_curtailments(
@@ -572,7 +579,7 @@ if (exists("id_transition_late_time_sec") && exists("shorttrack_min_points") && 
       Summary                  = short_track_window_summary_dt,
       By_species               = short_track_window_by_species_dt
     ),
-    file.path(folder_output, "short_track_curtailments_incident_window.xlsx")
+    out_file("short_track_curtailments_incident_window", "xlsx")
   )
 
 } else {
@@ -763,7 +770,7 @@ write_xlsx_local(
     Global_response_summary    = fatality_global_response_summary_dt,
     Abundance_pre_post         = fatality_abundance_pre_post_dt
   ),
-  file.path(folder_output, "fatality_track_investigation.xlsx")
+  out_file("fatality_track_investigation", "xlsx")
 )
 
 
@@ -814,7 +821,7 @@ write_xlsx_local(
   list(Latency = latency_dt, Overall = summary_latency, By_turbine = summary_latency_by_turbine,
        Bands = summary_latency_bands, Latency_timeline = latency_timeline_dt,
        No_response_examples = no_response_examples_dt, Slowest_response_examples = slowest_response_examples_dt),
-  file.path(folder_output, paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+  out_file(paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end)), "xlsx")
 )
 
 ## 4b. Tempo ate atingir limiares de RPM (shutdown time) -- mesma analise
@@ -838,7 +845,7 @@ summary_tt_bands      <- summarise_time_to_threshold_bands(
 
 write_xlsx_local(
   list(Time_to_threshold = tt_dt, By_turbine = summary_tt_by_turbine, Bands = summary_tt_bands),
-  file.path(folder_output, paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end), ".xlsx"))
+  out_file(paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end)), "xlsx")
 )
 
 p_shutdown_time <- plot_time_to_threshold(tt_dt)
@@ -870,7 +877,7 @@ p_min_indiv_daily  <- plot_daily_max_individuals(min_indiv_daily_dt, species_sel
 
 write_xlsx_local(
   list(Bins = min_indiv_bins_dt, Summary = min_indiv_summary_dt, Daily_peak = min_indiv_daily_dt),
-  file.path(folder_output, "min_individuals_egyptian_vulture.xlsx")
+  out_file("min_individuals_egyptian_vulture", "xlsx")
 )
 
 
@@ -984,20 +991,20 @@ report_params <- list(
   shorttrack_min_points           = if (exists("shorttrack_min_points")) shorttrack_min_points else NULL,
   shorttrack_eval_range           = if (exists("shorttrack_eval_range")) shorttrack_eval_range else NULL,
 
-  xlsx_coverage      = "turbine_idf_coverage.xlsx",
-  xlsx_coverage3d    = if (!is.null(summary_cov)) "coverage_3d_summary.xlsx" else NULL,
-  xlsx_fatality      = "fatality_track_investigation.xlsx",
-  xlsx_id_transitions = if (!is.null(id_risk_window_summary)) "id_transitions_incident_window.xlsx" else NULL,
-  xlsx_short_track    = if (!is.null(short_track_window_summary_dt)) "short_track_curtailments_incident_window.xlsx" else NULL,
-  xlsx_latency       = paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end), ".xlsx"),
-  xlsx_shutdown      = paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end), ".xlsx"),
-  xlsx_min_indiv     = "min_individuals_egyptian_vulture.xlsx"
+  xlsx_coverage      = out_name("turbine_idf_coverage", "xlsx", incident_tag, run_date),
+  xlsx_coverage3d    = if (!is.null(summary_cov)) out_name("coverage_3d_summary", "xlsx", incident_tag, run_date) else NULL,
+  xlsx_fatality      = out_name("fatality_track_investigation", "xlsx", incident_tag, run_date),
+  xlsx_id_transitions = if (!is.null(id_risk_window_summary)) out_name("id_transitions_incident_window", "xlsx", incident_tag, run_date) else NULL,
+  xlsx_short_track    = if (!is.null(short_track_window_summary_dt)) out_name("short_track_curtailments_incident_window", "xlsx", incident_tag, run_date) else NULL,
+  xlsx_latency       = out_name(paste0("curtailment_response_latency_overall_", date(scada_ini), "to", date(scada_end)), "xlsx", incident_tag, run_date),
+  xlsx_shutdown      = out_name(paste0("curtailment_shutdown_time_", date(scada_ini), "to", date(scada_end)), "xlsx", incident_tag, run_date),
+  xlsx_min_indiv     = out_name("min_individuals_egyptian_vulture", "xlsx", incident_tag, run_date)
 )
 
 if (isTRUE(generate_report)) {
   source("R/report.R")
   build_idf_report(
-    output_file    = file.path(folder_output, paste0("Incident_Report_", fatality_incidents$incident_id, "_", fatality_incidents$incident_date, ".docx")),
+    output_file    = out_file("Incident_Report", "docx"),
     report_params  = report_params,
     template       = "report/incident_report_template.rmd",
     reference_docx = file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")

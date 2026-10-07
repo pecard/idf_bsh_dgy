@@ -870,8 +870,12 @@ plot_mesh_coverage_debug <- function(terrain_mesh, coverage, radius, cyl_height,
 save_coverage_3d_plots <- function(cov_all, folder_out, radius, cyl_height,
                                    screenshot = FALSE, screenshot_width = 1200,
                                    screenshot_height = 900, screenshot_delay = 2,
-                                   idf_sf = NULL, idf_max_dist_m = 1000, idf_id_col = "imaging_he") {
+                                   idf_sf = NULL, idf_max_dist_m = 1000, idf_id_col = "imaging_he",
+                                   file_suffix = "") {
 
+  # file_suffix: acrescentado ao nome de cada ficheiro, antes da extensao
+  # (ex: "_ZRF_T94_20261001_20261007", ver R/output_paths.R); "" mantem os
+  # nomes antigos para quem nao o usa (IDF_analysis.R).
   dir.create(folder_out, showWarnings = FALSE, recursive = TRUE)
 
   take_screenshot <- function(html_path, png_path) {
@@ -901,18 +905,18 @@ save_coverage_3d_plots <- function(cov_all, folder_out, radius, cyl_height,
       idf_units_in_local_frame(idf_sf, terrain_mesh_i$crs_local, max_dist_m = idf_max_dist_m, idf_id_col = idf_id_col)
     } else NULL
 
-    html_cov <- file.path(folder_out, paste0("coverage_3d_", wtg_id, ".html"))
+    html_cov <- file.path(folder_out, paste0("coverage_3d_", wtg_id, file_suffix, ".html"))
     p_cov <- plot_mesh_coverage_3d(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height, idf_units_local = idf_units_local_i)
     htmlwidgets::saveWidget(p_cov, html_cov, selfcontained = TRUE)
 
-    html_notcov <- file.path(folder_out, paste0("coverage_3d_not_covered_", wtg_id, ".html"))
+    html_notcov <- file.path(folder_out, paste0("coverage_3d_not_covered_", wtg_id, file_suffix, ".html"))
     p_notcov <- plot_mesh_coverage_debug(terrain_mesh_i, coverage_i, radius = radius, cyl_height = cyl_height, idf_units_local = idf_units_local_i)
     htmlwidgets::saveWidget(p_notcov, html_notcov, selfcontained = TRUE)
 
     if (isTRUE(screenshot)) {
       png_paths[[wtg_id]] <- list(
-        covered     = take_screenshot(html_cov, file.path(folder_out, paste0("coverage_3d_", wtg_id, ".png"))),
-        not_covered = take_screenshot(html_notcov, file.path(folder_out, paste0("coverage_3d_not_covered_", wtg_id, ".png")))
+        covered     = take_screenshot(html_cov, file.path(folder_out, paste0("coverage_3d_", wtg_id, file_suffix, ".png"))),
+        not_covered = take_screenshot(html_notcov, file.path(folder_out, paste0("coverage_3d_not_covered_", wtg_id, file_suffix, ".png")))
       )
     }
   }
