@@ -9,19 +9,19 @@
 ##      antecipam a chegada a ZRF na primavera (timing da passagem,
 ##      correlacao cruzada defasada, e pulsos seguidos no outro parque).
 ##
-## Le TODOS os tracks dos 3 parques (data-raw + pasta remota, via os
-## userSettings de cada um, ver farm_settings abaixo) -- NAO filtra por
-## ini/end de cada parque. Usa a cache fst de cada parque (cache/<farm_code>/
-## track_dt_unfilt.fst, a mesma de IDF_analysis.R/run_incident_zrshan.R);
-## force_reread_cache = TRUE quando ha' dados novos nas pastas brutas.
+## Le so' os tracks dos 3 parques (data-raw + pasta remota; NAO le curtailments,
+## SCADA nem heartbeats), na janela ini/end comum -- tudo definido em
+## inputs/userSettings_regional_assessment.R. Cache fst propria
+## (cache/regional/<parque>/); force_reread_cache = TRUE quando ha' dados novos
+## nas pastas brutas ou o padrao de ficheiros mudou.
 ##
 ## NAO faz parte do pipeline dos relatorios (nunca chamado a partir de
 ## IDF_analysis.R/IDF_monthly_report.R) -- script AUTONOMO, mesma logica de
 ## explore_bsh_dgy_comparison.R.
 ##
-## Fase 1 (este ficheiro): todos os parametros no bloco "PARAMETROS" abaixo.
-## Fase 2: mover esse bloco para inputs/userSettings_regional.R e dar source
-## a esse ficheiro aqui (o resto do script nao muda).
+## Parametros: leitura/janela/especies/bins em inputs/userSettings_regional_assessment.R;
+## parametros da analise (epocas, lags, pulsos, esforco) no bloco "PARAMETROS DA
+## ANALISE" abaixo (podem passar para o userSettings quando estabilizarem).
 ##
 ## Uso: source("run_regional_assessment.R") (Ctrl+Shift+S no RStudio).
 ## Outputs: outputs/<AAAAMMDD>_REGIONAL/ -- xlsx (em ingles) + PNGs, todos com
@@ -71,30 +71,19 @@ source("R/regional_assessment.R")
 ## PARAMETROS ----
 ##
 
-## Parque -> settings file (de onde vem databases_dir/databases_dir_alt, os
-## padroes de ficheiros, o fuso, etc.). ZRF usa o settings mais recente; os
-## padroes/pastas dos tracks sao os mesmos em todos os settings ZRF.
-farm_settings <- c(
-  ZRF = "userSettings_ZRF_T94_20261001.R",
-  BSH = "userSettings_BSH.R",
-  DGY = "userSettings_DGY.R"
-)
+## Leitura (pastas, padroes de ficheiros, fuso), ini/end, especies, bins e
+## criterios de separacao entre tracks: inputs/userSettings_regional_assessment.R
+## (ficheiro proprio, separado dos settings de incidente/anual/mensal).
+regional_settings_file <- "userSettings_regional_assessment.R"
+source(file.path(folder_input, regional_settings_file))
 
-## Pastas ADICIONAIS com tracks, por parque (alem de databases_dir e
-## databases_dir_alt dos settings). BSH e DGY ja' tem a pasta de rede em
-## databases_dir_alt; ZRF NAO tem databases_dir_alt nos settings.
-## TODO(Paulo): confirmar a pasta de rede de ZRF (ex: .../IDF_PortalData/ZRF)
-## e preencher aqui, ex: ZRF = "//192.168.1.11/DadosBrutos(T2)/.../IDF_PortalData/ZRF"
-extra_dirs <- list(ZRF = NULL, BSH = NULL, DGY = NULL)
-
-if (!exists("force_reread_cache")) force_reread_cache <- FALSE # TRUE = relê os brutos (dados novos)
+if (!exists("force_reread_cache")) force_reread_cache <- FALSE # TRUE = relê os brutos (dados novos ou padrao mudou)
 force_recompute_bins <- FALSE # TRUE = recalcula os bins de 2 min mesmo com cache
 
-species_regional <- c("Egyptian-Vulture", "Steppe-Eagle")
-
-## Bins de 2 min (R/track_min_individuals.R) -- mesmos valores dos relatorios
-bin_min <- 2
-merge_dist_m <- 200
+##
+## PARAMETROS DA ANALISE (ficam aqui por agora; so' leitura/janela/especies/bins
+## estao no userSettings) ----
+##
 
 ## Esforco de monitorizacao (so' ha' tracks quando ha' aves, por isso o
 ## esforco e' inferido dos proprios tracks, de qualquer especie)
@@ -134,7 +123,6 @@ regional_tag <- "REGIONAL"
 folder_output <- incident_output_folder("outputs", run_date, regional_tag)
 dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
 out_file <- function(base, ext) file.path(folder_output, out_name(base, ext, regional_tag, run_date))
-folder_cache_regional <- file.path("cache", "regional")
 
 
 ##
@@ -142,18 +130,25 @@ folder_cache_regional <- file.path("cache", "regional")
 ##
 
 farm_data <- list()
-for (farm in names(farm_settings)) {
+print(regional_farms[, .(farm, trackreport_pattern, farm_pattern)])
+
+for (i in seq_len(nrow(regional_farms))) {
+  farm <- regional_farms$farm[i]
 
   fd <- regional_load_farm(
-    farm_settings[[farm]], farm, folder_input = folder_input,
-    extra_dirs = extra_dirs[[farm]], force_reread = force_reread_cache
+    farm = farm,
+    databases_dirs = c(databases_dir, regional_farms$databases_dir_alt[i]),
+    trackreport_pattern = regional_farms$trackreport_pattern[i],
+    farm_pattern = regional_farms$farm_pattern[i],
+    tz = proj_timezone, ini = ini, end = end,
+    cache_dir = regional_cache_dir, force_reread = force_reread_cache
   )
 
   mon <- regional_monitored_days(fd$tracks, fd$tz, min_tracks_per_day = min_tracks_per_day)
 
   bins <- regional_min_individuals_bins(
     fd$tracks, species_regional, bin_min = bin_min, merge_dist_m = merge_dist_m,
-    cache_file = file.path(folder_cache_regional, sprintf("min_individuals_bins_%s.rds", farm)),
+    cache_file = file.path(regional_cache_dir, farm, "min_individuals_bins.rds"),
     force_recompute = force_recompute_bins
   )
 
@@ -246,12 +241,15 @@ for (sp in species_regional) {
 ##
 
 parameters_dt <- data.table(
-  Parameter = c("Species", "Bin (min)", "Merge distance (m)", "Min tracks per monitored day",
+  Parameter = c("Analysis window (ini)", "Analysis window (end)", "Track file patterns",
+                "Species", "Bin (min)", "Merge distance (m)", "Min tracks per monitored day",
                 "Min monitored days per week", "Seasons", "Leader -> follower pairs",
                 "Passage shares (onset / median / end)", "Min season total", "Min season coverage",
                 "Max lag (days)", "Smoothing (days)", "Min overlap (days)",
                 "Pulse min individuals", "Pulse merge gap (days)", "Pulse follow-up window (days)", "Run date"),
   Value = c(
+    format(ini, "%Y-%m-%d %H:%M:%S"), format(end, "%Y-%m-%d %H:%M:%S"),
+    paste(sprintf("%s: %s", regional_farms$farm, regional_farms$trackreport_pattern), collapse = "; "),
     paste(species_regional, collapse = ", "), bin_min, merge_dist_m, min_tracks_per_day, min_monitored_days,
     paste(sprintf("%s %s to %s", names(seasons), vapply(seasons, `[`, "", 1), vapply(seasons, `[`, "", 2)), collapse = "; "),
     paste(sprintf("%s: %s -> %s", regional_pairs$season, regional_pairs$leader, regional_pairs$follower), collapse = "; "),

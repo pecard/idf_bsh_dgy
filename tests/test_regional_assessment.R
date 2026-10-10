@@ -158,3 +158,38 @@ invisible(lapply(list(
   plot_regional_ccf(ccf_test, sp), plot_regional_lead_days(lead_test, sp)
 ), function(p) ggplot2::ggplot_build(p)))
 cat("ggplot_build() de todos os plots sem erro -- OK\n")
+
+
+##
+## 5. userSettings_regional_assessment.R + padroes de ficheiros + janela ini/end
+##
+settings_env_test <- new.env(parent = globalenv())
+source("inputs/userSettings_regional_assessment.R", local = settings_env_test)
+farms_test <- settings_env_test$regional_farms
+
+check("settings: 3 parques na ordem ZRF, BSH, DGY", identical(farms_test$farm, c("ZRF", "BSH", "DGY")))
+check("settings: padroes = prefixo + '.*' + parque",
+      identical(farms_test$trackreport_pattern,
+                c("TrackReport_Default.*ZRF", "TrackReport_Default.*BSH", "TrackReport_Default.*DGY")))
+check("settings: so' as 2 especies", identical(settings_env_test$species_regional, c("Egyptian-Vulture", "Steppe-Eagle")))
+check("settings: ini < end e no fuso do projeto",
+      settings_env_test$ini < settings_env_test$end && attr(settings_env_test$ini, "tzone") == settings_env_test$proj_timezone)
+check("settings: bin_min = 2 e merge_dist_m = 200", settings_env_test$bin_min == 2 && settings_env_test$merge_dist_m == 200)
+check("settings: nao define patterns de curtailments/SCADA/heartbeats",
+      !any(vapply(c("curtailments_pattern", "scada_pattern", "heartbeats_pattern"), exists, logical(1), envir = settings_env_test, inherits = FALSE)))
+
+files_test <- c("TrackReport_Default_ZRF_20260901_20260930.csv", "TrackReport_Default_BSH_20250101.csv",
+                "TrackReport_Default_DGY_20250801.csv", "Curtailments_ZRF_20260901.xlsx",
+                "SCADA_ZRF_20260901.csv", "Heartbeats_BSH_20250101.csv")
+hit <- function(i) files_test[grepl(farms_test$trackreport_pattern[i], files_test)]
+check("padrao ZRF apanha so' o TrackReport de ZRF", identical(hit(1), files_test[1]))
+check("padrao BSH apanha so' o TrackReport de BSH", identical(hit(2), files_test[2]))
+check("padrao DGY apanha so' o TrackReport de DGY", identical(hit(3), files_test[3]))
+check("'TrackReport_Default+ZRF' (regex literal) NAO apanha TrackReport_Default_ZRF_...",
+      !grepl("TrackReport_Default+ZRF", files_test[1]))
+
+win_test <- regional_filter_window(
+  data.table(timestamp = as.POSIXct(c("2024-12-31 23:00:00", "2025-01-01 00:00:00", "2026-10-01 23:59:59", "2026-10-02 00:00:01"), tz = tz_test)),
+  settings_env_test$ini, settings_env_test$end
+)
+check("janela ini/end: mantem os limites inclusivos, descarta o resto", nrow(win_test) == 2L)

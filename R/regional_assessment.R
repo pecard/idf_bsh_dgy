@@ -30,6 +30,9 @@
 ## Todas as datas (as.Date) usam o fuso do parque (tz=), nunca UTC -- em
 ## Asia/Samarkand (UTC+5) a meia-noite local cairia no dia anterior.
 ##
+## Parametros: inputs/userSettings_regional_assessment.R (leitura, ini/end, especies,
+##   bins/separacao entre tracks) e bloco "PARAMETROS DA ANALISE" de run_regional_assessment.R.
+##
 ## Depende de: data.table, lubridate, ggplot2, R/track_min_individuals.R,
 ##   R/read_utils.R, R/read_tracks.R, R/data_cache.R (so' o carregamento)
 ##
@@ -41,56 +44,60 @@ regional_farm_levels <- c("ZRF", "BSH", "DGY")
 regional_farm_colours <- c(ZRF = "#1b9e77", BSH = "#d95f02", DGY = "#7570b3")
 
 
-## 1. Leitura de TODOS os tracks de um parque (data-raw + pasta remota) ----
+## 1. Leitura dos tracks de um parque (data-raw + pasta remota) ----
 ##
-## settings_file e' sourced num ambiente PROPRIO (nao sobrescreve nada no
-## global -- 3 parques na mesma sessao). Usa a mesma cache fst que os outros
-## scripts (cache/<farm_code>/track_dt_unfilt.fst), por isso reaproveita o
-## que IDF_analysis.R / run_incident_zrshan.R ja' leram -- force_reread = TRUE
-## quando ha' dados novos nas pastas brutas. extra_dirs acrescenta pastas
-## (ex: pasta de rede de ZRF, que nao tem databases_dir_alt nos settings).
-## NAO filtra por ini/end do parque -- o regional usa todo o historico.
+## Recebe os parametros diretamente (vindos de inputs/userSettings_regional_assessment.R,
+## ver run_regional_assessment.R) -- nao le os settings de incidente/anual/mensal.
+## Le TODOS os ficheiros que batem com trackreport_pattern (+ farm_pattern,
+## 2a camada de filtro) nas pastas dadas, e guarda a leitura bruta numa cache
+## fst PROPRIA do regional (cache_dir/<farm>/track_dt_unfilt.fst) -- mudar
+## ini/end nao exige reler; force_reread = TRUE quando ha' dados novos ou o
+## padrao mudou. So' depois de carregar aplica a janela ini/end e guarda as
+## colunas necessarias (track_id, timestamp, utm_x, utm_y, spec).
 
-regional_load_farm <- function(settings_file, farm_label, folder_input = "inputs",
-                               extra_dirs = NULL, cache_root = "cache", force_reread = FALSE) {
+regional_filter_window <- function(track_dt, ini, end) {
+  track_dt[timestamp >= ini & timestamp <= end]
+}
 
-  message(sprintf("\n===== regional: a ler tracks de %s (%s) =====", farm_label, settings_file))
+regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_pattern = NULL,
+                               tz, ini, end, cache_dir = file.path("cache", "regional"),
+                               force_reread = FALSE) {
 
-  env <- new.env(parent = globalenv())
-  source(file.path(folder_input, settings_file), local = env)
+  message(sprintf("\n===== regional: a ler tracks de %s (padrao '%s') =====", farm, trackreport_pattern))
 
-  need <- c("databases_dir", "trackreport_pattern", "farm_code", "proj_timezone")
-  miss <- need[!vapply(need, exists, logical(1), envir = env, inherits = FALSE)]
-  if (length(miss) > 0L) {
-    stop(sprintf("regional_load_farm(%s): %s nao definido(s) em %s", farm_label, paste(miss, collapse = ", "), settings_file))
-  }
-
-  dirs <- unique(c(env$databases_dir, get0("databases_dir_alt", envir = env, inherits = FALSE), extra_dirs))
-  farm_pattern <- get0("farm_pattern", envir = env, inherits = FALSE)
-  tz <- env$proj_timezone
-  cache_file <- file.path(cache_root, env$farm_code, "track_dt_unfilt.fst")
+  dirs <- unique(databases_dirs[!is.na(databases_dirs) & nzchar(databases_dirs)])
+  cache_file <- file.path(cache_dir, farm, "track_dt_unfilt.fst")
 
   tracks <- load_or_read_cache(
     cache_file,
-    function() read_tracks_data(dirs, env$trackreport_pattern, tz = tz, farm_pattern = farm_pattern),
+    function() read_tracks_data(dirs, trackreport_pattern, tz = tz, farm_pattern = farm_pattern),
     force_reread = force_reread, tz = tz
   )
 
   if (is.null(tracks) || nrow(tracks) == 0L) {
     stop(sprintf(
       "regional_load_farm(%s): 0 tracks lidos (pastas: %s; padrao: %s) -- confirmar pastas/padrao e apagar %s se a cache estiver vazia.",
-      farm_label, paste(dirs, collapse = " | "), env$trackreport_pattern, cache_file
+      farm, paste(dirs, collapse = " | "), trackreport_pattern, cache_file
     ))
   }
 
   tracks <- data.table::as.data.table(tracks)
+  range_all <- range(tracks$timestamp)
+  tracks <- regional_filter_window(tracks, ini, end)[, .(track_id, timestamp, utm_x, utm_y, spec)]
+
+  if (nrow(tracks) == 0L) {
+    stop(sprintf(
+      "regional_load_farm(%s): nenhum track dentro de ini/end (%s a %s); os dados lidos vao de %s a %s.",
+      farm, format(ini), format(end), format(range_all[1]), format(range_all[2])
+    ))
+  }
+
   message(sprintf(
-    "%s: %d registos, %s a %s", farm_label, nrow(tracks),
+    "%s: %d registos na janela, %s a %s", farm, nrow(tracks),
     format(min(tracks$timestamp), "%Y-%m-%d"), format(max(tracks$timestamp), "%Y-%m-%d")
   ))
 
-  list(farm = farm_label, farm_code = env$farm_code, tz = tz, tracks = tracks,
-       prioritysp = get0("prioritysp", envir = env, inherits = FALSE))
+  list(farm = farm, tz = tz, tracks = tracks)
 }
 
 
