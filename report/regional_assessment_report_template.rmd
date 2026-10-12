@@ -37,6 +37,14 @@ params:
   effort_summary: !r NULL
   norm_peaks: !r NULL
   units_no_coords_text: ""
+  farms: !r NULL
+  coverage_farm_summary: !r NULL
+  coverage_unit_tables: !r NULL
+  coverage_gaps: !r NULL
+  coverage_files: !r NULL
+  unit_min_tracks_per_day: !r NULL
+  coverage_gap_min_days: !r NULL
+  coverage_low_share: !r NULL
 
   data_coverage: !r NULL
   weekly_peak: !r NULL
@@ -209,7 +217,7 @@ show_table(rename_display(params$data_coverage, c(
 
 ## Weekly maximum
 
-Track points of each species are grouped in time bins of `r params$bin_min` minutes. Within a bin, two tracks count as one individual when the minimum distance between any of their points is below `r params$merge_dist_m` m, so the number of individuals per bin is a minimum. The daily maximum is the highest value of the day, and the weekly maximum the highest daily maximum of each calendar week (Monday to Sunday), with the same weeks in the three farms. Days without monitoring have no value, and weeks with fewer than `r params$min_monitored_days` monitored days have no weekly value.
+Track points of each species are grouped in time bins of `r params$bin_min` minutes. Within a bin, two tracks count as one individual when the minimum distance between any of their points is below `r params$merge_dist_m` m, so the number of individuals per bin is a minimum. The daily maximum is the highest value of the day, and the weekly maximum the highest daily maximum of each calendar week (Monday to Sunday), with the same weeks in the three farms. Days without monitoring have no value, and weeks with fewer than `r params$min_monitored_days` monitored days have no weekly value. Only tracks recorded in the analysis window (`r params$window_start` to `r params$window_end`) are used in every table and figure. Daily series cover all days of the window; weekly values cover only the Monday-to-Sunday weeks that lie entirely inside the window.
 
 ## Monitoring effort and normalisation
 
@@ -233,6 +241,63 @@ Seasons: `r params$seasons_text`. Three metrics are computed for each season, ye
 - **Lagged correlation**: correlation between the daily series of the two farms for lags up to `r params$max_lag_days` days, after a centred moving mean of `r params$smooth_days` days, with at least `r params$min_overlap_days` overlapping days. The best lag is the lag of the highest correlation. When it falls at the limit of the tested range (+/-`r params$max_lag_days` days) the correlation increases up to the limit and there is no peak, so it is reported as "no peak". The p value is a permutation test of the highest correlation over all tested lags: the follower's series is rotated circularly by more than `r params$max_lag_days` days (`r params$ccf_n_perm` rotations), which keeps its autocorrelation and trend but removes the alignment with the leader, and p is the share of rotations whose highest correlation is at least the observed one. It tests whether the correlation peak exceeds what chance alignment gives; a lead is read from a positive best lag together with a small p value.
 - **Season coverage**: share of the days of the whole season on which both farms were monitored. A season below `r params$min_season_coverage * 100`% is marked "partial": it covers only part of the passage, so partial seasons from different years are not comparable.
 - **Pulse follow-up**: whether a pulse of the leader farm is followed by a pulse of the follower farm within `r params$pulse_window_days` days. A pulse day has a daily maximum of at least `r params$pulse_min_individuals` individual(s)`r pulse_share_text()`.
+
+# Track coverage
+
+Daily coverage of the TrackReport files in the analysis window (`r params$window_start` to `r params$window_end`), farm by farm and IDF unit by IDF unit. An IDF unit covers a day when it recorded at least `r params$unit_min_tracks_per_day` distinct track(s) of any species on that day. Only IDF units with records in the window are included. A day without records can be a missing file or a unit without detections or out of service; blanks across all units on the same days point to missing files, and blanks in a single unit to that unit.
+
+## Farm summary
+
+```{r coverage-farm-summary, results='asis'}
+show_table(cbind(Farm = params$farms, rename_display(params$coverage_farm_summary[, setdiff(names(params$coverage_farm_summary), "farm"), drop = FALSE], c(
+  days_total = "Days in window", days_any_unit = "Days with any unit", pct_any_unit = "Coverage, any unit (%)",
+  units_with_records = "Units with records", mean_unit_pct = "Mean unit coverage (%)",
+  median_unit_pct = "Median unit coverage (%)", min_unit_pct = "Min unit coverage (%)", units_below_90 = "Units below 90%"
+))), max_col_width_cm = 2.0, font_size = 8)
+```
+
+## Daily coverage by farm
+
+Share of the IDF units with records in the window that reported tracks on each day.
+
+&nbsp;
+
+```{r coverage-farms-plot, results='asis'}
+show_plot(params$plots$coverage_farms)
+```
+
+## Coverage by IDF unit
+
+Days of the analysis window with records, by IDF unit; the units with the lowest coverage are at the bottom of each map.
+
+```{r coverage-units, results='asis'}
+for (f in params$farms) {
+  heading(3, f)
+  show_plot(params$plots$coverage_units[[f]])
+  gap()
+  show_table(params$coverage_unit_tables[[f]], max_col_width_cm = 2.2, font_size = 8)
+}
+```
+
+## Periods to review
+
+Runs of at least `r params$coverage_gap_min_days` days with no IDF unit with records, or with records from fewer than `r params$coverage_low_share * 100`% of the units. These are the periods to check for missing TrackReport files.
+
+&nbsp;
+
+```{r coverage-gaps, results='asis'}
+show_table(params$coverage_gaps, max_col_width_cm = 3.5, font_size = 8)
+```
+
+## Track files
+
+First and last record of each TrackReport file within the analysis window, and the days with records. Files without records in the window are not listed.
+
+&nbsp;
+
+```{r coverage-files, results='asis'}
+show_table(params$coverage_files, max_col_width_cm = 7, font_size = 7)
+```
 
 # Annual pattern
 

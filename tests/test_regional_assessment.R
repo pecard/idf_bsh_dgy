@@ -590,3 +590,66 @@ check("tabela pulsos: coluna 'Season covered'",
 # texto do p-valor
 check("p-valor: valor minimo possivel (1/(n+1)) aparece como '<= 0.010', outros com 3 casas",
       identical(.regional_p_text(c(0.01, 0.25, NA), 99L), c("<= 0.010", "0.250", "insufficient data")))
+
+
+##
+## 17. Cobertura diaria dos TrackReports por unidade IDF
+##
+ini_c <- as.Date("2026-03-01"); end_c <- as.Date("2026-03-30") # 30 dias
+days_c <- seq(ini_c, end_c, by = "day")
+mk_unit_tracks <- function(unit, missing_days, n_per_day = 3L) {
+  d <- setdiff(as.character(days_c), as.character(missing_days))
+  rbindlist(lapply(d, function(day) data.table(
+    track_id = paste0("u", unit, "_", day, "_", seq_len(n_per_day)),
+    timestamp = as.POSIXct(paste(day, "10:00:00"), tz = tz_test) + seq_len(n_per_day), idf = unit)))
+}
+# unidade 1: sem os dias 12-14 (3 dias); unidade 2: sem 10-14 e 20-29 (15 dias); unidade 3: sem 12-14 e 20-29 (13 dias)
+trk_cov_test <- rbindlist(list(
+  mk_unit_tracks(1L, as.Date("2026-03-12") + 0:2),
+  mk_unit_tracks(2L, c(as.Date("2026-03-10") + 0:4, as.Date("2026-03-20") + 0:9)),
+  mk_unit_tracks(3L, c(as.Date("2026-03-12") + 0:2, as.Date("2026-03-20") + 0:9))
+))
+# unidade 1 tambem sem 20-29 -> dias 12-14 sem nenhuma unidade; 20-29 sem nenhuma unidade
+trk_cov_test <- rbindlist(list(
+  mk_unit_tracks(1L, c(as.Date("2026-03-12") + 0:2, as.Date("2026-03-25") + 0:5)),   # sem 12-14 e 25-30
+  mk_unit_tracks(2L, c(as.Date("2026-03-10") + 0:4, as.Date("2026-03-20") + 0:10)),  # sem 10-14 e 20-30
+  mk_unit_tracks(3L, c(as.Date("2026-03-12") + 0:2, as.Date("2026-03-20") + 0:10))   # sem 12-14 e 20-30
+))
+ud_test <- regional_unit_daily_coverage(trk_cov_test, tz_test, ini_c, end_c, 1L)
+us_test <- regional_unit_coverage_summary(ud_test, ini_c, end_c, gap_min_days = 3L)
+check("cobertura por unidade: 3 unidades, 30 dias na janela", nrow(us_test) == 3L && all(us_test$days_total == 30L))
+check("unidade 1: 30 - 3 - 6 = 21 dias cobertos (70%)", us_test[unit == 1L, days_covered] == 21L && us_test[unit == 1L, pct_covered] == 70)
+check("unidade 2: 30 - 5 - 11 = 14 dias cobertos", us_test[unit == 2L, days_covered] == 14L)
+check("lacunas >= 3 dias: unidade 1 tem 2 (12-14 e 25-30), a mais longa com 6 dias",
+      us_test[unit == 1L, n_gaps] == 2L && us_test[unit == 1L, longest_gap_days] == 6L)
+check("primeiro e ultimo dia cobertos da unidade 2", us_test[unit == 2L, first_day] == as.Date("2026-03-01") && us_test[unit == 2L, last_day] == as.Date("2026-03-19"))
+check("tracks fora da janela nao contam", nrow(regional_unit_daily_coverage(trk_cov_test, tz_test, as.Date("2026-03-05"), as.Date("2026-03-09"), 1L)[day < as.Date("2026-03-05")]) == 0L)
+ud_min_test <- regional_unit_daily_coverage(trk_cov_test, tz_test, ini_c, end_c, min_tracks = 4L)
+check("min_tracks = 4 (cada unidade tem 3 tracks/dia) -> nenhum dia coberto", nrow(ud_min_test) == 0L)
+
+fd_test <- regional_farm_daily_coverage(ud_test, ini_c, end_c)
+check("cobertura do parque: 30 dias, 3 unidades de referencia", nrow(fd_test) == 30L && all(fd_test$n_units_ref == 3L))
+check("dia 12 (todas sem registos) = 0 unidades; dia 1 = 3 unidades",
+      fd_test[day == as.Date("2026-03-12"), n_units_reporting] == 0L && fd_test[day == as.Date("2026-03-01"), n_units_reporting] == 3L)
+check("dia 22 (so' a unidade 1 reporta) = 1/3 das unidades; dia 10 (unidades 1 e 3) = 2/3",
+      abs(fd_test[day == as.Date("2026-03-22"), share_units] - 1 / 3) < 1e-9 && abs(fd_test[day == as.Date("2026-03-10"), share_units] - 2 / 3) < 1e-9)
+fg_test <- regional_farm_gaps(fd_test, gap_min_days = 3L, low_share = 0.5)
+check("periodos sem nenhuma unidade (>= 3 d): 12-14 (3 dias) e 25-30 (6 dias)",
+      identical(fg_test[type == "no unit with records", as.character(start)], c("2026-03-12", "2026-03-25")) &&
+        identical(fg_test[type == "no unit with records", n_days], c(3L, 6L)))
+check("periodos com < 50% das unidades (>= 3 d): so' 20-24 (5 dias, so' a unidade 1)",
+      identical(fg_test[grepl("under 50%", type), as.character(start)], "2026-03-20") && identical(fg_test[grepl("under 50%", type), n_days], 5L))
+fsum_test <- regional_farm_coverage_summary(fd_test, us_test)
+check("resumo do parque: dias com alguma unidade = 30 - 3 - 6 = 21", fsum_test$days_any_unit == 21L && fsum_test$units_with_records == 3L && fsum_test$units_below_90 == 3L)
+
+files_c_test <- trk_cov_test[, source_file := fifelse(idf == 1L, "a.csv", "b.csv")]
+fs_test <- regional_file_summary(files_c_test, tz_test)
+check("resumo de ficheiros: 2 ficheiros, a.csv com 21 dias e 63 registos",
+      nrow(fs_test) == 2L && fs_test[file == "a.csv", days_with_records] == 21L && fs_test[file == "a.csv", records] == 63L)
+check("tabela de unidades formatada", all(c("Coverage (%)", "Longest gap (d)") %in% names(regional_format_unit_coverage_table(us_test))))
+check("tabela de lacunas formatada", nrow(regional_format_gaps_table(cbind(farm = "BSH", fg_test))) == nrow(fg_test))
+check("tabela de ficheiros formatada", nrow(regional_format_files_table(cbind(farm = "BSH", fs_test))) == 2L)
+check("plot de cobertura por unidade", is_gg(plot_regional_unit_coverage(ud_test, us_test, ini_c, end_c, "BSH")))
+check("plot de cobertura do parque", is_gg(plot_regional_farm_coverage(cbind(farm = "BSH", fd_test), c(ini_c, end_c))))
+invisible(lapply(list(plot_regional_unit_coverage(ud_test, us_test, ini_c, end_c, "BSH"), plot_regional_farm_coverage(cbind(farm = "BSH", fd_test), c(ini_c, end_c))), ggplot2::ggplot_build))
+cat("ggplot_build() dos plots de cobertura sem erro -- OK\n")

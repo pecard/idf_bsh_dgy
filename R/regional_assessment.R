@@ -181,7 +181,12 @@ regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_p
   }
 
   range_all <- range(tracks$timestamp)
-  tracks <- regional_filter_window(tracks, ini, end)[, .(track_id, timestamp, utm_x, utm_y, spec, idf)]
+  n_all <- nrow(tracks)
+
+  # FILTRO INICIAL: so' entram tracks dentro de [ini, end] -- tudo o que vem a
+  # seguir (cobertura, bins, series, tabelas, graficos) parte destes tracks
+  tracks <- regional_filter_window(tracks, ini, end)
+  n_outside <- n_all - nrow(tracks)
 
   if (nrow(tracks) == 0L) {
     stop(sprintf(
@@ -189,6 +194,15 @@ regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_p
       farm, format(ini), format(end), format(range_all[1]), format(range_all[2])
     ))
   }
+  if (min(tracks$timestamp) < ini || max(tracks$timestamp) > end) {
+    stop(sprintf("regional_load_farm(%s): tracks fora da janela apos o filtro (erro interno).", farm))
+  }
+  message(sprintf("%s: %d registo(s) fora da janela %s a %s descartado(s) de %d lidos.",
+                  farm, n_outside, format(ini, "%Y-%m-%d"), format(end, "%Y-%m-%d"), n_all))
+
+  # resumo por ficheiro SO' com os registos da janela (sem datas de fora)
+  files_dt <- regional_file_summary(tracks, tz)
+  tracks <- tracks[, .(track_id, timestamp, utm_x, utm_y, spec, idf)]
 
   n_before <- nrow(tracks)
   tracks <- regional_dedup_tracks(tracks)
@@ -202,7 +216,7 @@ regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_p
     format(min(tracks$timestamp), "%Y-%m-%d"), format(max(tracks$timestamp), "%Y-%m-%d")
   ))
 
-  list(farm = farm, tz = tz, tracks = tracks)
+  list(farm = farm, tz = tz, tracks = tracks, files = files_dt)
 }
 
 
@@ -1261,6 +1275,202 @@ plot_regional_rarefied <- function(rare_dt, weekly_dt, species, k, window = NULL
       title = sprintf("%s -- weekly maximum with %d active units per week", species, k),
       caption = "Coloured line and band: median and 10-90% range over random draws of the active units.\nDashed grey: all active units."
     ) +
+    .regional_theme() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7))
+  if (!is.null(window)) p <- p + ggplot2::coord_cartesian(xlim = window, expand = FALSE)
+  p
+}
+
+
+
+## 15. Cobertura diaria dos TrackReports, por unidade IDF ----
+##
+## Diagnostico de falhas de cobertura dos ficheiros TrackReport (ou de unidades
+## fora de servico): um dia fica COBERTO por uma unidade se ela registou pelo
+## menos min_tracks tracks (qualquer especie) nesse dia. Dia sem tracks pode ser
+## ficheiro em falta OU unidade sem deteccoes/offline -- os tracks nao
+## distinguem as duas coisas, mas o PADRAO ajuda: listras verticais (todas as
+## unidades sem dados no mesmo dia) apontam para ficheiros em falta; linhas
+## horizontais (so' uma unidade) apontam para essa unidade.
+## So' entram unidades com pelo menos 1 track na janela ini/end.
+
+## Tracks distintos por unidade e dia (so' dias com dados), dentro de [ini_date, end_date]
+regional_unit_daily_coverage <- function(track_dt, tz, ini_date, end_date, min_tracks = 1L) {
+  d <- track_dt[!is.na(idf), .(track_id, day = as.Date(timestamp, tz = tz), unit = regional_unit_number(idf))]
+  d <- d[!is.na(unit) & day >= ini_date & day <= end_date]
+  out <- unique(d)[, .(n_tracks = .N), by = .(unit, day)]
+  out <- out[n_tracks >= min_tracks]
+  data.table::setorder(out, unit, day)
+  out[]
+}
+
+## Corridas de dias consecutivos com valor TRUE em `flag` (um vetor logico por
+## dia, ordenado), com o 1o dia de cada uma
+.regional_runs <- function(days, flag) {
+  if (length(days) == 0L || !any(flag)) {
+    return(data.table::data.table(start = as.Date(character()), end = as.Date(character()), n_days = integer()))
+  }
+  r <- rle(flag)
+  ends <- cumsum(r$lengths); starts <- ends - r$lengths + 1L
+  keep <- which(r$values)
+  data.table::data.table(start = days[starts[keep]], end = days[ends[keep]], n_days = as.integer(r$lengths[keep]))
+}
+
+## Resumo por unidade: dias da janela, dias cobertos, %, 1o/ultimo dia, e
+## lacunas (corridas de dias sem registos) com >= gap_min_days
+regional_unit_coverage_summary <- function(unit_daily, ini_date, end_date, gap_min_days = 3L) {
+  days <- seq(ini_date, end_date, by = "day")
+  units <- sort(unique(unit_daily$unit))
+  rows <- lapply(units, function(u) {
+    cov_days <- unit_daily$day[unit_daily$unit == u]
+    covered <- days %in% cov_days
+    gaps <- .regional_runs(days, !covered)
+    gaps_big <- gaps[n_days >= gap_min_days]
+    data.table::data.table(
+      unit = u, days_total = length(days), days_covered = sum(covered),
+      pct_covered = round(100 * sum(covered) / length(days), 1),
+      first_day = min(cov_days), last_day = max(cov_days),
+      n_gaps = nrow(gaps_big), longest_gap_days = if (nrow(gaps) > 0L) max(gaps$n_days) else 0L
+    )
+  })
+  out <- data.table::rbindlist(rows)
+  if (nrow(out) > 0L) data.table::setorder(out, unit)
+  out[]
+}
+
+## Cobertura diaria do parque: unidades com registos por dia, face as unidades
+## com registos na janela
+regional_farm_daily_coverage <- function(unit_daily, ini_date, end_date) {
+  days <- data.table::data.table(day = seq(ini_date, end_date, by = "day"))
+  n_ref <- length(unique(unit_daily$unit))
+  per_day <- unit_daily[, .(n_units_reporting = .N, n_tracks = sum(n_tracks)), by = day]
+  out <- merge(days, per_day, by = "day", all.x = TRUE)
+  out[is.na(n_units_reporting), `:=`(n_units_reporting = 0L, n_tracks = 0L)]
+  out[, n_units_ref := n_ref]
+  out[, share_units := if (n_ref > 0L) n_units_reporting / n_ref else NA_real_]
+  data.table::setorder(out, day)
+  out[]
+}
+
+## Periodos a investigar: dias sem NENHUMA unidade com registos, e dias com menos
+## de low_share das unidades (mas nao zero), em corridas de >= gap_min_days
+regional_farm_gaps <- function(farm_daily, gap_min_days = 3L, low_share = 0.5) {
+  none <- .regional_runs(farm_daily$day, farm_daily$n_units_reporting == 0L)
+  low  <- .regional_runs(farm_daily$day, farm_daily$n_units_reporting > 0L & farm_daily$share_units < low_share)
+  none <- none[n_days >= gap_min_days]; low <- low[n_days >= gap_min_days]
+  none[, type := "no unit with records"]
+  low[, type := sprintf("under %d%% of the units with records", as.integer(round(100 * low_share)))]
+  out <- data.table::rbindlist(list(none, low))
+  if (nrow(out) > 0L) data.table::setorder(out, start)
+  out[, .(type, start, end, n_days)]
+}
+
+## Resumo do parque numa linha
+regional_farm_coverage_summary <- function(farm_daily, unit_summary) {
+  data.table::data.table(
+    days_total = nrow(farm_daily),
+    days_any_unit = sum(farm_daily$n_units_reporting > 0L),
+    pct_any_unit = round(100 * mean(farm_daily$n_units_reporting > 0L), 1),
+    units_with_records = nrow(unit_summary),
+    mean_unit_pct = round(mean(unit_summary$pct_covered), 1),
+    median_unit_pct = round(stats::median(unit_summary$pct_covered), 1),
+    min_unit_pct = min(unit_summary$pct_covered),
+    units_below_90 = sum(unit_summary$pct_covered < 90)
+  )
+}
+
+## Cobertura de cada ficheiro: primeiro/ultimo registo e dias com registos, SO' com
+## os registos dentro da janela ini/end (tracks_window ja' filtrado, com
+## source_file) -- ajuda a ver que periodos cada ficheiro cobre e onde faltam
+## ficheiros. Ficheiros sem registos na janela nao aparecem.
+regional_file_summary <- function(tracks_window, tz) {
+  if (!"source_file" %in% names(tracks_window) || nrow(tracks_window) == 0L) {
+    return(data.table::data.table(file = character(), first_record = as.POSIXct(character()), last_record = as.POSIXct(character()),
+                                  records = integer(), days_with_records = integer()))
+  }
+  d <- tracks_window[, .(source_file, timestamp, day = as.Date(timestamp, tz = tz))]
+  out <- d[, .(first_record = min(timestamp), last_record = max(timestamp), records = .N,
+               days_with_records = data.table::uniqueN(day)), by = source_file]
+  data.table::setnames(out, "source_file", "file")
+  data.table::setorder(out, first_record)
+  out[]
+}
+
+## Semanas (segunda a domingo) INTEIRAMENTE dentro da janela: uma semana parcial nas
+## bordas (ex: a que contem o dia ini mas comeca antes) tem um maximo calculado com
+## menos dias e o seu week_start cai fora da janela -- fica de fora dos resumos
+## semanais (as series DIARIAS usam todos os dias da janela).
+regional_keep_full_weeks <- function(dt, ini_date, end_date) {
+  dt[week_start >= ini_date & week_start + 6L <= end_date]
+}
+
+## Tabelas de apresentacao (texto, em ingles)
+regional_format_unit_coverage_table <- function(unit_summary) {
+  if (nrow(unit_summary) == 0L) return(data.frame())
+  data.frame(
+    `IDF unit` = as.character(unit_summary$unit), `Days in window` = as.character(unit_summary$days_total),
+    `Days covered` = as.character(unit_summary$days_covered), `Coverage (%)` = sprintf("%.1f", unit_summary$pct_covered),
+    `First day` = as.character(unit_summary$first_day), `Last day` = as.character(unit_summary$last_day),
+    `Gaps` = as.character(unit_summary$n_gaps), `Longest gap (d)` = as.character(unit_summary$longest_gap_days),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+}
+
+regional_format_gaps_table <- function(gaps_dt) {
+  if (nrow(gaps_dt) == 0L) return(data.frame())
+  data.frame(Farm = gaps_dt$farm, Type = gaps_dt$type, From = as.character(gaps_dt$start),
+             To = as.character(gaps_dt$end), Days = as.character(gaps_dt$n_days),
+             check.names = FALSE, stringsAsFactors = FALSE)
+}
+
+regional_format_files_table <- function(files_dt) {
+  if (nrow(files_dt) == 0L) return(data.frame())
+  data.frame(Farm = files_dt$farm, File = files_dt$file,
+             `First record` = format(files_dt$first_record, "%Y-%m-%d"), `Last record` = format(files_dt$last_record, "%Y-%m-%d"),
+             Records = format(files_dt$records, big.mark = ",", trim = TRUE),
+             `Days with records` = as.character(files_dt$days_with_records),
+             check.names = FALSE, stringsAsFactors = FALSE)
+}
+
+## Plots ----
+
+## Mapa unidade x dia: coberto (cor do parque) / sem registos (cinzento claro)
+plot_regional_unit_coverage <- function(unit_daily, unit_summary, ini_date, end_date, farm) {
+  if (nrow(unit_daily) == 0L) return(NULL)
+  d <- data.table::copy(unit_daily)
+  ord <- unit_summary[order(pct_covered, unit)]$unit  # menos cobertas em baixo
+  d[, unit_f := factor(unit, levels = ord)]
+  ylab_units <- levels(d$unit_f)
+  ggplot2::ggplot(d, ggplot2::aes(x = day, y = unit_f)) +
+    ggplot2::geom_tile(fill = regional_farm_colours[[farm]], width = 1, height = 0.9) +
+    ggplot2::scale_y_discrete(drop = FALSE, limits = ylab_units) +
+    ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%b %Y", expand = c(0, 0), limits = c(ini_date, end_date + 1)) +
+    ggplot2::labs(
+      x = NULL, y = "IDF unit",
+      title = sprintf("%s -- days with TrackReport records, by IDF unit", farm),
+      caption = sprintf("Analysis window: %s to %s. Blank = no records from the unit on that day.", format(ini_date), format(end_date))
+    ) +
+    .regional_theme() +
+    ggplot2::theme(panel.background = ggplot2::element_rect(fill = "grey93", colour = NA),
+                   panel.grid = ggplot2::element_blank(),
+                   axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7),
+                   axis.text.y = ggplot2::element_text(size = 6))
+}
+
+## Fracao de unidades com registos, por dia, 3 parques
+plot_regional_farm_coverage <- function(farm_daily_all, window = NULL) {
+  if (nrow(farm_daily_all) == 0L) return(NULL)
+  d <- data.table::copy(farm_daily_all)
+  d[, farm := .regional_farm_factor(farm)]
+  p <- ggplot2::ggplot(d, ggplot2::aes(x = day, y = 100 * share_units, fill = farm)) +
+    ggplot2::geom_col(width = 1) +
+    ggplot2::facet_grid(farm ~ .) +
+    ggplot2::scale_fill_manual(values = regional_farm_colours, guide = "none") +
+    ggplot2::scale_y_continuous(limits = c(0, 100), breaks = c(0, 50, 100)) +
+    ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+    ggplot2::labs(x = NULL, y = "% of the IDF units with records",
+                  title = "Daily TrackReport coverage by farm",
+                  caption = "100% = every IDF unit that has records in the analysis window reported tracks that day.") +
     .regional_theme() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7))
   if (!is.null(window)) p <- p + ggplot2::coord_cartesian(xlim = window, expand = FALSE)

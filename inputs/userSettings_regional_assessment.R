@@ -92,7 +92,7 @@ regional_cache_dir <- file.path("cache", "regional")
 ## Fora do periodo com dados de cada parque, as series ficam NA (nao 0).
 ##
 
-ini <- as.POSIXct('2025-01-01 00:00:00', tz = proj_timezone)
+ini <- as.POSIXct('2025-10-01 00:00:00', tz = proj_timezone)
 end <- as.POSIXct('2026-09-30 23:59:59', tz = proj_timezone)
 
 

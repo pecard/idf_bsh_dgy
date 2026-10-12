@@ -94,6 +94,11 @@ if (!exists("generate_report")) generate_report <- TRUE # FALSE = so xlsx + PNGs
 min_tracks_per_day <- 10   # tracks distintos/dia (qualquer especie) para o dia contar como monitorizado
 min_monitored_days <- 4    # dias monitorizados minimos para uma semana ter valor (senao NA)
 
+## Cobertura diaria dos TrackReports, por unidade IDF (diagnostico de ficheiros em falta)
+unit_min_tracks_per_day <- 1   # tracks distintos/dia (qualquer especie) para a unidade contar como coberta nesse dia
+coverage_gap_min_days <- 3     # lacunas/periodos a investigar: corridas de >= este nr de dias
+coverage_low_share <- 0.5      # "cobertura baixa" do parque: menos desta fracao das unidades com registos
+
 ## Epocas: c("MM-DD inicio", "MM-DD fim"), aplicadas a cada ano com dados
 seasons <- list(
   autumn = c("08-01", "11-30"), # movimentos pos-nupciais para sul (ZRF lidera)
@@ -188,6 +193,7 @@ for (i in seq_len(nrow(regional_farms))) {
   )
   weekly_units <- regional_weekly_active_units(fd$tracks, fd$tz)
   effort <- regional_surveyed_area(weekly_units, idf_units_sf, idf_detection_radius_m)
+  effort <- regional_keep_full_weeks(effort, ini_date, end_date) # so' semanas inteiras dentro da janela
   effort[, farm := farm]
   no_coords <- regional_units_without_coords(weekly_units, idf_units_sf)
   no_coords[, farm := farm]
@@ -195,6 +201,15 @@ for (i in seq_len(nrow(regional_farms))) {
     "%s: %d unidades no shapefile, %d unidades distintas ativas nos tracks (%d sem coordenadas), media de %.1f unidades ativas por semana.",
     farm, nrow(idf_units_sf), length(unique(weekly_units$unit)), nrow(no_coords), mean(effort$n_active_units)
   ))
+
+  ## Cobertura diaria dos TrackReports por unidade (tracks de qualquer especie)
+  unit_daily <- regional_unit_daily_coverage(fd$tracks, fd$tz, ini_date, end_date, unit_min_tracks_per_day)
+  unit_cov <- regional_unit_coverage_summary(unit_daily, ini_date, end_date, coverage_gap_min_days)
+  farm_cov_daily <- regional_farm_daily_coverage(unit_daily, ini_date, end_date)
+  farm_gaps <- regional_farm_gaps(farm_cov_daily, coverage_gap_min_days, coverage_low_share)
+  farm_cov_summary <- regional_farm_coverage_summary(farm_cov_daily, unit_cov)
+  message(sprintf("%s: cobertura de TrackReports -- %.1f%% dos dias com registos de alguma unidade; %d unidade(s) com registos, %d abaixo de 90%% dos dias.",
+                  farm, farm_cov_summary$pct_any_unit, farm_cov_summary$units_with_records, farm_cov_summary$units_below_90))
 
   rare <- NULL
   if (isTRUE(run_rarefaction)) {
@@ -204,6 +219,7 @@ for (i in seq_len(nrow(regional_farms))) {
       min_monitored_days = min_monitored_days, seed = rarefaction_seed,
       cache_file = file.path(regional_cache_dir, farm, "rarefaction.rds")
     )
+    rare <- regional_keep_full_weeks(rare, ini_date, end_date)
     rare[, farm := farm]
   }
 
@@ -211,7 +227,9 @@ for (i in seq_len(nrow(regional_farms))) {
     daily = daily, monitored = mon, tz = fd$tz,
     first_track_day = data_first_day, last_track_day = data_last_day,
     n_tracks_rows = nrow(fd$tracks),
-    effort = effort, no_coords = no_coords, rarefied = rare
+    effort = effort, no_coords = no_coords, rarefied = rare,
+    unit_daily = unit_daily, unit_cov = unit_cov, farm_cov_daily = farm_cov_daily,
+    farm_gaps = farm_gaps, farm_cov_summary = farm_cov_summary, files = fd$files
   )
 
   rm(fd, bins); invisible(gc())
@@ -226,6 +244,20 @@ weekly_dt <- rbindlist(lapply(names(farm_data), function(f) {
   w
 }))
 setcolorder(weekly_dt, c("farm", "spec", "week_start", "iso_year", "iso_week", "n_days_monitored", "max_individuals"))
+weekly_dt <- regional_keep_full_weeks(weekly_dt, ini_date, end_date) # semanas parciais nas bordas ficam fora
+
+## Cobertura diaria dos TrackReports
+bind_farm <- function(field) rbindlist(lapply(names(farm_data), function(f) {
+  x <- data.table::copy(farm_data[[f]][[field]]); x[, farm := f]; setcolorder(x, c("farm", setdiff(names(x), "farm"))); x
+}), fill = TRUE)
+cov_unit_summary_dt <- bind_farm("unit_cov")
+cov_unit_daily_dt   <- bind_farm("unit_daily")
+cov_farm_daily_dt   <- bind_farm("farm_cov_daily")
+cov_farm_summary_dt <- bind_farm("farm_cov_summary")
+cov_gaps_dt         <- bind_farm("farm_gaps")
+track_files_dt      <- bind_farm("files")
+cat("\n--- TrackReport coverage by farm ---\n"); print(cov_farm_summary_dt)
+cat("\n--- Periods to review (no unit / low coverage) ---\n"); print(cov_gaps_dt)
 
 ## Esforco e indices normalizados
 effort_dt <- rbindlist(lapply(farm_data, `[[`, "effort"))
@@ -300,6 +332,12 @@ save_plot <- function(p, base, width = 10, height = 7) {
 
 n_panels <- nrow(season_dates)
 save_plot(plot_regional_effort(effort_dt, window_dates), "monitoring_effort", height = 6)
+save_plot(plot_regional_farm_coverage(cov_farm_daily_dt, window_dates), "track_coverage_farms", height = 6)
+for (f in names(farm_data)) {
+  fdat <- farm_data[[f]]
+  save_plot(plot_regional_unit_coverage(fdat$unit_daily, fdat$unit_cov, ini_date, end_date, f), paste0("track_coverage_units_", f),
+            height = min(8.5, 2.5 + 0.13 * nrow(fdat$unit_cov)))
+}
 for (sp in species_regional) {
   tag <- gsub("[^A-Za-z]", "", sp)
   save_plot(plot_regional_weekly_timeline(weekly_dt, sp, window_dates), paste0("weekly_max_timeline_", tag), height = 8)
@@ -326,6 +364,7 @@ parameters_dt <- data.table(
                 "Max lag (days)", "Smoothing (days)", "Min overlap (days)", "Permutations (correlation peak test)",
                 "Pulse min individuals", "Pulse merge gap (days)", "Pulse follow-up window (days)",
                 "Pulse relative threshold (share of the season peak)", "IDF detection radius (m)",
+                "Min tracks per unit-day (coverage)", "Coverage gap minimum (days)", "Low coverage share of units",
                 "Rarefaction (active units per week / draws)", "Run date"),
   Value = c(
     format(ini, "%Y-%m-%d %H:%M:%S"), format(end, "%Y-%m-%d %H:%M:%S"),
@@ -336,6 +375,7 @@ parameters_dt <- data.table(
     paste(onset_share, median_share, end_share, sep = " / "), min_season_total, min_season_coverage,
     max_lag_days, smooth_days, min_overlap_days, ccf_n_perm, pulse_min_individuals, pulse_merge_gap_days, pulse_window_days,
     if (is.null(pulse_relative_share)) "none" else pulse_relative_share, idf_detection_radius_m,
+    unit_min_tracks_per_day, coverage_gap_min_days, coverage_low_share,
     if (isTRUE(run_rarefaction)) sprintf("%d / %d", rarefaction_k, rarefaction_draws) else "not run", run_date
   )
 )
@@ -343,6 +383,9 @@ parameters_dt <- data.table(
 write_xlsx_local(
   list(
     Parameters = parameters_dt, Data_coverage = data_coverage_dt,
+    Coverage_farm_summary = cov_farm_summary_dt, Coverage_unit_summary = cov_unit_summary_dt,
+    Coverage_gaps = if (nrow(cov_gaps_dt) > 0L) cov_gaps_dt else data.table(note = "none"),
+    Track_files = track_files_dt, Coverage_farm_daily = cov_farm_daily_dt, Coverage_unit_daily = cov_unit_daily_dt,
     Weekly_max = weekly_dt, Weekly_max_normalised = weekly_norm_dt, Daily_max = daily_dt,
     Effort_weekly = effort_dt, Effort_summary = effort_summary_dt, Normalised_peaks = norm_peaks_dt,
     Units_without_coordinates = if (nrow(units_no_coords_dt) > 0L) units_no_coords_dt else data.table(note = "none"),
@@ -398,6 +441,12 @@ if (isTRUE(generate_report)) {
   )
 
   report_plots$effort <- fig(plot_regional_effort(effort_dt, window_dates), 5.5)
+  report_plots$coverage_farms <- fig(plot_regional_farm_coverage(cov_farm_daily_dt, window_dates), 5.5)
+  report_plots$coverage_units <- stats::setNames(lapply(names(farm_data), function(f) {
+    fdat <- farm_data[[f]]
+    fig(plot_regional_unit_coverage(fdat$unit_daily, fdat$unit_cov, ini_date, end_date, f), min(8.5, 2.5 + 0.13 * nrow(fdat$unit_cov)))
+  }), names(farm_data))
+  coverage_unit_tables <- stats::setNames(lapply(names(farm_data), function(f) regional_format_unit_coverage_table(farm_data[[f]]$unit_cov)), names(farm_data))
   report_plots$normalised <- by_species(function(sp) fig(plot_regional_normalised(weekly_norm_dt, sp, window_dates), 6.5))
   report_plots$rarefied <- if (isTRUE(run_rarefaction)) {
     by_species(function(sp) fig(plot_regional_rarefied(rarefied_dt, weekly_dt, sp, rarefaction_k, window_dates), 6))
@@ -433,6 +482,11 @@ if (isTRUE(generate_report)) {
     rarefaction_k = rarefaction_k, rarefaction_draws = rarefaction_draws,
     effort_summary = as.data.frame(effort_summary_dt), norm_peaks = as.data.frame(norm_peaks_dt),
     units_no_coords_text = units_no_coords_text,
+    farms = regional_farms$farm, coverage_farm_summary = as.data.frame(cov_farm_summary_dt),
+    coverage_unit_tables = coverage_unit_tables,
+    coverage_gaps = regional_format_gaps_table(cov_gaps_dt), coverage_files = regional_format_files_table(track_files_dt),
+    unit_min_tracks_per_day = unit_min_tracks_per_day, coverage_gap_min_days = coverage_gap_min_days,
+    coverage_low_share = coverage_low_share,
     data_coverage = as.data.frame(data_coverage_dt),
     weekly_peak = as.data.frame(regional_weekly_peak_summary(weekly_dt)),
     plots = report_plots, tables = report_tables,
