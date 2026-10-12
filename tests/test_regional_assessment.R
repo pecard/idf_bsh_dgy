@@ -356,3 +356,19 @@ check("pulsos: mediana de lags com n impar e par no mesmo resumo (5 e 3.5)",
 
 ccf_types_test <- regional_ccf_summary(ccf_test)
 check("ccf: lag e sobreposicao sempre inteiros", is.integer(ccf_types_test$best_lag_days) && is.integer(ccf_types_test$n_overlap_lag0))
+
+
+##
+## 10. Grafico anual relativo: valores entre 0 e 1 (nao truncados a 0/1)
+##
+weekly_rel_test <- data.table(
+  farm = "ZRF", spec = "Egyptian-Vulture", week_start = as.Date("2025-09-01") + 7 * 0:3,
+  n_days_monitored = 7L, max_individuals = c(1L, 2L, 3L, 4L), iso_year = 2025L, iso_week = 36:39
+)
+p_rel_test <- plot_regional_annual_overlay(weekly_rel_test, "Egyptian-Vulture", normalise = TRUE)
+y_rel_test <- ggplot2::ggplot_build(p_rel_test)$data[[1]]$y
+check("grafico relativo: valores 0.25, 0.5, 0.75, 1 (sem truncar)", isTRUE(all.equal(sort(y_rel_test), c(0.25, 0.5, 0.75, 1))))
+check("grafico relativo: nao altera os dados de origem (continuam inteiros)", is.integer(weekly_rel_test$max_individuals))
+check("grafico relativo sem avisos", length(withCallingHandlers(
+  { plot_regional_annual_overlay(weekly_rel_test, "Egyptian-Vulture", normalise = TRUE); list() },
+  warning = function(w) stop("aviso: ", conditionMessage(w)))) == 0L)

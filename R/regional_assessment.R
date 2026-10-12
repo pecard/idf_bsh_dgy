@@ -554,6 +554,9 @@ plot_regional_annual_overlay <- function(weekly_dt, species, normalise = FALSE) 
   d[, yr := factor(iso_year)]
   ylab <- "Weekly maximum of minimum individuals (2-min bins)"
   if (normalise) {
+    # as.numeric ANTES: dividir e gravar um decimal numa coluna inteira trunca para 0/1
+    # nas versoes recentes do data.table (aviso real, 2026-10)
+    d[, max_individuals := as.numeric(max_individuals)]
     d[, max_individuals := max_individuals / max(max_individuals), by = farm]
     ylab <- "Weekly maximum, relative to the farm's own maximum"
   }
