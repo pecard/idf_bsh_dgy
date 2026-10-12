@@ -335,9 +335,13 @@ regional_passage_timing <- function(daily_dt, season_dates, onset_share = 0.10,
                                     median_share = 0.50, end_share = 0.90,
                                     min_total = 3, min_season_coverage = 0.7) {
 
+  # SEMPRE Date de tipo double (as.Date(NA) pode vir como integer conforme a
+  # versao do R, e data.table exige o mesmo tipo em todos os grupos -- erro real
+  # "Column 6 ... is type 'integer' but expecting type 'double'", 2026-10)
+  as_date_dbl <- function(x) structure(as.numeric(x), class = "Date")
   first_reach <- function(days, cum_share, share) {
     hit <- which(cum_share >= share)
-    if (length(hit) == 0L) as.Date(NA) else days[hit[1]]
+    if (length(hit) == 0L) as_date_dbl(NA) else as_date_dbl(days[hit[1]])
   }
 
   rows <- lapply(seq_len(nrow(season_dates)), function(i) {
@@ -353,11 +357,11 @@ regional_passage_timing <- function(daily_dt, season_dates, onset_share = 0.10,
       cum_share <- if (total > 0) cs / total else numeric(0)
       .(
         season = sd$season, season_year = sd$season_year,
-        season_coverage = round(cov, 2), season_total = total,
+        season_coverage = round(cov, 2), season_total = as.numeric(total),
         valid = valid,
-        onset  = if (valid) first_reach(dd, cum_share, onset_share)  else as.Date(NA),
-        median = if (valid) first_reach(dd, cum_share, median_share) else as.Date(NA),
-        end    = if (valid) first_reach(dd, cum_share, end_share)    else as.Date(NA)
+        onset  = if (valid) first_reach(dd, cum_share, onset_share)  else as_date_dbl(NA),
+        median = if (valid) first_reach(dd, cum_share, median_share) else as_date_dbl(NA),
+        end    = if (valid) first_reach(dd, cum_share, end_share)    else as_date_dbl(NA)
       )
     }, by = .(farm, spec)]
   })
@@ -425,7 +429,7 @@ regional_ccf <- function(daily_dt, pairs, season_dates, max_lag_days = 21L,
           } else NA_real_
           rows[[length(rows) + 1L]] <- data.table::data.table(
             spec = sp, season = p$season, season_year = sd$season_year,
-            leader = p$leader, follower = p$follower, lag_days = lag, r = r, n_overlap = n_ok
+            leader = p$leader, follower = p$follower, lag_days = as.integer(lag), r = r, n_overlap = as.integer(n_ok)
           )
         }
       }
@@ -442,8 +446,8 @@ regional_ccf_summary <- function(ccf_dt) {
       .(best_lag_days = NA_integer_, r_best = NA_real_, r_lag0 = NA_real_, n_overlap_lag0 = NA_integer_)
     } else {
       i <- which.max(ifelse(ok, r, -Inf))
-      .(best_lag_days = lag_days[i], r_best = round(r[i], 3),
-        r_lag0 = round(r[lag_days == 0][1], 3), n_overlap_lag0 = n_overlap[lag_days == 0][1])
+      .(best_lag_days = as.integer(lag_days[i]), r_best = round(r[i], 3),
+        r_lag0 = round(r[lag_days == 0][1], 3), n_overlap_lag0 = as.integer(n_overlap[lag_days == 0][1]))
     }
   }, by = .(spec, season, season_year, leader, follower)]
 }
@@ -502,7 +506,8 @@ regional_pulse_summary <- function(match_dt) {
     n_leader_pulses = .N,
     n_followed_within_window = sum(!is.na(lag_forward_days)),
     pct_followed = round(100 * mean(!is.na(lag_forward_days)), 1),
-    median_lag_days = if (any(!is.na(lag_forward_days))) stats::median(lag_forward_days, na.rm = TRUE) else NA_real_,
+    # as.numeric: median() de inteiros devolve inteiro (n impar) ou double (n par) -- tipos mistos entre grupos partem o data.table
+    median_lag_days = if (any(!is.na(lag_forward_days))) as.numeric(stats::median(lag_forward_days, na.rm = TRUE)) else NA_real_,
     n_follower_pulse_before = sum(follower_pulse_before),
     pct_follower_pulse_before = round(100 * mean(follower_pulse_before), 1)
   ), by = .(spec, season, season_year, leader, follower)]

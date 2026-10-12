@@ -328,3 +328,31 @@ check("altura da figura cresce com os paineis e tem teto",
         regional_fig_height(plot_regional_season_series(daily_pair_test, season_dates_test, sp)))
 check("tabelas: Year como texto (sem separador de milhares, ex: 2025 e nao 2,025)",
       identical(tt_test$Year, c("2025", "2025")) && is.character(ct_test$Year) && is.character(pt_test$Year))
+
+
+##
+## 9. Tipos consistentes entre grupos (regressao: erro real com dados reais, 2026-10,
+## "Column 6 ... is type 'integer' but expecting type 'double'")
+##
+na_int_date_test <- structure(NA_integer_, class = "Date") # NA de data com tipo inteiro (como as.Date(NA) em algumas versoes do R)
+check("timing: colunas de data sempre double, mesmo com grupos sem cobertura",
+      all(vapply(timing_gap_test[, .(onset, median, end)], typeof, "") == "double"))
+# 3 grupos farm x spec: valido, valido, sem cobertura (o caso que partiu)
+daily_mix_test <- copy(daily_pair_test)
+daily_mix_test[farm == "DGY", `:=`(monitored = FALSE, max_individuals = NA_integer_)]
+mix_ok <- tryCatch({ regional_passage_timing(daily_mix_test, season_dates_test); TRUE }, error = function(e) FALSE)
+check("timing: grupos validos e invalidos no mesmo calculo nao dao erro de tipos", mix_ok)
+
+# mediana de lags: grupos com n impar (inteiro) e n par (double) no mesmo resumo
+match_types_test <- data.table(
+  spec = "Egyptian-Vulture", season = "autumn", season_year = 2025L, leader = "ZRF",
+  follower = rep(c("BSH", "DGY"), c(3L, 2L)),
+  leader_pulse_start = as.Date("2025-09-01") + 0:4, leader_pulse_peak = 1L,
+  lag_forward_days = c(3L, 5L, 7L, 3L, 4L), follower_pulse_before = FALSE
+)
+ps_types_test <- tryCatch(regional_pulse_summary(match_types_test), error = function(e) NULL)
+check("pulsos: mediana de lags com n impar e par no mesmo resumo (5 e 3.5)",
+      !is.null(ps_types_test) && identical(ps_types_test$median_lag_days, c(5, 3.5)))
+
+ccf_types_test <- regional_ccf_summary(ccf_test)
+check("ccf: lag e sobreposicao sempre inteiros", is.integer(ccf_types_test$best_lag_days) && is.integer(ccf_types_test$n_overlap_lag0))
