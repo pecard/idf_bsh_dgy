@@ -171,6 +171,11 @@ check("settings: 3 parques na ordem ZRF, BSH, DGY", identical(farms_test$farm, c
 check("settings: padroes = prefixo + '.*' + parque",
       identical(farms_test$trackreport_pattern,
                 c("TrackReport_Default.*ZRF", "TrackReport_Default.*BSH", "TrackReport_Default.*DGY")))
+check("settings: uma pasta por parque (ZRF data-raw; BSH/DGY pasta de rede UNC .../BSH e .../DGY)",
+      all(!is.na(farms_test$databases_dir)) &&
+        grepl("data-raw$", farms_test$databases_dir[1]) &&
+        grepl("^//192\\.168\\.1\\.11/.*/IDF_PortalData/BSH$", farms_test$databases_dir[2]) &&
+        grepl("^//192\\.168\\.1\\.11/.*/IDF_PortalData/DGY$", farms_test$databases_dir[3]))
 check("settings: so' as 2 especies", identical(settings_env_test$species_regional, c("Egyptian-Vulture", "Steppe-Eagle")))
 check("settings: ini < end e no fuso do projeto",
       settings_env_test$ini < settings_env_test$end && attr(settings_env_test$ini, "tzone") == settings_env_test$proj_timezone)

@@ -25,33 +25,33 @@ proj_timezone <- "Asia/Samarkand"
 ##
 ## Raw databases (so' tracks)
 ##
-## databases_dir e' a pasta partilhada "data-raw" (mesma dos outros projetos);
-## databases_dir_alt e' a pasta de rede com os mesmos ficheiros, por parque
-## (se o mesmo nome existir nas 2 pastas, fica o da 1a, databases_dir -- ver
-## list_files_multi_dir(), R/read_utils.R). NA = sem pasta alternativa.
+## UMA pasta por parque -- BSH e DGY: pasta de rede (UNC, //192.168.1.11/...),
+## nao a unidade mapeada W:\\ (so' existe com a rede mapeada; o caminho UNC
+## resolve igual dentro e fora do escritorio, via acesso remoto); ZRF: pasta
+## partilhada data-raw (G:). Cada pasta so' e' lida para o seu parque.
 ##
-## TODO(Paulo): confirmar a pasta de rede de ZRF (ex: .../IDF_PortalData/ZRF)
-##
-
-databases_dir <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
-
 ## Nomes dos ficheiros consistentes nos 3 parques: "TrackReport_Default" +
 ## codigo do parque (ex: TrackReport_Default_ZRF_20260901_....csv).
 ## ATENCAO: o padrao e' uma expressao regular -- "TrackReport_Default+ZRF"
 ## NAO serve (o "+" aplica-se ao "t" anterior); ".*" e' o "qualquer coisa
 ## entre os dois" certo. O padrao final de cada parque aparece na coluna
 ## trackreport_pattern de regional_farms (e e' escrito na consola ao ler).
+##
+
 trackreport_prefix <- "TrackReport_Default"
+
+portal_data_dir <- "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-2025_BSH_DGY/IDF_PortalData"
+data_raw_dir    <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 
 ## farm = codigo do parque (ordem: norte, oeste, este); farm_pattern = 2a
 ## camada de filtro por substring no nome do ficheiro (igual ao codigo);
 ## cache propria do regional (regional_cache_dir) -- nao mistura com as caches
 ## dos outros relatorios, que usam outros padroes de ficheiro.
 regional_farms <- data.table::data.table(
-  farm                = c("ZRF", "BSH", "DGY"),
-  databases_dir_alt   = c(NA_character_,
-                          "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-2025_BSH_DGY/IDF_PortalData/BSH",
-                          "//192.168.1.11/DadosBrutos(T2)/Lisboa/08_Tecnica/2025/T05-2025_BSH_DGY/IDF_PortalData/DGY")
+  farm          = c("ZRF", "BSH", "DGY"),
+  databases_dir = c(data_raw_dir,
+                    file.path(portal_data_dir, "BSH"),
+                    file.path(portal_data_dir, "DGY"))
 )
 regional_farms[, `:=`(
   trackreport_pattern = paste0(trackreport_prefix, ".*", farm),
