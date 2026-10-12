@@ -523,3 +523,70 @@ check("plot rarefacao", is_gg(plot_regional_rarefied(rare_plot_test, wk_plot_tes
 invisible(lapply(list(plot_regional_effort(eff_plot_test, win_plot_test), plot_regional_normalised(norm_plot_test, "Egyptian-Vulture", win_plot_test),
                       plot_regional_rarefied(rare_plot_test, wk_plot_test, "Egyptian-Vulture", 4L, win_plot_test)), ggplot2::ggplot_build))
 cat("ggplot_build() dos plots de esforco sem erro -- OK\n")
+
+
+##
+## 16. Significancia (permutacao), melhor lag no limite e epocas parciais
+##
+mk_ser_test <- function(farm, starts, from, to, width = 3L, height = 3L, spec = "Egyptian-Vulture") {
+  d <- data.table(farm = farm, spec = spec, day = seq(as.Date(from), as.Date(to), by = "day")); d[, `:=`(monitored = TRUE, max_individuals = 0L)]
+  for (s in as.Date(starts)) d[day >= s & day < s + width, max_individuals := as.integer(height)]
+  d[]
+}
+a0_test <- as.Date("2025-09-01")
+seas_perm_test <- regional_season_dates(list(autumn = c("08-15", "12-15")), 2025L)
+pair_perm_test <- data.table(season = "autumn", leader = "ZRF", follower = "BSH")
+d_lead_test <- rbind(mk_ser_test("ZRF", a0_test + c(0, 20, 45, 70), "2025-08-01", "2026-01-31"),
+                     mk_ser_test("BSH", a0_test + c(0, 20, 45, 70) + 5, "2025-08-01", "2026-01-31"))
+d_rand_test <- rbind(mk_ser_test("ZRF", a0_test + c(0, 20, 45, 70), "2025-08-01", "2026-01-31"),
+                     mk_ser_test("BSH", a0_test + c(10, 33, 58, 85, 96), "2025-08-01", "2026-01-31"))
+perm_lead_test <- regional_ccf_permutation(d_lead_test, pair_perm_test, seas_perm_test, 15L, 1L, 20L, n_perm = 99L, seed = 1)
+perm_rand_test <- regional_ccf_permutation(d_rand_test, pair_perm_test, seas_perm_test, 15L, 1L, 20L, n_perm = 99L, seed = 1)
+check("permutacao: lead real (lag 5) -> p <= 0.05", perm_lead_test$p_value <= 0.05 && perm_lead_test$n_perm == 99L)
+check("permutacao: pulsos sem relacao -> p > 0.05", perm_rand_test$p_value > 0.05)
+check("permutacao: reprodutivel com a mesma seed",
+      identical(perm_lead_test, regional_ccf_permutation(d_lead_test, pair_perm_test, seas_perm_test, 15L, 1L, 20L, n_perm = 99L, seed = 1)))
+ccf_lead_test <- regional_ccf(d_lead_test, pair_perm_test, seas_perm_test, 15L, 1L, 20L)
+cov_lead_test <- regional_season_coverage(d_lead_test, pair_perm_test, seas_perm_test)
+sum_lead_test <- regional_ccf_summary(ccf_lead_test, perm_lead_test, cov_lead_test)
+check("estatistica observada da permutacao = r no melhor lag da tabela", isTRUE(all.equal(perm_lead_test$stat_obs, sum_lead_test$r_best)))
+check("resumo junta p-valor e cobertura; melhor lag 5 nao esta' no limite",
+      sum_lead_test$best_lag_days == 5L && !sum_lead_test$best_lag_at_limit && sum_lead_test$p_value == perm_lead_test$p_value)
+check("cobertura da epoca: 100% quando os 2 parques tem toda a epoca", sum_lead_test$coverage_both == 1 && sum_lead_test$n_season_days == 123L)
+
+# melhor lag no limite do intervalo -> "no peak"
+ccf_edge_test <- data.table(spec = "Egyptian-Vulture", season = "autumn", season_year = 2025L, leader = "ZRF", follower = "BSH",
+                            lag_days = -15:15, r = seq(0, 1, length.out = 31), n_overlap = 60L)
+sum_edge_test <- regional_ccf_summary(ccf_edge_test)
+check("melhor lag no limite (+15) -> best_lag_at_limit = TRUE", sum_edge_test$best_lag_days == 15L && sum_edge_test$best_lag_at_limit)
+tab_edge_test <- regional_format_ccf_table(sum_edge_test, pair_perm_test, seas_perm_test, "Egyptian-Vulture", "autumn")
+check("tabela: melhor lag no limite aparece como 'no peak (at +15 d limit)'", tab_edge_test$`Best lag (d)` == "no peak (at +15 d limit)")
+ccf_edge_neg_test <- copy(ccf_edge_test)[, r := rev(r)]
+check("limite negativo tambem: 'no peak (at -15 d limit)'",
+      regional_format_ccf_table(regional_ccf_summary(ccf_edge_neg_test), pair_perm_test, seas_perm_test, "Egyptian-Vulture", "autumn")$`Best lag (d)` == "no peak (at -15 d limit)")
+
+# epoca parcial: BSH sem monitorizacao em metade da epoca
+d_part_test <- copy(d_lead_test)
+d_part_test[farm == "BSH" & day >= as.Date("2025-10-15"), `:=`(monitored = FALSE, max_individuals = NA_integer_)]
+cov_part_test <- regional_season_coverage(d_part_test, pair_perm_test, seas_perm_test)
+check("cobertura parcial: dias com os 2 parques monitorizados / dias da epoca (Aug 15 - Oct 14 = 61 de 123)",
+      cov_part_test$n_both_days == 61L && abs(cov_part_test$coverage_both - 61 / 123) < 1e-9)
+perm_part_test <- regional_ccf_permutation(d_part_test, pair_perm_test, seas_perm_test, 15L, 1L, 20L, n_perm = 20L, seed = 1)
+sum_part_test <- regional_ccf_summary(regional_ccf(d_part_test, pair_perm_test, seas_perm_test, 15L, 1L, 20L), perm_part_test, cov_part_test)
+tab_part_test <- regional_format_ccf_table(sum_part_test, pair_perm_test, seas_perm_test, "Egyptian-Vulture", "autumn", 0.7)
+check("tabela ccf: epoca com 50% de cobertura marcada '(partial)'", tab_part_test$`Season covered` == "50% (partial)")
+tab_full_test <- regional_format_ccf_table(sum_lead_test, pair_perm_test, seas_perm_test, "Egyptian-Vulture", "autumn", 0.7)
+check("tabela ccf: epoca completa '100%' sem '(partial)'", tab_full_test$`Season covered` == "100%")
+tm_part_test <- regional_passage_timing(d_part_test, seas_perm_test)
+lead_part_test <- regional_lead_table(tm_part_test, pair_perm_test)
+check("tabela timing: coluna 'Season covered' com a marca de epoca parcial",
+      regional_format_timing_table(lead_part_test, pair_perm_test, seas_perm_test, "Egyptian-Vulture", "autumn", cov_part_test, 0.7)$`Season covered` == "50% (partial)")
+check("tabela timing sem cobertura mantem o formato antigo (sem a coluna)",
+      !"Season covered" %in% names(regional_format_timing_table(lead_part_test, pair_perm_test, seas_perm_test, "Egyptian-Vulture", "autumn")))
+ps_part_test <- regional_pulse_summary(regional_match_pulses(regional_pulses(d_part_test, 1L, 3L), pair_perm_test, seas_perm_test, 10L))
+check("tabela pulsos: coluna 'Season covered'",
+      "Season covered" %in% names(regional_format_pulse_table(ps_part_test, tm_part_test, pair_perm_test, seas_perm_test, "Egyptian-Vulture", "autumn", cov_part_test, 0.7)))
+
+# texto do p-valor
+check("p-valor: valor minimo possivel (1/(n+1)) aparece como '<= 0.010', outros com 3 casas",
+      identical(.regional_p_text(c(0.01, 0.25, NA), 99L), c("<= 0.010", "0.250", "insufficient data")))

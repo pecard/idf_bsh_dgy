@@ -116,6 +116,8 @@ min_season_coverage <- 0.7     # fracao minima de dias monitorizados da epoca
 max_lag_days <- 21             # lags testados: -21 a +21 dias
 smooth_days <- 3               # media movel centrada das series diarias (1 = sem suavizar)
 min_overlap_days <- 20         # dias minimos com dados nos 2 parques para calcular r
+ccf_n_perm <- 999              # rotacoes do teste de significancia do pico de correlacao (p minimo = 1/(1 + n))
+ccf_seed <- 1                  # semente do teste (resultado reprodutivel)
 
 ## Pulsos (episodios de presenca)
 pulse_min_individuals <- 1     # maximo diario minimo para contar como dia de pulso
@@ -270,7 +272,12 @@ ccf_dt <- regional_ccf(
   daily_dt, regional_pairs, season_dates, max_lag_days = max_lag_days,
   smooth_days = smooth_days, min_overlap_days = min_overlap_days
 )
-ccf_summary_dt <- regional_ccf_summary(ccf_dt)
+season_coverage_dt <- regional_season_coverage(daily_dt, regional_pairs, season_dates)
+ccf_perm_dt <- regional_ccf_permutation(
+  daily_dt, regional_pairs, season_dates, max_lag_days = max_lag_days, smooth_days = smooth_days,
+  min_overlap_days = min_overlap_days, n_perm = ccf_n_perm, seed = ccf_seed
+)
+ccf_summary_dt <- regional_ccf_summary(ccf_dt, ccf_perm_dt, season_coverage_dt)
 
 pulses_dt <- regional_pulses(daily_dt, min_individuals = pulse_min_individuals, merge_gap_days = pulse_merge_gap_days,
                              relative_share = pulse_relative_share, season_dates = season_dates)
@@ -316,7 +323,7 @@ parameters_dt <- data.table(
                 "Species", "Bin (min)", "Merge distance (m)", "Min tracks per monitored day",
                 "Min monitored days per week", "Seasons", "Leader -> follower pairs",
                 "Passage shares (onset / median / end)", "Min season total", "Min season coverage",
-                "Max lag (days)", "Smoothing (days)", "Min overlap (days)",
+                "Max lag (days)", "Smoothing (days)", "Min overlap (days)", "Permutations (correlation peak test)",
                 "Pulse min individuals", "Pulse merge gap (days)", "Pulse follow-up window (days)",
                 "Pulse relative threshold (share of the season peak)", "IDF detection radius (m)",
                 "Rarefaction (active units per week / draws)", "Run date"),
@@ -327,7 +334,7 @@ parameters_dt <- data.table(
     paste(sprintf("%s %s to %s", names(seasons), vapply(seasons, `[`, "", 1), vapply(seasons, `[`, "", 2)), collapse = "; "),
     paste(sprintf("%s: %s -> %s", regional_pairs$season, regional_pairs$leader, regional_pairs$follower), collapse = "; "),
     paste(onset_share, median_share, end_share, sep = " / "), min_season_total, min_season_coverage,
-    max_lag_days, smooth_days, min_overlap_days, pulse_min_individuals, pulse_merge_gap_days, pulse_window_days,
+    max_lag_days, smooth_days, min_overlap_days, ccf_n_perm, pulse_min_individuals, pulse_merge_gap_days, pulse_window_days,
     if (is.null(pulse_relative_share)) "none" else pulse_relative_share, idf_detection_radius_m,
     if (isTRUE(run_rarefaction)) sprintf("%d / %d", rarefaction_k, rarefaction_draws) else "not run", run_date
   )
@@ -341,7 +348,7 @@ write_xlsx_local(
     Units_without_coordinates = if (nrow(units_no_coords_dt) > 0L) units_no_coords_dt else data.table(note = "none"),
     Rarefied_weekly = if (!is.null(rarefied_dt)) rarefied_dt else data.table(note = "rarefaction not run"),
     Passage_timing = timing_dt, Timing_difference = lead_dt,
-    Lagged_correlation = ccf_dt, Lagged_correlation_best = ccf_summary_dt,
+    Lagged_correlation = ccf_dt, Lagged_correlation_best = ccf_summary_dt, Season_coverage = season_coverage_dt,
     Pulses = pulses_dt, Pulse_followup = pulse_match_dt, Pulse_followup_summary = pulse_summary_dt
   ),
   out_file("regional_assessment", "xlsx")
@@ -402,9 +409,9 @@ if (isTRUE(generate_report)) {
   }, ""), collapse = "; ")
 
   report_tables <- list(
-    timing = stats::setNames(lapply(season_keys, function(k) regional_format_timing_table(lead_dt, regional_pairs, season_dates, species_regional, k)), season_keys),
-    ccf    = stats::setNames(lapply(season_keys, function(k) regional_format_ccf_table(ccf_summary_dt, regional_pairs, season_dates, species_regional, k)), season_keys),
-    pulses = stats::setNames(lapply(season_keys, function(k) regional_format_pulse_table(pulse_summary_dt, timing_dt, regional_pairs, season_dates, species_regional, k)), season_keys)
+    timing = stats::setNames(lapply(season_keys, function(k) regional_format_timing_table(lead_dt, regional_pairs, season_dates, species_regional, k, season_coverage_dt, min_season_coverage)), season_keys),
+    ccf    = stats::setNames(lapply(season_keys, function(k) regional_format_ccf_table(ccf_summary_dt, regional_pairs, season_dates, species_regional, k, min_season_coverage)), season_keys),
+    pulses = stats::setNames(lapply(season_keys, function(k) regional_format_pulse_table(pulse_summary_dt, timing_dt, regional_pairs, season_dates, species_regional, k, season_coverage_dt, min_season_coverage)), season_keys)
   )
 
   season_labels <- c(autumn = "Autumn", spring = "Spring")
@@ -419,7 +426,7 @@ if (isTRUE(generate_report)) {
     seasons_text = paste(sprintf("%s, %s to %s", names(seasons), vapply(seasons, `[`, "", 1), vapply(seasons, `[`, "", 2)), collapse = "; "),
     onset_share = onset_share, median_share = median_share, end_share = end_share,
     min_season_total = min_season_total, min_season_coverage = min_season_coverage,
-    max_lag_days = max_lag_days, smooth_days = smooth_days, min_overlap_days = min_overlap_days,
+    max_lag_days = max_lag_days, smooth_days = smooth_days, min_overlap_days = min_overlap_days, ccf_n_perm = ccf_n_perm,
     pulse_min_individuals = pulse_min_individuals, pulse_merge_gap_days = pulse_merge_gap_days,
     pulse_window_days = pulse_window_days, pulse_relative_share = pulse_relative_share,
     idf_detection_radius_m = idf_detection_radius_m, run_rarefaction = run_rarefaction,

@@ -453,9 +453,10 @@ regional_ccf <- function(daily_dt, pairs, season_dates, max_lag_days = 21L,
   data.table::rbindlist(rows)
 }
 
-regional_ccf_summary <- function(ccf_dt) {
+regional_ccf_summary <- function(ccf_dt, perm_dt = NULL, coverage_dt = NULL) {
   if (nrow(ccf_dt) == 0L) return(ccf_dt)
-  ccf_dt[, {
+  max_lag <- max(abs(ccf_dt$lag_days))
+  out <- ccf_dt[, {
     ok <- !is.na(r)
     if (!any(ok)) {
       .(best_lag_days = NA_integer_, r_best = NA_real_, r_lag0 = NA_real_, n_overlap_lag0 = NA_integer_)
@@ -465,6 +466,123 @@ regional_ccf_summary <- function(ccf_dt) {
         r_lag0 = round(r[lag_days == 0][1], 3), n_overlap_lag0 = as.integer(n_overlap[lag_days == 0][1]))
     }
   }, by = .(spec, season, season_year, leader, follower)]
+
+  # melhor lag no limite do intervalo testado: a correlacao cresce ate' ao
+  # limite (tendencia comum), nao ha' pico -- nao e' um atraso real
+  out[, best_lag_at_limit := !is.na(best_lag_days) & abs(best_lag_days) == max_lag]
+
+  keys <- c("spec", "season", "season_year", "leader", "follower")
+  out[, `:=`(p_value = NA_real_, n_perm = NA_integer_)]
+  if (!is.null(perm_dt) && nrow(perm_dt) > 0L) {
+    m <- perm_dt[, c(keys, "p_value", "n_perm"), with = FALSE]
+    out[m, on = keys, `:=`(p_value = i.p_value, n_perm = i.n_perm)]
+  }
+  out[, `:=`(coverage_both = NA_real_, n_both_days = NA_integer_, n_season_days = NA_integer_)]
+  if (!is.null(coverage_dt) && nrow(coverage_dt) > 0L) {
+    m <- coverage_dt[, c("season", "season_year", "leader", "follower", "coverage_both", "n_both_days", "n_season_days"), with = FALSE]
+    out[m, on = c("season", "season_year", "leader", "follower"),
+        `:=`(coverage_both = i.coverage_both, n_both_days = i.n_both_days, n_season_days = i.n_season_days)]
+  }
+  out[]
+}
+
+## Teste de permutacao do pico de correlacao ----
+##
+## Estatistica = maximo de r(lag) sobre TODOS os lags testados (+-max_lag_days),
+## a mesma que a tabela mostra como r_best -- a escolha do melhor entre os 2*L+1
+## lags entra no nulo, por isso nao e' inflacionada pela selecao.
+## Nulo: a serie do seguidor (suavizada, com o contexto de +-max_lag_days dias
+## a volta da epoca) e' ROTACIONADA circularmente por um numero de dias maior
+## que max_lag_days -- mantem a autocorrelacao e a tendencia da serie, mas
+## destroi o alinhamento com o lider. Rotacoes de ate' max_lag_days dias ficam
+## fora (coincidiriam com os proprios lags testados). p = (1 + n_nulo >= obs) /
+## (1 + n_nulo validos); minimo possivel = 1 / (1 + n_perm).
+## NOTA: testa se o pico de correlacao e' maior do que o esperado ao acaso
+## (associacao/sincronia), NAO por si so' se o lider ANTECIPA; a antecipacao le-se
+## no lag do pico (positivo) quando o teste e' significativo e o pico nao esta'
+## no limite.
+
+.regional_ccf_curve <- function(x_win, y_ext, L, min_overlap) {
+  n <- length(x_win)
+  vapply(seq.int(-L, L), function(lag) {
+    y_al <- y_ext[(L + 1L + lag):(L + n + lag)] # y no dia t + lag, para t = 1..n
+    ok <- !is.na(x_win) & !is.na(y_al)
+    if (sum(ok) < min_overlap) return(NA_real_)
+    xs <- x_win[ok]; ys <- y_al[ok]
+    if (stats::sd(xs) == 0 || stats::sd(ys) == 0) return(NA_real_)
+    stats::cor(xs, ys)
+  }, numeric(1))
+}
+
+regional_ccf_permutation <- function(daily_dt, pairs, season_dates, max_lag_days = 21L,
+                                     smooth_days = 3L, min_overlap_days = 20L, n_perm = 999L, seed = 1) {
+  L <- as.integer(max_lag_days)
+  set.seed(seed)
+  rows <- list()
+  for (i in seq_len(nrow(pairs))) {
+    p <- pairs[i]
+    sd_season <- season_dates[season_dates$season == p$season]
+    for (sp in unique(daily_dt$spec)) {
+      lead_full <- daily_dt[farm == p$leader & spec == sp]
+      fol_full  <- daily_dt[farm == p$follower & spec == sp]
+      if (nrow(lead_full) == 0L || nrow(fol_full) == 0L) next
+      xs_all <- stats::setNames(regional_smooth(lead_full$max_individuals, smooth_days), as.character(lead_full$day))
+      ys_all <- stats::setNames(regional_smooth(fol_full$max_individuals, smooth_days), as.character(fol_full$day))
+
+      for (k in seq_len(nrow(sd_season))) {
+        win <- seq(sd_season$from[k], sd_season$to[k], by = "day")
+        ext <- seq(sd_season$from[k] - L, sd_season$to[k] + L, by = "day")
+        x_win <- unname(xs_all[as.character(win)])
+        y_ext <- unname(ys_all[as.character(ext)])
+        n <- length(win); m <- length(ext)
+
+        curve_obs <- .regional_ccf_curve(x_win, y_ext, L, min_overlap_days)
+        stat_obs <- if (all(is.na(curve_obs))) NA_real_ else max(curve_obs, na.rm = TRUE)
+
+        p_value <- NA_real_; n_valid <- 0L
+        if (!is.na(stat_obs) && m - L - 1L >= L + 1L) {
+          shifts <- seq.int(L + 1L, m - L - 1L)
+          if (length(shifts) > n_perm) shifts <- sample(shifts, n_perm)
+          null <- vapply(shifts, function(s) {
+            cv <- .regional_ccf_curve(x_win, y_ext[c((s + 1L):m, seq_len(s))], L, min_overlap_days)
+            if (all(is.na(cv))) NA_real_ else max(cv, na.rm = TRUE)
+          }, numeric(1))
+          n_valid <- sum(!is.na(null))
+          if (n_valid > 0L) p_value <- (1 + sum(null >= stat_obs, na.rm = TRUE)) / (1 + n_valid)
+        }
+
+        rows[[length(rows) + 1L]] <- data.table::data.table(
+          spec = sp, season = p$season, season_year = sd_season$season_year[k],
+          leader = p$leader, follower = p$follower,
+          stat_obs = stat_obs, p_value = p_value, n_perm = as.integer(n_valid)
+        )
+      }
+    }
+  }
+  data.table::rbindlist(rows)
+}
+
+## Cobertura da epoca por par: fracao dos dias da epoca (inteira, nao so' a parte
+## dentro da janela) em que OS DOIS parques foram monitorizados. Epoca parcial =
+## cobertura < min_season_coverage.
+regional_season_coverage <- function(daily_dt, pairs, season_dates) {
+  mon <- daily_dt[, .(monitored = any(monitored)), by = .(farm, day)]
+  rows <- list()
+  for (i in seq_len(nrow(pairs))) {
+    p <- pairs[i]
+    sd_season <- season_dates[season_dates$season == p$season]
+    ml <- mon$day[mon$farm == p$leader & mon$monitored]
+    mf <- mon$day[mon$farm == p$follower & mon$monitored]
+    for (k in seq_len(nrow(sd_season))) {
+      days <- seq(sd_season$from[k], sd_season$to[k], by = "day")
+      n_both <- sum(days %in% ml & days %in% mf)
+      rows[[length(rows) + 1L]] <- data.table::data.table(
+        season = p$season, season_year = sd_season$season_year[k], leader = p$leader, follower = p$follower,
+        n_both_days = as.integer(n_both), n_season_days = length(days), coverage_both = n_both / length(days)
+      )
+    }
+  }
+  data.table::rbindlist(rows)
 }
 
 
@@ -778,12 +896,29 @@ regional_weekly_peak_summary <- function(weekly_dt) {
   }
 }
 
-regional_format_timing_table <- function(lead_dt, pairs, season_dates, species, season) {
+## Cobertura da epoca ("61%" ou "50% (partial)") e p-valor ("0.012", "<= 0.001")
+.regional_cov_text <- function(cov, min_cov) {
+  ifelse(is.na(cov), regional_insufficient,
+         sprintf("%d%%%s", as.integer(round(100 * cov)), ifelse(cov < min_cov, " (partial)", "")))
+}
+.regional_p_text <- function(p, n_perm) {
+  ifelse(is.na(p), regional_insufficient,
+         ifelse(p <= 1 / (n_perm + 1) + 1e-12, sprintf("<= %.3f", p), sprintf("%.3f", p)))
+}
+.regional_add_coverage <- function(m, coverage_dt) {
+  if (is.null(coverage_dt)) return(m)
+  merge(m, coverage_dt[, .(season_year, leader, follower, coverage_both)],
+        by = c("season_year", "leader", "follower"), all.x = TRUE, sort = FALSE)
+}
+
+regional_format_timing_table <- function(lead_dt, pairs, season_dates, species, season,
+                                         coverage_dt = NULL, min_season_coverage = 0.7) {
   g <- .regional_expected_rows(pairs, season_dates, species, season)
   if (nrow(g) == 0L) return(data.frame())
   m <- merge(g, lead_dt, by = c("spec", "season_year", "leader", "follower"), all.x = TRUE, sort = FALSE)
+  m <- .regional_add_coverage(m, coverage_dt)
   data.table::setorder(m, spec, season_year, pair_i)
-  data.frame(
+  out <- data.frame(
     Species = m$spec, Year = as.character(m$season_year), Pair = m$pair,
     `Leader median date` = .regional_txt(m$leader_median),
     `Follower median date` = .regional_txt(m$follower_median),
@@ -792,29 +927,40 @@ regional_format_timing_table <- function(lead_dt, pairs, season_dates, species, 
     `Lead, end (d)` = .regional_txt(m$lead_days_end),
     check.names = FALSE, stringsAsFactors = FALSE
   )
+  if (!is.null(coverage_dt)) out$`Season covered` <- .regional_cov_text(m$coverage_both, min_season_coverage)
+  out
 }
 
-regional_format_ccf_table <- function(ccf_summary_dt, pairs, season_dates, species, season) {
+regional_format_ccf_table <- function(ccf_summary_dt, pairs, season_dates, species, season,
+                                      min_season_coverage = 0.7) {
   g <- .regional_expected_rows(pairs, season_dates, species, season)
   if (nrow(g) == 0L) return(data.frame())
   m <- merge(g, ccf_summary_dt, by = c("spec", "season_year", "leader", "follower"), all.x = TRUE, sort = FALSE)
   data.table::setorder(m, spec, season_year, pair_i)
+  # melhor lag no limite do intervalo = sem pico (nao e' um atraso)
+  lag_txt <- ifelse(is.na(m$best_lag_days), regional_insufficient,
+                    ifelse(m$best_lag_at_limit %in% TRUE,
+                           sprintf("no peak (at %+d d limit)", m$best_lag_days), as.character(m$best_lag_days)))
   data.frame(
     Species = m$spec, Year = as.character(m$season_year), Pair = m$pair,
-    `Best lag (d)` = .regional_txt(m$best_lag_days),
+    `Best lag (d)` = lag_txt,
     `r at best lag` = .regional_txt(m$r_best, 2),
     `r at lag 0` = .regional_txt(m$r_lag0, 2),
+    `p value` = .regional_p_text(m$p_value, m$n_perm),
     `Overlap days (lag 0)` = .regional_txt(m$n_overlap_lag0),
+    `Season covered` = .regional_cov_text(m$coverage_both, min_season_coverage),
     check.names = FALSE, stringsAsFactors = FALSE
   )
 }
 
 ## timing_dt serve para distinguir "sem pulsos" de "sem dados": se a epoca do
 ## lider (ou do seguidor) nao tem timing valido, a linha e' "insufficient data"
-regional_format_pulse_table <- function(pulse_summary_dt, timing_dt, pairs, season_dates, species, season) {
+regional_format_pulse_table <- function(pulse_summary_dt, timing_dt, pairs, season_dates, species, season,
+                                        coverage_dt = NULL, min_season_coverage = 0.7) {
   g <- .regional_expected_rows(pairs, season_dates, species, season)
   if (nrow(g) == 0L) return(data.frame())
   m <- merge(g, pulse_summary_dt, by = c("spec", "season_year", "leader", "follower"), all.x = TRUE, sort = FALSE)
+  m <- .regional_add_coverage(m, coverage_dt)
   data.table::setorder(m, spec, season_year, pair_i)
   # indexa o vetor timing_dt$valid (nao timing_dt[...]) -- dentro de [.data.table
   # "farm"/"spec"/"season" seriam as colunas, nao os argumentos
@@ -829,7 +975,7 @@ regional_format_pulse_table <- function(pulse_summary_dt, timing_dt, pairs, seas
   none <- is.na(m$n_leader_pulses)
   txt_int <- function(x) ifelse(!has_data, regional_insufficient, ifelse(none, "0", as.character(x)))
   txt_dash <- function(x) ifelse(!has_data, regional_insufficient, ifelse(none | is.na(x), "-", as.character(x)))
-  data.frame(
+  out <- data.frame(
     Species = m$spec, Year = as.character(m$season_year), Pair = m$pair,
     `Leader pulses` = txt_int(m$n_leader_pulses),
     `Followed within window` = txt_int(m$n_followed_within_window),
@@ -838,6 +984,8 @@ regional_format_pulse_table <- function(pulse_summary_dt, timing_dt, pairs, seas
     `% with follower pulse before` = txt_dash(m$pct_follower_pulse_before),
     check.names = FALSE, stringsAsFactors = FALSE
   )
+  if (!is.null(coverage_dt)) out$`Season covered` <- .regional_cov_text(m$coverage_both, min_season_coverage)
+  out
 }
 
 ## "Autumn: does ZRF anticipate BSH and DGY?" / "Spring: do BSH and DGY anticipate ZRF?"

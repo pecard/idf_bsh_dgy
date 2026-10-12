@@ -25,6 +25,7 @@ params:
   max_lag_days: !r NULL
   smooth_days: !r NULL
   min_overlap_days: !r NULL
+  ccf_n_perm: !r NULL
   pulse_min_individuals: !r NULL
   pulse_merge_gap_days: !r NULL
   pulse_window_days: !r NULL
@@ -53,13 +54,13 @@ knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 # Helpers identicos a report/incident_report_template.rmd (mesma convencao
 # visual em todos os relatorios do projeto)
-report_table <- function(x, max_col_width_cm = NULL) {
+report_table <- function(x, max_col_width_cm = NULL, font_size = 9) {
   ft <- flextable::flextable(round_display(x)) |>
     flextable::theme_box() |>
     flextable::bg(part = "header", bg = "gray85") |>
     flextable::bold(part = "header") |>
-    flextable::fontsize(size = 9, part = "header") |>
-    flextable::fontsize(size = 9, part = "body") |>
+    flextable::fontsize(size = font_size, part = "header") |>
+    flextable::fontsize(size = font_size, part = "body") |>
     flextable::align(align = "center", part = "header") |>
     flextable::valign(valign = "center", part = "all") |>
     flextable::autofit()
@@ -118,12 +119,12 @@ show_plot <- function(fig) {
   invisible(NULL)
 }
 
-show_table <- function(df, max_col_width_cm = 2.4) {
+show_table <- function(df, max_col_width_cm = 2.4, font_size = 9) {
   if (is.null(df) || nrow(df) == 0L) {
     cat("No data available for this table.\n\n")
     return(invisible(NULL))
   }
-  cat(knitr::knit_print(report_table(df, max_col_width_cm = max_col_width_cm)))
+  cat(knitr::knit_print(report_table(df, max_col_width_cm = max_col_width_cm, font_size = font_size)))
   invisible(NULL)
 }
 
@@ -157,18 +158,18 @@ season_block <- function(key) {
 
   heading(2, "Timing of passage")
   cat("Onset, median and end of the passage are the first days on which the cumulative share of the season's daily maxima reaches ",
-      params$onset_share * 100, "%, ", params$median_share * 100, "% and ", params$end_share * 100, "%. Lead is the follower date minus the leader date, in days. Seasons with insufficient monitoring are marked.\n", sep = "")
+      params$onset_share * 100, "%, ", params$median_share * 100, "% and ", params$end_share * 100, "%. Lead is the follower date minus the leader date, in days. Seasons with insufficient monitoring are marked, and the last column gives the share of the season covered by both farms (\"partial\" below ", params$min_season_coverage * 100, "%).\n", sep = "")
   gap()
-  show_table(params$tables$timing[[key]])
+  show_table(params$tables$timing[[key]], max_col_width_cm = 2.0, font_size = 8)
 
   heading(2, "Lagged correlation")
-  cat("Correlation between the leader's daily series at day t and the follower's at day t + lag, for lags from -", params$max_lag_days, " to +", params$max_lag_days, " days.\n", sep = "")
+  cat("Correlation between the leader's daily series at day t and the follower's at day t + lag, for lags from -", params$max_lag_days, " to +", params$max_lag_days, " days. The table gives the best lag (\"no peak\" when it is at the limit of the range), the correlation at the best lag and at lag 0, the permutation p value, the overlapping days and the share of the season covered by both farms.\n", sep = "")
   for (sp in params$species) {
     gap()
     show_plot(params$plots$ccf[[key]][[sp]])
   }
   gap()
-  show_table(params$tables$ccf[[key]])
+  show_table(params$tables$ccf[[key]], max_col_width_cm = 2.0, font_size = 8)
 
   heading(2, "Pulse follow-up")
   cat("A pulse is a run of days with a daily maximum of at least ", params$pulse_min_individuals,
@@ -177,7 +178,7 @@ season_block <- function(key) {
       params$pulse_window_days, " days, the median lag, and the share of leader pulses with a follower pulse already present in the ",
       params$pulse_window_days, " days before (control).\n", sep = "")
   gap()
-  show_table(params$tables$pulses[[key]])
+  show_table(params$tables$pulses[[key]], max_col_width_cm = 2.0, font_size = 8)
 }
 ```
 
@@ -229,7 +230,8 @@ show_table(rename_display(params$effort_summary, c(
 Seasons: `r params$seasons_text`. Three metrics are computed for each season, year, species and leader -> follower pair:
 
 - **Timing of passage**: onset, median and end of the passage, from the cumulative daily maxima. A season has a timing only when monitored days cover at least `r params$min_season_coverage * 100`% of the season and the season total is at least `r params$min_season_total`.
-- **Lagged correlation**: correlation between the daily series of the two farms for lags up to `r params$max_lag_days` days, after a centred moving mean of `r params$smooth_days` days, with at least `r params$min_overlap_days` overlapping days.
+- **Lagged correlation**: correlation between the daily series of the two farms for lags up to `r params$max_lag_days` days, after a centred moving mean of `r params$smooth_days` days, with at least `r params$min_overlap_days` overlapping days. The best lag is the lag of the highest correlation. When it falls at the limit of the tested range (+/-`r params$max_lag_days` days) the correlation increases up to the limit and there is no peak, so it is reported as "no peak". The p value is a permutation test of the highest correlation over all tested lags: the follower's series is rotated circularly by more than `r params$max_lag_days` days (`r params$ccf_n_perm` rotations), which keeps its autocorrelation and trend but removes the alignment with the leader, and p is the share of rotations whose highest correlation is at least the observed one. It tests whether the correlation peak exceeds what chance alignment gives; a lead is read from a positive best lag together with a small p value.
+- **Season coverage**: share of the days of the whole season on which both farms were monitored. A season below `r params$min_season_coverage * 100`% is marked "partial": it covers only part of the passage, so partial seasons from different years are not comparable.
 - **Pulse follow-up**: whether a pulse of the leader farm is followed by a pulse of the follower farm within `r params$pulse_window_days` days. A pulse day has a daily maximum of at least `r params$pulse_min_individuals` individual(s)`r pulse_share_text()`.
 
 # Annual pattern
