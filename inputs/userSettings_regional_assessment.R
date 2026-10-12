@@ -62,6 +62,24 @@ regional_farms[, `:=`(
   farm_pattern        = farm
 )]
 
+## Unidades IDF de cada parque (coordenadas), para a densidade por area vigiada:
+## shapefile em inputs/ e coluna com o codigo da unidade. O numero da unidade e'
+## o ultimo grupo de digitos do codigo ("BSH68-01" -> 1, "DZH01-01" -> 1,
+## "IDF-22" -> 22) -- e' o mesmo numero que vem em track$idf (TowerNumber).
+regional_farms[, `:=`(
+  idf_shapefile = c("identiflight.shp", "Bash_IDF_coord.shp", "IDF_DZH.shp"),
+  idf_id_col    = c("Name", "imaging_he", "Name")
+)]
+
+## Raio de deteccao operacional de cada unidade (m) -- o mesmo idf_op_detection_range
+## dos outros settings (1000 m). A area vigiada de uma semana e' a UNIAO dos
+## circulos (raio acima) das unidades ativas nessa semana (sobreposicao so'
+## conta uma vez).
+idf_detection_radius_m <- 1000
+
+## CRS planar (metros) para os buffers -- o mesmo dos outros settings (UTM 41N)
+crs_projection_plannar <- 32641
+
 regional_cache_dir <- file.path("cache", "regional")
 
 

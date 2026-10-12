@@ -28,6 +28,14 @@ params:
   pulse_min_individuals: !r NULL
   pulse_merge_gap_days: !r NULL
   pulse_window_days: !r NULL
+  pulse_relative_share: !r NULL
+  idf_detection_radius_m: !r NULL
+  run_rarefaction: !r NULL
+  rarefaction_k: !r NULL
+  rarefaction_draws: !r NULL
+  effort_summary: !r NULL
+  norm_peaks: !r NULL
+  units_no_coords_text: ""
 
   data_coverage: !r NULL
   weekly_peak: !r NULL
@@ -119,6 +127,12 @@ show_table <- function(df, max_col_width_cm = 2.4) {
   invisible(NULL)
 }
 
+# Frase do limiar relativo dos pulsos (vazia se so' houver limiar absoluto)
+pulse_share_text <- function() {
+  if (is.null(params$pulse_relative_share)) return("")
+  sprintf(" and of at least %s%% of the farm's peak in the same season", params$pulse_relative_share * 100)
+}
+
 annex_note <- function(xlsx_name) {
   if (!is.null(xlsx_name) && nzchar(xlsx_name)) {
     cat(sprintf("\n\n&nbsp;\n\n*The full tables are available in the accompanying workbook: `%s`.*\n", xlsx_name))
@@ -158,7 +172,7 @@ season_block <- function(key) {
 
   heading(2, "Pulse follow-up")
   cat("A pulse is a run of days with a daily maximum of at least ", params$pulse_min_individuals,
-      " individual(s), merging runs separated by up to ", params$pulse_merge_gap_days,
+      " individual(s)", pulse_share_text(), ", merging runs separated by up to ", params$pulse_merge_gap_days,
       " days. For each leader pulse, the table gives how many were followed by a follower pulse starting within the next ",
       params$pulse_window_days, " days, the median lag, and the share of leader pulses with a follower pulse already present in the ",
       params$pulse_window_days, " days before (control).\n", sep = "")
@@ -196,24 +210,50 @@ show_table(rename_display(params$data_coverage, c(
 
 Track points of each species are grouped in time bins of `r params$bin_min` minutes. Within a bin, two tracks count as one individual when the minimum distance between any of their points is below `r params$merge_dist_m` m, so the number of individuals per bin is a minimum. The daily maximum is the highest value of the day, and the weekly maximum the highest daily maximum of each calendar week (Monday to Sunday), with the same weeks in the three farms. Days without monitoring have no value, and weeks with fewer than `r params$min_monitored_days` monitored days have no weekly value.
 
+## Monitoring effort and normalisation
+
+The farms have different numbers of IDF units collecting tracks, so the weekly maximum depends on the airspace each farm surveys. An IDF unit is active in a week when it recorded at least one track of any species in that week. The surveyed area of a week is the union of the circles of radius `r params$idf_detection_radius_m` m around the active units that have coordinates, so overlapping detection areas count once. Besides the raw weekly maximum, two indices are given: the weekly maximum per active unit, and the weekly maximum per 100 km^2^ of surveyed area. Active units with no coordinates in the unit shapefile do not contribute to the area: `r params$units_no_coords_text`.`r if (isTRUE(params$run_rarefaction)) sprintf(" The rarefaction recomputes the weekly maximum with %d randomly drawn active units per week (%d draws), using only the tracks of those units.", params$rarefaction_k, params$rarefaction_draws) else ""`
+
+&nbsp;
+
+```{r effort-summary, results='asis'}
+show_table(rename_display(params$effort_summary, c(
+  farm = "Farm", weeks_with_tracks = "Weeks with tracks", mean_active_units = "Mean active units",
+  min_active_units = "Min active units", max_active_units = "Max active units",
+  mean_surveyed_area_km2 = "Mean surveyed area (km2)"
+)))
+```
+
 ## Anticipation metrics
 
 Seasons: `r params$seasons_text`. Three metrics are computed for each season, year, species and leader -> follower pair:
 
 - **Timing of passage**: onset, median and end of the passage, from the cumulative daily maxima. A season has a timing only when monitored days cover at least `r params$min_season_coverage * 100`% of the season and the season total is at least `r params$min_season_total`.
 - **Lagged correlation**: correlation between the daily series of the two farms for lags up to `r params$max_lag_days` days, after a centred moving mean of `r params$smooth_days` days, with at least `r params$min_overlap_days` overlapping days.
-- **Pulse follow-up**: whether a pulse of the leader farm is followed by a pulse of the follower farm within `r params$pulse_window_days` days.
+- **Pulse follow-up**: whether a pulse of the leader farm is followed by a pulse of the follower farm within `r params$pulse_window_days` days. A pulse day has a daily maximum of at least `r params$pulse_min_individuals` individual(s)`r pulse_share_text()`.
 
 # Annual pattern
 
 Weekly maximum of the minimum number of individuals in the three farms, for each species.
 
+## Monitoring effort
+
+Active IDF units and surveyed area per week in each farm.
+
+&nbsp;
+
+```{r effort-plot, results='asis'}
+show_plot(params$plots$effort)
+```
+
 ```{r annual-pattern, results='asis'}
 for (sp in params$species) {
   heading(2, sp)
-  cat("Weekly maximum by farm over the analysis window, and the same values by ISO week of the year, one line per farm and year.\n")
+  cat("Weekly maximum by farm over the analysis window, the same values normalised by monitoring effort (per active unit and per 100 km^2^ of surveyed area), and the raw values by ISO week of the year, one line per farm and year.\n")
   gap()
   show_plot(params$plots$weekly[[sp]])
+  gap()
+  show_plot(params$plots$normalised[[sp]])
   gap()
   show_plot(params$plots$annual[[sp]])
   gap()
@@ -222,6 +262,25 @@ for (sp in params$species) {
     c(farm = "Farm", peak_weekly_max = "Peak weekly maximum", peak_week_start = "Week of peak (Monday)",
       weeks_with_data = "Weeks with data", weeks_present = "Weeks with the species")
   ))
+  gap()
+  show_table(rename_display(
+    params$norm_peaks[params$norm_peaks$spec == sp, setdiff(names(params$norm_peaks), "spec"), drop = FALSE],
+    c(farm = "Farm", peak_weekly_max = "Peak weekly maximum", peak_per_active_unit = "Peak per active unit",
+      peak_density_per_100km2 = "Peak per 100 km2", mean_active_units = "Mean active units",
+      mean_surveyed_area_km2 = "Mean surveyed area (km2)")
+  ))
+}
+```
+
+```{r rarefaction, results='asis'}
+if (isTRUE(params$run_rarefaction)) {
+  heading(2, "Rarefaction")
+  cat("Weekly maximum with ", params$rarefaction_k, " active IDF units per week, drawn at random ", params$rarefaction_draws,
+      " times: median and 10-90% range, against the weekly maximum with all active units.\n", sep = "")
+  for (sp in params$species) {
+    gap()
+    show_plot(params$plots$rarefied[[sp]])
+  }
 }
 ```
 

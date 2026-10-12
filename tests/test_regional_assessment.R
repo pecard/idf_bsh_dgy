@@ -239,7 +239,7 @@ read_file_test <- function(f) {
 }
 write_csv_test <- function(name, ids, day) {
   fwrite(data.table(track_id = ids, timestamp = format(as.POSIXct(paste(day, "10:00:00"), tz = tz_test) + seq_along(ids)),
-                    utm_x = 1, utm_y = 1, spec = "Egyptian-Vulture"), file.path(dir_test, name))
+                    utm_x = 1, utm_y = 1, spec = "Egyptian-Vulture", idf = 7L), file.path(dir_test, name))
 }
 write_csv_test("TrackReport_Default_XXX_a.csv", c("a1", "a2"), "2025-03-01")
 write_csv_test("TrackReport_Default_XXX_b.csv", c("b1", "b2", "b3"), "2025-03-02")
@@ -396,3 +396,130 @@ p_win_test <- plot_regional_weekly_timeline(weekly_win_test, "Egyptian-Vulture",
 xr_test <- ggplot2::ggplot_build(p_win_test)$layout$panel_params[[1]]$x.range
 check("grafico semanal: eixo x = janela ini/end (sem folga)", isTRUE(all.equal(xr_test, as.numeric(win_dates_test))))
 check("grafico semanal: legenda indica a janela", grepl("2026-02-23 to 2026-03-22", p_win_test$labels$caption, fixed = TRUE))
+
+
+##
+## 12. Esforco: unidades IDF ativas e area vigiada
+##
+check("numero da unidade: BSH68-01 -> 1, DZH01-01 -> 1, IDF-22 -> 22, '22' -> 22, 09 -> 9",
+      identical(regional_unit_number(c("BSH68-01", "DZH01-01", "IDF-22", "22", "09", "sem digitos")), c(1L, 1L, 22L, 22L, 9L, NA)))
+
+t_week1 <- as.POSIXct("2026-03-02 10:00:00", tz = tz_test) # segunda
+trk_units_test <- data.table(
+  track_id = paste0("u", 1:6), timestamp = t_week1 + c(0, 60, 86400 * 8, 86400 * 8 + 60, 86400 * 9, 86400 * 9),
+  utm_x = 0, utm_y = 0, spec = "Golden-Eagle", idf = c(1L, 2L, 2L, 3L, 3L, NA)
+)
+wu_test <- regional_weekly_active_units(trk_units_test, tz_test)
+check("unidades ativas: semana 1 = {1,2}, semana 2 = {2,3} (NA ignorado)",
+      identical(wu_test[week_start == as.Date("2026-03-02"), sort(unit)], c(1L, 2L)) &&
+        identical(wu_test[week_start == as.Date("2026-03-09"), sort(unit)], c(2L, 3L)))
+
+crs_test <- 32641
+r_test <- 1000
+pts_test <- sf::st_sf(unit = c(1L, 2L, 3L, 4L),
+                      geometry = sf::st_sfc(sf::st_point(c(500000, 4000000)), sf::st_point(c(500000, 4000000)), # 2 = igual a 1
+                                            sf::st_point(c(500500, 4000000)), sf::st_point(c(520000, 4000000)), crs = crs_test))
+circle_km2 <- pi * (r_test / 1000)^2
+wu2_test <- data.table(week_start = as.Date(c("2026-03-02", "2026-03-02", "2026-03-09", "2026-03-09", "2026-03-16", "2026-03-16", "2026-03-23", "2026-03-23")),
+                       unit = c(1L, 2L, 1L, 4L, 1L, 3L, 1L, 99L))
+area_test <- regional_surveyed_area(wu2_test, pts_test, r_test)
+ar <- function(w) area_test[week_start == as.Date(w), area_km2]
+check("area vigiada: 2 unidades no mesmo ponto = 1 circulo", abs(ar("2026-03-02") / circle_km2 - 1) < 0.01)
+check("area vigiada: 2 unidades afastadas 20 km = 2 circulos", abs(ar("2026-03-09") / (2 * circle_km2) - 1) < 0.01)
+check("area vigiada: sobreposicao parcial (500 m) entre 1 e 2 circulos", ar("2026-03-16") > circle_km2 * 1.2 && ar("2026-03-16") < circle_km2 * 1.9)
+check("area vigiada: unidade sem coordenadas conta nas ativas mas nao na area",
+      area_test[week_start == as.Date("2026-03-23"), n_active_units] == 2L &&
+        area_test[week_start == as.Date("2026-03-23"), n_units_with_coords] == 1L &&
+        abs(ar("2026-03-23") / circle_km2 - 1) < 0.01)
+check("unidades sem coordenadas listadas", identical(regional_units_without_coords(wu2_test, pts_test)$unit, 99L))
+
+weekly_n_test <- data.table(farm = "BSH", spec = "Egyptian-Vulture", week_start = as.Date("2026-03-02") + 7 * 0:1,
+                            max_individuals = c(4L, 6L), n_days_monitored = 7L)
+eff_n_test <- data.table(farm = "BSH", week_start = as.Date("2026-03-02") + 7 * 0:1, n_active_units = c(2L, 3L),
+                         n_units_with_coords = c(2L, 3L), area_km2 = c(10, 20))
+norm_test <- regional_normalise_weekly(weekly_n_test, eff_n_test)
+check("indice por unidade ativa: 4/2 = 2 e 6/3 = 2", identical(norm_test$max_per_active_unit, c(2, 2)))
+check("densidade por 100 km2: 4/10*100 = 40 e 6/20*100 = 30", isTRUE(all.equal(norm_test$density_per_100km2, c(40, 30))))
+check("max_individuals continua inteiro", is.integer(norm_test$max_individuals))
+pk_n_test <- regional_norm_peak_summary(norm_test)
+check("resumo de picos normalizados", pk_n_test$peak_weekly_max == 6L && pk_n_test$peak_per_active_unit == 2 && pk_n_test$peak_density_per_100km2 == 40)
+es_test <- regional_effort_summary(eff_n_test)
+check("resumo de esforco: media de unidades ativas 2.5 e area 15 km2", es_test$mean_active_units == 2.5 && es_test$mean_surveyed_area_km2 == 15)
+
+# shapefiles reais do projeto
+shp_bsh <- regional_load_idf_units("inputs/Bash_IDF_coord.shp", "imaging_he", crs_test)
+shp_dgy <- regional_load_idf_units("inputs/IDF_DZH.shp", "Name", crs_test)
+shp_zrf <- regional_load_idf_units("inputs/identiflight.shp", "Name", crs_test)
+check("shapefile BSH: 43 unidades com numeros 1..43", nrow(shp_bsh) == 43L && identical(sort(shp_bsh$unit), 1:43))
+check("shapefile DGY: 4 instaladas + DZH-23 (duplicado so' 1x) = 5, em metros (reprojetado)", nrow(shp_dgy) == 5L && sf::st_crs(shp_dgy)$epsg == crs_test)
+check("shapefile ZRF: 74 unidades, numeros unicos", nrow(shp_zrf) == 74L && !anyDuplicated(shp_zrf$unit))
+wu_bsh_test <- data.table(week_start = as.Date("2026-03-02"), unit = 1:43)
+a_bsh <- regional_surveyed_area(wu_bsh_test, shp_bsh, 1000)$area_km2
+check("area BSH (43 unidades, 1 km): com sobreposicao < 43 circulos e > 1 circulo", a_bsh < 43 * circle_km2 && a_bsh > circle_km2)
+cat(sprintf("   (area vigiada BSH, 43 unidades x 1 km de raio: %.0f km2 vs %.0f km2 sem sobreposicao)\n", a_bsh, 43 * circle_km2))
+
+##
+## 13. Pulsos com limiar relativo ao parque
+##
+daily_rel_test <- rbindlist(list(
+  data.table(farm = "BSH", spec = "Egyptian-Vulture", day = as.Date("2026-03-01") + 0:29,
+             max_individuals = 0L, monitored = TRUE),
+  data.table(farm = "DGY", spec = "Egyptian-Vulture", day = as.Date("2026-03-01") + 0:29,
+             max_individuals = 0L, monitored = TRUE)
+))
+daily_rel_test[farm == "BSH" & day == as.Date("2026-03-05"), max_individuals := 12L] # pulso grande
+daily_rel_test[farm == "BSH" & day == as.Date("2026-03-20"), max_individuals := 2L]  # pulso pequeno (17% do pico)
+daily_rel_test[farm == "DGY" & day == as.Date("2026-03-05"), max_individuals := 4L]
+daily_rel_test[farm == "DGY" & day == as.Date("2026-03-20"), max_individuals := 1L]
+seas_rel_test <- data.table(season = "spring", season_year = 2026L, from = as.Date("2026-03-01"), to = as.Date("2026-03-30"))
+pul_abs_test <- regional_pulses(daily_rel_test, min_individuals = 1L, merge_gap_days = 3L)
+pul_rel_test <- regional_pulses(daily_rel_test, min_individuals = 1L, merge_gap_days = 3L, relative_share = 0.5, season_dates = seas_rel_test)
+check("pulsos absolutos (>= 1): BSH 2, DGY 2", pul_abs_test[farm == "BSH", .N] == 2L && pul_abs_test[farm == "DGY", .N] == 2L)
+check("pulsos relativos (>= 50% do pico da epoca): BSH 1 (so' o grande), DGY 1 (pico 4, o dia de 1 cai)",
+      pul_rel_test[farm == "BSH", .N] == 1L && pul_rel_test[farm == "BSH", peak] == 12L && pul_rel_test[farm == "DGY", .N] == 1L)
+check("pulsos: sem relative_share o comportamento antigo mantem-se", isTRUE(all.equal(pul_abs_test, regional_pulses(daily_rel_test, 1L, 3L, NULL, seas_rel_test), check.attributes = FALSE)))
+
+##
+## 14. Rarefacao
+##
+mk_rare <- function(id, unit, day, minute, x) data.table(track_id = id, timestamp = as.POSIXct(paste(day, "10:00:00"), tz = tz_test) + minute * 60,
+                                                          utm_x = x, utm_y = 0, spec = "Egyptian-Vulture", idf = unit)
+# semana de 2026-03-02: 6 individuos distintos (1000 m entre si), cada um visto por 1 unidade (1..6), no mesmo bin
+trk_rare_test <- rbindlist(lapply(1:6, function(u) mk_rare(paste0("r", u), u, "2026-03-03", 0, u * 1000)))
+trk_rare_all <- rbind(trk_rare_test, data.table(track_id = "fill", timestamp = as.POSIXct("2026-03-04 10:00:00", tz = tz_test),
+                                                utm_x = 0, utm_y = 0, spec = "Golden-Eagle", idf = 1L))
+wu_rare_test <- data.table(week_start = as.Date("2026-03-02"), unit = 1:6)
+mon_rare_test <- list(monitored = as.Date("2026-03-02") + 0:6, first_day = as.Date("2026-03-02"), last_day = as.Date("2026-03-08"))
+rare_full <- regional_rarefied_weekly(trk_rare_all, "Egyptian-Vulture", wu_rare_test, k = 6, n_draws = 3, bin_min = 2, merge_dist_m = 200,
+                                      tz = tz_test, monitored_info = mon_rare_test, min_monitored_days = 4L, seed = 1)
+check("rarefacao com k >= unidades ativas = todas as unidades (maximo 6)", rare_full$rarefied_median == 6 && rare_full$rarefied_p10 == 6)
+rare_k2 <- regional_rarefied_weekly(trk_rare_all, "Egyptian-Vulture", wu_rare_test, k = 2, n_draws = 10, bin_min = 2, merge_dist_m = 200,
+                                    tz = tz_test, monitored_info = mon_rare_test, min_monitored_days = 4L, seed = 1)
+check("rarefacao com k = 2: sempre 2 individuos (cada unidade ve 1)", rare_k2$rarefied_median == 2 && rare_k2$rarefied_p90 == 2)
+rare_k2b <- regional_rarefied_weekly(trk_rare_all, "Egyptian-Vulture", wu_rare_test, k = 2, n_draws = 10, bin_min = 2, merge_dist_m = 200,
+                                     tz = tz_test, monitored_info = mon_rare_test, min_monitored_days = 4L, seed = 1)
+check("rarefacao reprodutivel com a mesma seed", identical(rare_k2, rare_k2b))
+cache_rare_test <- file.path(tempdir(), "rare_cache_test.rds"); unlink(cache_rare_test)
+r_c1 <- regional_rarefied_weekly(trk_rare_all, "Egyptian-Vulture", wu_rare_test, 2, 4, 2, 200, tz_test, mon_rare_test, 4L, 1, cache_rare_test)
+n_msg_test <- 0L
+r_c2 <- withCallingHandlers(regional_rarefied_weekly(trk_rare_all, "Egyptian-Vulture", wu_rare_test, 2, 4, 2, 200, tz_test, mon_rare_test, 4L, 1, cache_rare_test),
+                            message = function(m) { if (grepl("cache", conditionMessage(m))) n_msg_test <<- n_msg_test + 1L; invokeRestart("muffleMessage") })
+check("rarefacao: 2a chamada com os mesmos parametros vem da cache", n_msg_test == 1L && isTRUE(all.equal(r_c1, r_c2)))
+
+##
+## 15. Plots de esforco e normalizacao
+##
+eff_plot_test <- rbindlist(lapply(c("ZRF", "BSH", "DGY"), function(f) data.table(farm = f, week_start = as.Date("2026-03-02") + 7 * 0:5,
+                          n_active_units = 5L, n_units_with_coords = 5L, area_km2 = 12)))
+wk_plot_test <- rbindlist(lapply(c("ZRF", "BSH", "DGY"), function(f) data.table(farm = f, spec = "Egyptian-Vulture",
+                          week_start = as.Date("2026-03-02") + 7 * 0:5, max_individuals = 1:6, n_days_monitored = 7L)))
+norm_plot_test <- regional_normalise_weekly(wk_plot_test, eff_plot_test)
+rare_plot_test <- rbindlist(lapply(c("ZRF", "BSH", "DGY"), function(f) { r <- data.table(farm = f, spec = "Egyptian-Vulture", week_start = as.Date("2026-03-02") + 7 * 0:5,
+                          rarefied_median = c(1, 2, 2, 3, 3, 4), rarefied_p10 = 1, rarefied_p90 = 5); r }))
+win_plot_test <- as.Date(c("2026-03-02", "2026-04-12"))
+check("plot de esforco", is_gg(plot_regional_effort(eff_plot_test, win_plot_test)))
+check("plot normalizado (3 paineis)", is_gg(plot_regional_normalised(norm_plot_test, "Egyptian-Vulture", win_plot_test)))
+check("plot rarefacao", is_gg(plot_regional_rarefied(rare_plot_test, wk_plot_test, "Egyptian-Vulture", 4L, win_plot_test)))
+invisible(lapply(list(plot_regional_effort(eff_plot_test, win_plot_test), plot_regional_normalised(norm_plot_test, "Egyptian-Vulture", win_plot_test),
+                      plot_regional_rarefied(rare_plot_test, wk_plot_test, "Egyptian-Vulture", 4L, win_plot_test)), ggplot2::ggplot_build))
+cat("ggplot_build() dos plots de esforco sem erro -- OK\n")

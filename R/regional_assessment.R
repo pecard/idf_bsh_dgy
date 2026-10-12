@@ -58,7 +58,8 @@ regional_farm_colours <- c(ZRF = "#1b9e77", BSH = "#d95f02", DGY = "#7570b3")
 ## temporariamente em baixo. Se o padrao de ficheiros mudou, a cache e'
 ## invalidada e relê tudo; force_reread = TRUE tambem relê tudo.
 ## A cache guarda so' as colunas necessarias (track_id, timestamp, utm_x,
-## utm_y, spec) + source_file.
+## utm_y, spec, idf) + source_file; regional_cache_schema identifica essa
+## estrutura (mudar as colunas guardadas invalida a cache e relê tudo).
 
 .regional_fst_io <- list(
   read  = function(path) fst::read_fst(path, as.data.table = TRUE),
@@ -70,7 +71,7 @@ regional_read_tracks_cached <- function(files, tz, cache_dir, pattern_sig, read_
 
   data_file     <- file.path(cache_dir, "tracks_by_file.fst")
   manifest_file <- file.path(cache_dir, "tracks_manifest.rds")
-  cols_keep <- c("track_id", "timestamp", "utm_x", "utm_y", "spec")
+  cols_keep <- c("track_id", "timestamp", "utm_x", "utm_y", "spec", "idf")
 
   info <- file.info(files)
   now <- data.table::data.table(file = basename(files), size = as.numeric(info$size),
@@ -130,6 +131,8 @@ regional_read_tracks_cached <- function(files, tz, cache_dir, pattern_sig, read_
 }
 
 
+regional_cache_schema <- "v2-idf"
+
 regional_filter_window <- function(track_dt, ini, end) {
   track_dt[timestamp >= ini & timestamp <= end]
 }
@@ -168,7 +171,7 @@ regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_p
 
   res <- regional_read_tracks_cached(
     files, tz, file.path(cache_dir, farm),
-    pattern_sig = paste(trackreport_pattern, if (is.null(farm_pattern)) "" else farm_pattern, sep = "|"),
+    pattern_sig = paste(trackreport_pattern, if (is.null(farm_pattern)) "" else farm_pattern, regional_cache_schema, sep = "|"),
     read_file_fn = read_file_fn, force_reread = force_reread, cache_io = cache_io
   )
   tracks <- res$tracks
@@ -178,7 +181,7 @@ regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_p
   }
 
   range_all <- range(tracks$timestamp)
-  tracks <- regional_filter_window(tracks, ini, end)[, .(track_id, timestamp, utm_x, utm_y, spec)]
+  tracks <- regional_filter_window(tracks, ini, end)[, .(track_id, timestamp, utm_x, utm_y, spec, idf)]
 
   if (nrow(tracks) == 0L) {
     stop(sprintf(
@@ -468,13 +471,38 @@ regional_ccf_summary <- function(ccf_dt) {
 ## 8. Pulsos (episodios de presenca) e seguimento no outro parque ----
 ##
 ## Pulso = dias consecutivos (ou separados por <= merge_gap_days) com
-## max_individuals >= min_individuals. Para cada pulso do lider na epoca,
+## max_individuals >= min_individuals (e, se relative_share, >= essa fracao do
+## pico do parque na epoca). Para cada pulso do lider na epoca,
 ## procura o 1o pulso do seguidor que comeca nos window_days SEGUINTES
 ## (forward) e, como controlo, o mais proximo nos window_days ANTERIORES
 ## (backward) -- se o lider antecipa, forward deve ser bem mais comum.
 
-regional_pulses <- function(daily_dt, min_individuals = 1L, merge_gap_days = 3L) {
-  d <- daily_dt[!is.na(max_individuals) & max_individuals >= min_individuals]
+regional_pulses <- function(daily_dt, min_individuals = 1L, merge_gap_days = 3L,
+                            relative_share = NULL, season_dates = NULL) {
+
+  d <- data.table::copy(daily_dt[!is.na(max_individuals)])
+  d[, thr := as.numeric(min_individuals)]
+
+  # Limiar RELATIVO ao parque (comparavel entre parques com 49, 22 ou 4 unidades):
+  # um dia e' de pulso se o maximo diario >= relative_share x pico da epoca
+  # (farm x especie x epoca/ano); dias fora das epocas usam o pico de toda a
+  # janela. Nunca abaixo de min_individuals.
+  if (!is.null(relative_share)) {
+    d[, peak_ref := max(max_individuals), by = .(farm, spec)]
+    if (!is.null(season_dates)) {
+      for (i in seq_len(nrow(season_dates))) {
+        from_i <- season_dates$from[i]; to_i <- season_dates$to[i]
+        in_i <- d$day >= from_i & d$day <= to_i
+        if (any(in_i)) {
+          pk <- d[in_i, .(pk = max(max_individuals)), by = .(farm, spec)]
+          d[in_i, peak_ref := pk$pk[match(paste(farm, spec), paste(pk$farm, pk$spec))]]
+        }
+      }
+    }
+    d[, thr := pmax(as.numeric(min_individuals), relative_share * peak_ref)]
+  }
+
+  d <- d[max_individuals >= thr]
   if (nrow(d) == 0L) {
     return(data.table::data.table(farm = character(), spec = character(), start = as.Date(character()),
                                   end = as.Date(character()), peak = integer()))
@@ -544,7 +572,7 @@ plot_regional_weekly_timeline <- function(weekly_dt, species, window = NULL) {
   na_weeks <- d[is.na(max_individuals)]
 
   cap <- "Grey bands: weeks with no data or too few monitored days (no data, not zero)."
-  if (!is.null(window)) cap <- sprintf("Analysis window: %s to %s. %s", format(window[1]), format(window[2]), cap)
+  if (!is.null(window)) cap <- sprintf("Analysis window: %s to %s.\n%s", format(window[1]), format(window[2]), cap)
 
   p <- ggplot2::ggplot(d, ggplot2::aes(x = week_mid, y = max_individuals, fill = farm)) +
     ggplot2::geom_rect(
@@ -827,4 +855,266 @@ regional_fig_height <- function(p, per_panel = 2.3, base = 1.3, max_h = 8.5) {
   if (is.null(p)) return(1)
   n <- length(unique(p$data$panel))
   min(max_h, base + per_panel * max(n, 1L))
+}
+
+
+
+## 11. Esforco de monitorizacao: unidades IDF ativas e area vigiada ----
+##
+## Os tracks so' dizem que unidades IDF registaram aves (track$idf = numero da
+## unidade). Uma unidade conta como ATIVA numa semana se registou pelo menos 1
+## track nessa semana (qualquer especie). O numero de unidades instaladas
+## (ex: 49 / 22 / 4) nao e' usado -- as ativas variam (avarias, unidades novas).
+
+## Numero da unidade: ultimo grupo de digitos ("BSH68-01" -> 1, "DZH01-01" -> 1,
+## "IDF-22" -> 22, "22" -> 22); NA se nao houver digitos
+regional_unit_number <- function(x) {
+  suppressWarnings(as.integer(sub(".*?([0-9]+)$", "\\1", as.character(x))))
+}
+
+## Pares (semana, unidade) com pelo menos 1 track
+regional_weekly_active_units <- function(track_dt, tz) {
+  d <- track_dt[!is.na(idf), .(day = as.Date(timestamp, tz = tz), unit = regional_unit_number(idf))]
+  d <- d[!is.na(unit)]
+  d[, week_start := lubridate::floor_date(day, "week", week_start = 1)]
+  unique(d[, .(week_start, unit)])
+}
+
+## Unidades IDF de um parque a partir do shapefile (pontos, em metros apos
+## reprojetar). Codigos sem numero (ou repetidos, ex: 2 registos "DZH-23" de
+## cobertura planeada) ficam so' com a 1a ocorrencia.
+regional_load_idf_units <- function(shapefile, id_col, crs) {
+  x <- sf::st_transform(sf::read_sf(shapefile), crs)
+  out <- sf::st_sf(unit = regional_unit_number(x[[id_col]]), geometry = sf::st_geometry(x))
+  out <- out[!is.na(out$unit) & !duplicated(out$unit), ]
+  out
+}
+
+## Area vigiada por semana = uniao dos circulos de raio radius_m das unidades
+## ativas (com coordenadas) nessa semana, em km2. Semanas com o mesmo conjunto
+## de unidades so' calculam a uniao uma vez.
+## Devolve: week_start, n_active_units (todas as ativas), n_units_with_coords,
+## area_km2 (NA se nenhuma ativa tem coordenadas).
+regional_surveyed_area <- function(weekly_units, idf_units_sf, radius_m) {
+  if (nrow(weekly_units) == 0L) {
+    return(data.table::data.table(week_start = as.Date(character()), n_active_units = integer(),
+                                  n_units_with_coords = integer(), area_km2 = numeric()))
+  }
+  buf <- sf::st_buffer(sf::st_geometry(idf_units_sf), radius_m)
+  unit_ids <- idf_units_sf$unit
+
+  sets <- weekly_units[, .(unit_set = list(sort(unit))), by = week_start]
+  sets[, key := vapply(unit_set, paste, "", collapse = ",")]
+  keys <- unique(sets$key)
+  area_by_key <- vapply(keys, function(k) {
+    u <- sets$unit_set[[match(k, sets$key)]]
+    idx <- which(unit_ids %in% u)
+    if (length(idx) == 0L) return(NA_real_)
+    as.numeric(sum(sf::st_area(sf::st_union(buf[idx])))) / 1e6
+  }, numeric(1))
+
+  sets[, `:=`(
+    n_active_units = lengths(unit_set),
+    n_units_with_coords = vapply(unit_set, function(u) sum(u %in% unit_ids), integer(1)),
+    area_km2 = unname(area_by_key[key])
+  )]
+  data.table::setorder(sets, week_start)
+  sets[, .(week_start, n_active_units, n_units_with_coords, area_km2)]
+}
+
+## Unidades ativas sem coordenadas no shapefile (nao entram na area vigiada)
+regional_units_without_coords <- function(weekly_units, idf_units_sf) {
+  miss <- weekly_units[!unit %in% idf_units_sf$unit, .(weeks_active = .N), by = unit]
+  data.table::setorder(miss, unit)
+  miss[]
+}
+
+
+## 12. Indices normalizados pelo esforco ----
+##
+## weekly_dt e effort_dt precisam de coluna farm. Acrescenta, ao maximo
+## semanal: por unidade ativa (max / n_active_units) e densidade (individuos
+## por 100 km2 de area vigiada = max / area_km2 * 100). NA sem esforco.
+
+regional_normalise_weekly <- function(weekly_dt, effort_dt) {
+  out <- merge(weekly_dt, effort_dt[, .(farm, week_start, n_active_units, n_units_with_coords, area_km2)],
+               by = c("farm", "week_start"), all.x = TRUE, sort = FALSE)
+  out[, max_per_active_unit := data.table::fifelse(!is.na(n_active_units) & n_active_units > 0L,
+                                                    max_individuals / n_active_units, NA_real_)]
+  out[, density_per_100km2 := data.table::fifelse(!is.na(area_km2) & area_km2 > 0,
+                                                   max_individuals / area_km2 * 100, NA_real_)]
+  data.table::setorder(out, farm, spec, week_start)
+  out[]
+}
+
+## Resumo de esforco por parque (semanas com dados)
+regional_effort_summary <- function(effort_dt) {
+  effort_dt[, .(
+    weeks_with_tracks = .N,
+    mean_active_units = round(mean(n_active_units), 1),
+    min_active_units = min(n_active_units), max_active_units = max(n_active_units),
+    mean_surveyed_area_km2 = round(mean(area_km2, na.rm = TRUE), 1)
+  ), by = farm][, farm := factor(farm, levels = regional_farm_levels)][order(farm)][, farm := as.character(farm)][]
+}
+
+## Picos brutos e normalizados, por especie e parque
+regional_norm_peak_summary <- function(norm_dt) {
+  d <- norm_dt[!is.na(max_individuals)]
+  out <- d[, .(
+    peak_weekly_max = max(max_individuals),
+    peak_per_active_unit = round(max(max_per_active_unit, na.rm = TRUE), 3),
+    peak_density_per_100km2 = round(max(density_per_100km2, na.rm = TRUE), 3),
+    mean_active_units = round(mean(n_active_units, na.rm = TRUE), 1),
+    mean_surveyed_area_km2 = round(mean(area_km2, na.rm = TRUE), 1)
+  ), by = .(spec, farm)]
+  out[, farm := factor(farm, levels = regional_farm_levels)]
+  data.table::setorder(out, spec, farm)
+  out[, farm := as.character(farm)]
+  out[]
+}
+
+
+## 13. Rarefacao: o que veria o parque com so' k unidades ativas? ----
+##
+## Para cada semana sorteia k das unidades ATIVAS nessa semana (todas, se
+## houver k ou menos) e recalcula os bins de 2 min so' com os tracks dessas
+## unidades -> maximo semanal. Repete n_draws vezes (seed fixa) e resume a
+## mediana e o intervalo p10-p90 por semana. Controla o NUMERO de unidades
+## (nao a geometria). Pode demorar: cada sorteio recalcula os bins num
+## subconjunto dos tracks. cache_file (rds) guarda o resultado com assinatura.
+
+regional_rarefied_weekly <- function(track_dt, species, weekly_units, k, n_draws, bin_min, merge_dist_m,
+                                     tz, monitored_info, min_monitored_days, seed = 1, cache_file = NULL) {
+
+  sp_tracks <- track_dt[spec %in% species & !is.na(idf),
+                        .(track_id, timestamp, utm_x, utm_y, spec, unit = regional_unit_number(idf))]
+  sp_tracks <- sp_tracks[!is.na(unit)]
+  sp_tracks[, week_start := lubridate::floor_date(as.Date(timestamp, tz = tz), "week", week_start = 1)]
+
+  sig <- list(k = k, n_draws = n_draws, seed = seed, species = sort(species), bin_min = bin_min,
+              merge_dist_m = merge_dist_m, n_rows = nrow(sp_tracks),
+              max_ts = if (nrow(sp_tracks) > 0L) as.numeric(max(sp_tracks$timestamp)) else NA_real_,
+              first_day = as.numeric(monitored_info$first_day), last_day = as.numeric(monitored_info$last_day))
+  if (!is.null(cache_file) && file.exists(cache_file)) {
+    cached <- readRDS(cache_file)
+    if (identical(cached$sig, sig)) {
+      message(sprintf("regional: rarefacao carregada da cache '%s'.", cache_file))
+      return(cached$result)
+    }
+  }
+
+  set.seed(seed)
+  active <- weekly_units[, .(units = list(unit)), by = week_start]
+  draws <- vector("list", n_draws)
+  for (d in seq_len(n_draws)) {
+    sel <- active[, .(unit = {
+      u <- units[[1]]
+      if (length(u) > k) sample(u, k) else u
+    }), by = week_start]
+    sub <- sp_tracks[sel, on = .(week_start, unit), nomatch = 0L]
+    bins <- count_min_individuals_per_bin(sub, species = species, bin_min = bin_min, merge_dist_m = merge_dist_m)
+    daily <- regional_daily_max(bins, species, monitored_info, tz)
+    w <- regional_weekly_max(daily, min_monitored_days = min_monitored_days)
+    w[, draw := d]
+    draws[[d]] <- w
+    if (d %% 5L == 0L || d == n_draws) message(sprintf("regional: rarefacao k = %d, sorteio %d de %d.", k, d, n_draws))
+  }
+
+  all_w <- data.table::rbindlist(draws)
+  result <- all_w[, .(
+    rarefied_median = if (any(!is.na(max_individuals))) stats::median(as.numeric(max_individuals), na.rm = TRUE) else NA_real_,
+    rarefied_p10 = if (any(!is.na(max_individuals))) as.numeric(stats::quantile(max_individuals, 0.1, na.rm = TRUE)) else NA_real_,
+    rarefied_p90 = if (any(!is.na(max_individuals))) as.numeric(stats::quantile(max_individuals, 0.9, na.rm = TRUE)) else NA_real_
+  ), by = .(spec, week_start)]
+  data.table::setorder(result, spec, week_start)
+
+  if (!is.null(cache_file)) {
+    dir.create(dirname(cache_file), showWarnings = FALSE, recursive = TRUE)
+    saveRDS(list(sig = sig, result = result), cache_file)
+  }
+  result[]
+}
+
+
+## 14. Plots de esforco e normalizacao ----
+
+## Unidades ativas e area vigiada por semana, 3 parques
+plot_regional_effort <- function(effort_dt, window = NULL) {
+  if (nrow(effort_dt) == 0L) return(NULL)
+  e <- data.table::copy(effort_dt)[, .(farm, week_start, n_active_units = as.numeric(n_active_units), area_km2)]
+  d <- data.table::melt(
+    e, id.vars = c("farm", "week_start"),
+    measure.vars = c("n_active_units", "area_km2"), variable.name = "metric", value.name = "value"
+  )
+  d[, metric := factor(metric, levels = c("n_active_units", "area_km2"),
+                       labels = c("Active IDF units", "Surveyed area (km2)"))]
+  d[, farm := .regional_farm_factor(farm)]
+  d[, week_mid := week_start + 3]
+
+  p <- ggplot2::ggplot(d, ggplot2::aes(x = week_mid, y = value, colour = farm)) +
+    ggplot2::geom_line(linewidth = 0.7, na.rm = TRUE) +
+    ggplot2::facet_grid(metric ~ ., scales = "free_y") +
+    ggplot2::scale_colour_manual(values = regional_farm_colours, name = "Farm") +
+    ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+    ggplot2::labs(x = "Week (Monday to Sunday)", y = NULL, title = "Monitoring effort by farm",
+                  caption = "Active units: at least 1 track in the week. Surveyed area: union of the detection radii of the active units.") +
+    .regional_theme() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7))
+  if (!is.null(window)) p <- p + ggplot2::coord_cartesian(xlim = window, expand = FALSE)
+  p
+}
+
+## Maximo semanal bruto, por unidade ativa e por 100 km2, 3 parques sobrepostos
+plot_regional_normalised <- function(norm_dt, species, window = NULL) {
+  d <- norm_dt[spec == species]
+  if (nrow(d) == 0L) return(NULL)
+  d <- data.table::melt(
+    d[, .(farm, week_start, max_individuals = as.numeric(max_individuals), max_per_active_unit, density_per_100km2)],
+    id.vars = c("farm", "week_start"), variable.name = "metric", value.name = "value"
+  )
+  d[, metric := factor(metric, levels = c("max_individuals", "max_per_active_unit", "density_per_100km2"),
+                       labels = c("Weekly maximum (raw)", "Per active IDF unit", "Per 100 km2 surveyed"))]
+  d[, farm := .regional_farm_factor(farm)]
+  d[, week_mid := week_start + 3]
+
+  p <- ggplot2::ggplot(d, ggplot2::aes(x = week_mid, y = value, colour = farm)) +
+    ggplot2::geom_line(linewidth = 0.6, na.rm = TRUE) +
+    ggplot2::geom_point(size = 0.8, na.rm = TRUE) +
+    ggplot2::facet_grid(metric ~ ., scales = "free_y") +
+    ggplot2::scale_colour_manual(values = regional_farm_colours, name = "Farm") +
+    ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+    ggplot2::labs(x = "Week (Monday to Sunday)", y = NULL,
+                  title = sprintf("%s -- effort-normalised weekly maximum", species)) +
+    .regional_theme() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7))
+  if (!is.null(window)) p <- p + ggplot2::coord_cartesian(xlim = window, expand = FALSE)
+  p
+}
+
+## Rarefacao: maximo semanal bruto vs mediana (e banda p10-p90) com k unidades
+plot_regional_rarefied <- function(rare_dt, weekly_dt, species, k, window = NULL) {
+  r <- rare_dt[spec == species]
+  if (nrow(r) == 0L) return(NULL)
+  w <- weekly_dt[spec == species, .(farm, week_start, raw = as.numeric(max_individuals))]
+  r <- merge(r, w, by = c("farm", "week_start"), all.x = TRUE)
+  r[, farm := .regional_farm_factor(farm)]
+  r[, week_mid := week_start + 3]
+
+  p <- ggplot2::ggplot(r, ggplot2::aes(x = week_mid)) +
+    ggplot2::geom_ribbon(ggplot2::aes(ymin = rarefied_p10, ymax = rarefied_p90, fill = farm), alpha = 0.3, na.rm = TRUE) +
+    ggplot2::geom_line(ggplot2::aes(y = rarefied_median, colour = farm), linewidth = 0.7, na.rm = TRUE) +
+    ggplot2::geom_line(ggplot2::aes(y = raw), colour = "grey35", linewidth = 0.4, linetype = "dashed", na.rm = TRUE) +
+    ggplot2::facet_grid(farm ~ ., scales = "free_y") +
+    ggplot2::scale_colour_manual(values = regional_farm_colours, guide = "none") +
+    ggplot2::scale_fill_manual(values = regional_farm_colours, guide = "none") +
+    ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+    ggplot2::labs(
+      x = "Week (Monday to Sunday)", y = "Weekly maximum of minimum individuals",
+      title = sprintf("%s -- weekly maximum with %d active units per week", species, k),
+      caption = "Coloured line and band: median and 10-90% range over random draws of the active units.\nDashed grey: all active units."
+    ) +
+    .regional_theme() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7))
+  if (!is.null(window)) p <- p + ggplot2::coord_cartesian(xlim = window, expand = FALSE)
+  p
 }

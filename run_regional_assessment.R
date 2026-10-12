@@ -121,6 +121,14 @@ min_overlap_days <- 20         # dias minimos com dados nos 2 parques para calcu
 pulse_min_individuals <- 1     # maximo diario minimo para contar como dia de pulso
 pulse_merge_gap_days <- 3      # dias de intervalo ainda considerados o mesmo pulso
 pulse_window_days <- 10        # janela para procurar o pulso no parque seguidor
+pulse_relative_share <- 0.25   # dia de pulso = max diario >= esta fracao do pico do parque na epoca (comparavel entre parques com 49, 22 ou 4 unidades); NULL = so' o limiar absoluto
+
+## Rarefacao: o que veria cada parque com so' k unidades ativas por semana?
+## (opcional -- demora: cada sorteio recalcula os bins de 2 min num subconjunto dos tracks)
+run_rarefaction <- FALSE       # TRUE para calcular e acrescentar ao relatorio
+rarefaction_k <- 4             # unidades ativas por semana (4 = o parque com menos unidades, DGY)
+rarefaction_draws <- 30        # sorteios
+rarefaction_seed <- 1          # semente (resultado reprodutivel)
 
 run_date <- format(Sys.time(), "%Y%m%d")
 regional_tag <- "REGIONAL"
@@ -171,10 +179,37 @@ for (i in seq_len(nrow(regional_farms))) {
   regional_check_window(daily, ini_date, end_date, sprintf("serie diaria de %s", farm))
   daily[, farm := farm]
 
+  ## Esforco: unidades IDF ativas por semana (>= 1 track, qualquer especie) e area
+  ## vigiada (uniao dos raios de deteccao das unidades ativas)
+  idf_units_sf <- regional_load_idf_units(
+    file.path(folder_input, regional_farms$idf_shapefile[i]), regional_farms$idf_id_col[i], crs_projection_plannar
+  )
+  weekly_units <- regional_weekly_active_units(fd$tracks, fd$tz)
+  effort <- regional_surveyed_area(weekly_units, idf_units_sf, idf_detection_radius_m)
+  effort[, farm := farm]
+  no_coords <- regional_units_without_coords(weekly_units, idf_units_sf)
+  no_coords[, farm := farm]
+  message(sprintf(
+    "%s: %d unidades no shapefile, %d unidades distintas ativas nos tracks (%d sem coordenadas), media de %.1f unidades ativas por semana.",
+    farm, nrow(idf_units_sf), length(unique(weekly_units$unit)), nrow(no_coords), mean(effort$n_active_units)
+  ))
+
+  rare <- NULL
+  if (isTRUE(run_rarefaction)) {
+    rare <- regional_rarefied_weekly(
+      fd$tracks, species_regional, weekly_units, k = rarefaction_k, n_draws = rarefaction_draws,
+      bin_min = bin_min, merge_dist_m = merge_dist_m, tz = fd$tz, monitored_info = mon,
+      min_monitored_days = min_monitored_days, seed = rarefaction_seed,
+      cache_file = file.path(regional_cache_dir, farm, "rarefaction.rds")
+    )
+    rare[, farm := farm]
+  }
+
   farm_data[[farm]] <- list(
     daily = daily, monitored = mon, tz = fd$tz,
     first_track_day = data_first_day, last_track_day = data_last_day,
-    n_tracks_rows = nrow(fd$tracks)
+    n_tracks_rows = nrow(fd$tracks),
+    effort = effort, no_coords = no_coords, rarefied = rare
   )
 
   rm(fd, bins); invisible(gc())
@@ -189,6 +224,18 @@ weekly_dt <- rbindlist(lapply(names(farm_data), function(f) {
   w
 }))
 setcolorder(weekly_dt, c("farm", "spec", "week_start", "iso_year", "iso_week", "n_days_monitored", "max_individuals"))
+
+## Esforco e indices normalizados
+effort_dt <- rbindlist(lapply(farm_data, `[[`, "effort"))
+setcolorder(effort_dt, c("farm", "week_start", "n_active_units", "n_units_with_coords", "area_km2"))
+units_no_coords_dt <- rbindlist(lapply(farm_data, `[[`, "no_coords"))
+if (nrow(units_no_coords_dt) > 0L) setcolorder(units_no_coords_dt, c("farm", "unit", "weeks_active"))
+rarefied_dt <- if (isTRUE(run_rarefaction)) rbindlist(lapply(farm_data, `[[`, "rarefied")) else NULL
+weekly_norm_dt <- regional_normalise_weekly(weekly_dt, effort_dt)
+effort_summary_dt <- regional_effort_summary(effort_dt)
+norm_peaks_dt <- regional_norm_peak_summary(weekly_norm_dt)
+cat("\n--- Monitoring effort by farm ---\n"); print(effort_summary_dt)
+cat("\n--- Peaks, raw and normalised by effort ---\n"); print(norm_peaks_dt)
 
 regional_check_window(daily_dt, ini_date, end_date, "daily_dt")
 message(sprintf("Verificacao: todas as series diarias (%d linhas) dentro da janela %s a %s.", nrow(daily_dt), format(ini_date), format(end_date)))
@@ -225,7 +272,8 @@ ccf_dt <- regional_ccf(
 )
 ccf_summary_dt <- regional_ccf_summary(ccf_dt)
 
-pulses_dt <- regional_pulses(daily_dt, min_individuals = pulse_min_individuals, merge_gap_days = pulse_merge_gap_days)
+pulses_dt <- regional_pulses(daily_dt, min_individuals = pulse_min_individuals, merge_gap_days = pulse_merge_gap_days,
+                             relative_share = pulse_relative_share, season_dates = season_dates)
 pulse_match_dt <- regional_match_pulses(pulses_dt, regional_pairs, season_dates, window_days = pulse_window_days)
 pulse_summary_dt <- regional_pulse_summary(pulse_match_dt)
 
@@ -244,10 +292,13 @@ save_plot <- function(p, base, width = 10, height = 7) {
 }
 
 n_panels <- nrow(season_dates)
+save_plot(plot_regional_effort(effort_dt, window_dates), "monitoring_effort", height = 6)
 for (sp in species_regional) {
   tag <- gsub("[^A-Za-z]", "", sp)
   save_plot(plot_regional_weekly_timeline(weekly_dt, sp, window_dates), paste0("weekly_max_timeline_", tag), height = 8)
   save_plot(plot_regional_annual_overlay(weekly_dt, sp), paste0("annual_pattern_", tag), height = 6)
+  save_plot(plot_regional_normalised(weekly_norm_dt, sp, window_dates), paste0("weekly_max_normalised_", tag), height = 8)
+  if (isTRUE(run_rarefaction)) save_plot(plot_regional_rarefied(rarefied_dt, weekly_dt, sp, rarefaction_k, window_dates), paste0("weekly_max_rarefied_", tag), height = 8)
   save_plot(plot_regional_annual_overlay(weekly_dt, sp, normalise = TRUE), paste0("annual_pattern_relative_", tag), height = 6)
   save_plot(plot_regional_season_series(daily_dt, season_dates, sp, smooth_days), paste0("seasonal_series_", tag), height = 3 * max(n_panels, 1))
   save_plot(plot_regional_cumulative(daily_dt, season_dates, sp, onset_share, median_share, end_share), paste0("cumulative_passage_", tag), height = 3 * max(n_panels, 1))
@@ -266,7 +317,9 @@ parameters_dt <- data.table(
                 "Min monitored days per week", "Seasons", "Leader -> follower pairs",
                 "Passage shares (onset / median / end)", "Min season total", "Min season coverage",
                 "Max lag (days)", "Smoothing (days)", "Min overlap (days)",
-                "Pulse min individuals", "Pulse merge gap (days)", "Pulse follow-up window (days)", "Run date"),
+                "Pulse min individuals", "Pulse merge gap (days)", "Pulse follow-up window (days)",
+                "Pulse relative threshold (share of the season peak)", "IDF detection radius (m)",
+                "Rarefaction (active units per week / draws)", "Run date"),
   Value = c(
     format(ini, "%Y-%m-%d %H:%M:%S"), format(end, "%Y-%m-%d %H:%M:%S"),
     paste(sprintf("%s: %s", regional_farms$farm, regional_farms$trackreport_pattern), collapse = "; "),
@@ -274,14 +327,19 @@ parameters_dt <- data.table(
     paste(sprintf("%s %s to %s", names(seasons), vapply(seasons, `[`, "", 1), vapply(seasons, `[`, "", 2)), collapse = "; "),
     paste(sprintf("%s: %s -> %s", regional_pairs$season, regional_pairs$leader, regional_pairs$follower), collapse = "; "),
     paste(onset_share, median_share, end_share, sep = " / "), min_season_total, min_season_coverage,
-    max_lag_days, smooth_days, min_overlap_days, pulse_min_individuals, pulse_merge_gap_days, pulse_window_days, run_date
+    max_lag_days, smooth_days, min_overlap_days, pulse_min_individuals, pulse_merge_gap_days, pulse_window_days,
+    if (is.null(pulse_relative_share)) "none" else pulse_relative_share, idf_detection_radius_m,
+    if (isTRUE(run_rarefaction)) sprintf("%d / %d", rarefaction_k, rarefaction_draws) else "not run", run_date
   )
 )
 
 write_xlsx_local(
   list(
     Parameters = parameters_dt, Data_coverage = data_coverage_dt,
-    Weekly_max = weekly_dt, Daily_max = daily_dt,
+    Weekly_max = weekly_dt, Weekly_max_normalised = weekly_norm_dt, Daily_max = daily_dt,
+    Effort_weekly = effort_dt, Effort_summary = effort_summary_dt, Normalised_peaks = norm_peaks_dt,
+    Units_without_coordinates = if (nrow(units_no_coords_dt) > 0L) units_no_coords_dt else data.table(note = "none"),
+    Rarefied_weekly = if (!is.null(rarefied_dt)) rarefied_dt else data.table(note = "rarefaction not run"),
     Passage_timing = timing_dt, Timing_difference = lead_dt,
     Lagged_correlation = ccf_dt, Lagged_correlation_best = ccf_summary_dt,
     Pulses = pulses_dt, Pulse_followup = pulse_match_dt, Pulse_followup_summary = pulse_summary_dt
@@ -332,6 +390,17 @@ if (isTRUE(generate_report)) {
     })), season_keys)
   )
 
+  report_plots$effort <- fig(plot_regional_effort(effort_dt, window_dates), 5.5)
+  report_plots$normalised <- by_species(function(sp) fig(plot_regional_normalised(weekly_norm_dt, sp, window_dates), 6.5))
+  report_plots$rarefied <- if (isTRUE(run_rarefaction)) {
+    by_species(function(sp) fig(plot_regional_rarefied(rarefied_dt, weekly_dt, sp, rarefaction_k, window_dates), 6))
+  } else NULL
+
+  units_no_coords_text <- if (nrow(units_no_coords_dt) == 0L) "none" else paste(vapply(unique(units_no_coords_dt$farm), function(f) {
+    u <- units_no_coords_dt$unit[units_no_coords_dt$farm == f]
+    sprintf("%s, %d unit(s) (%s)", f, length(u), paste(u, collapse = ", "))
+  }, ""), collapse = "; ")
+
   report_tables <- list(
     timing = stats::setNames(lapply(season_keys, function(k) regional_format_timing_table(lead_dt, regional_pairs, season_dates, species_regional, k)), season_keys),
     ccf    = stats::setNames(lapply(season_keys, function(k) regional_format_ccf_table(ccf_summary_dt, regional_pairs, season_dates, species_regional, k)), season_keys),
@@ -352,7 +421,11 @@ if (isTRUE(generate_report)) {
     min_season_total = min_season_total, min_season_coverage = min_season_coverage,
     max_lag_days = max_lag_days, smooth_days = smooth_days, min_overlap_days = min_overlap_days,
     pulse_min_individuals = pulse_min_individuals, pulse_merge_gap_days = pulse_merge_gap_days,
-    pulse_window_days = pulse_window_days,
+    pulse_window_days = pulse_window_days, pulse_relative_share = pulse_relative_share,
+    idf_detection_radius_m = idf_detection_radius_m, run_rarefaction = run_rarefaction,
+    rarefaction_k = rarefaction_k, rarefaction_draws = rarefaction_draws,
+    effort_summary = as.data.frame(effort_summary_dt), norm_peaks = as.data.frame(norm_peaks_dt),
+    units_no_coords_text = units_no_coords_text,
     data_coverage = as.data.frame(data_coverage_dt),
     weekly_peak = as.data.frame(regional_weekly_peak_summary(weekly_dt)),
     plots = report_plots, tables = report_tables,
