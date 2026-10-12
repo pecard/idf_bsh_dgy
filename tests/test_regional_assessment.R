@@ -372,3 +372,27 @@ check("grafico relativo: nao altera os dados de origem (continuam inteiros)", is
 check("grafico relativo sem avisos", length(withCallingHandlers(
   { plot_regional_annual_overlay(weekly_rel_test, "Egyptian-Vulture", normalise = TRUE); list() },
   warning = function(w) stop("aviso: ", conditionMessage(w)))) == 0L)
+
+
+##
+## 11. Tudo circunscrito a' janela ini/end
+##
+win_dates_test <- as.Date(c("2026-02-23", "2026-03-22")) # 4 semanas inteiras (segunda a domingo)
+mon_win_test <- mon_test; mon_win_test$first_day <- win_dates_test[1]; mon_win_test$last_day <- win_dates_test[2]
+daily_win_test <- regional_daily_max(bins_test, "Egyptian-Vulture", mon_win_test, tz_test)
+check("serie diaria cobre exatamente a janela (28 dias)", nrow(daily_win_test) == 28L &&
+        min(daily_win_test$day) == win_dates_test[1] && max(daily_win_test$day) == win_dates_test[2])
+check("dias da janela sem tracks (antes dos dados) ficam NA, nao 0",
+      all(is.na(daily_win_test[day < as.Date("2026-03-02"), max_individuals])))
+check("tracks fora da janela nao entram (dados de 2026-03-02 a 2026-03-11 -> dia 2026-03-11 dentro)",
+      daily_win_test[day == as.Date("2026-03-03"), max_individuals] == 2L)
+check("regional_check_window aceita dados dentro da janela", isTRUE(regional_check_window(daily_win_test, win_dates_test[1], win_dates_test[2])))
+check("regional_check_window para se houver dias fora da janela",
+      inherits(try(regional_check_window(daily_win_test, win_dates_test[1] + 10, win_dates_test[2]), silent = TRUE), "try-error"))
+
+weekly_win_test <- regional_weekly_max(daily_win_test, min_monitored_days = 4L)
+weekly_win_test[, farm := "BSH"]
+p_win_test <- plot_regional_weekly_timeline(weekly_win_test, "Egyptian-Vulture", win_dates_test)
+xr_test <- ggplot2::ggplot_build(p_win_test)$layout$panel_params[[1]]$x.range
+check("grafico semanal: eixo x = janela ini/end (sem folga)", isTRUE(all.equal(xr_test, as.numeric(win_dates_test))))
+check("grafico semanal: legenda indica a janela", grepl("2026-02-23 to 2026-03-22", p_win_test$labels$caption, fixed = TRUE))

@@ -280,6 +280,18 @@ regional_daily_max <- function(bins_dt, species, monitored_info, tz) {
   grid[]
 }
 
+## Garante que NADA fica fora da janela ini/end (dias). Para um data.table com
+## coluna `day` (daily_dt) devolve TRUE ou para com mensagem.
+regional_check_window <- function(dt, ini_date, end_date, what = "daily_dt") {
+  if (nrow(dt) == 0L) return(invisible(TRUE))
+  out <- dt[day < ini_date | day > end_date]
+  if (nrow(out) > 0L) {
+    stop(sprintf("regional: %s tem %d linha(s) fora da janela %s a %s (ex: %s).", what, nrow(out),
+                 format(ini_date), format(end_date), format(out$day[1])))
+  }
+  invisible(TRUE)
+}
+
 ## Semana de calendario (segunda-feira), a MESMA nos 3 parques. Semana com
 ## menos de min_monitored_days dias monitorizados fica NA.
 
@@ -524,26 +536,38 @@ regional_pulse_summary <- function(match_dt) {
 .regional_farm_factor <- function(x) factor(x, levels = regional_farm_levels)
 
 ## 9.1 Serie semanal cronologica -- 1 painel por parque (eixo x comum)
-plot_regional_weekly_timeline <- function(weekly_dt, species) {
+plot_regional_weekly_timeline <- function(weekly_dt, species, window = NULL) {
   d <- data.table::copy(weekly_dt[spec == species])
   if (nrow(d) == 0L) return(NULL)
   d[, farm := .regional_farm_factor(farm)]
+  d[, week_mid := week_start + 3] # barra a meio da semana (segunda a domingo)
   na_weeks <- d[is.na(max_individuals)]
 
-  ggplot2::ggplot(d, ggplot2::aes(x = week_start, y = max_individuals, fill = farm)) +
+  cap <- "Grey bands: weeks with no data or too few monitored days (no data, not zero)."
+  if (!is.null(window)) cap <- sprintf("Analysis window: %s to %s. %s", format(window[1]), format(window[2]), cap)
+
+  p <- ggplot2::ggplot(d, ggplot2::aes(x = week_mid, y = max_individuals, fill = farm)) +
+    ggplot2::geom_rect(
+      data = na_weeks,
+      ggplot2::aes(xmin = week_mid - 3.5, xmax = week_mid + 3.5, ymin = -Inf, ymax = Inf),
+      inherit.aes = FALSE, fill = "grey88"
+    ) +
     ggplot2::geom_col(data = d[!is.na(max_individuals)], width = 6) +
-    ggplot2::geom_point(data = na_weeks, ggplot2::aes(y = 0), shape = 4, colour = "grey55", size = 1.2, na.rm = TRUE) +
     ggplot2::facet_grid(farm ~ ., scales = "free_y") +
     ggplot2::scale_fill_manual(values = regional_farm_colours, guide = "none") +
     ggplot2::scale_y_continuous(breaks = scales::breaks_width(1), expand = ggplot2::expansion(mult = c(0, 0.08))) +
     ggplot2::scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
     ggplot2::labs(
-      x = "Week (Monday)", y = "Weekly maximum of minimum individuals (2-min bins)",
+      x = "Week (Monday to Sunday)", y = "Weekly maximum of minimum individuals (2-min bins)",
       title = sprintf("%s -- weekly maximum, ZRF / BSH / DGY", species),
-      caption = "Crosses mark weeks without enough monitored days (no data, not zero)."
+      caption = cap
     ) +
     .regional_theme() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5, hjust = 1, size = 7))
+
+  # eixo x fixo na janela (todos os paineis), sem folga
+  if (!is.null(window)) p <- p + ggplot2::coord_cartesian(xlim = window, expand = FALSE)
+  p
 }
 
 ## 9.2 Sobreposicao anual -- x = semana ISO, cor = parque, linha por ano

@@ -133,6 +133,13 @@ out_file <- function(base, ext) file.path(folder_output, out_name(base, ext, reg
 ## 1. Leitura dos tracks e series por parque ----
 ##
 
+## Janela ini/end como datas (no fuso do projeto) -- tudo o que se calcula e se
+## desenha fica dentro destas datas
+ini_date <- as.Date(ini, tz = proj_timezone)
+end_date <- as.Date(end, tz = proj_timezone)
+window_dates <- c(ini_date, end_date)
+message(sprintf("\nJanela de analise: %s a %s", format(ini_date), format(end_date)))
+
 farm_data <- list()
 print(regional_farms[, .(farm, databases_dir, databases_dir_alt, trackreport_pattern, farm_pattern)])
 
@@ -149,6 +156,10 @@ for (i in seq_len(nrow(regional_farms))) {
   )
 
   mon <- regional_monitored_days(fd$tracks, fd$tz, min_tracks_per_day = min_tracks_per_day)
+  data_first_day <- mon$first_day; data_last_day <- mon$last_day # intervalo real com tracks (para a tabela de cobertura)
+  # a serie diaria cobre EXATAMENTE a janela ini/end: dias sem tracks dentro da
+  # janela ficam NA (sem dados), nada fora da janela entra
+  mon$first_day <- ini_date; mon$last_day <- end_date
 
   bins <- regional_min_individuals_bins(
     fd$tracks, species_regional, bin_min = bin_min, merge_dist_m = merge_dist_m,
@@ -157,10 +168,12 @@ for (i in seq_len(nrow(regional_farms))) {
   )
 
   daily <- regional_daily_max(bins, species_regional, mon, fd$tz)
+  regional_check_window(daily, ini_date, end_date, sprintf("serie diaria de %s", farm))
   daily[, farm := farm]
 
   farm_data[[farm]] <- list(
     daily = daily, monitored = mon, tz = fd$tz,
+    first_track_day = data_first_day, last_track_day = data_last_day,
     n_tracks_rows = nrow(fd$tracks)
   )
 
@@ -177,9 +190,12 @@ weekly_dt <- rbindlist(lapply(names(farm_data), function(f) {
 }))
 setcolorder(weekly_dt, c("farm", "spec", "week_start", "iso_year", "iso_week", "n_days_monitored", "max_individuals"))
 
+regional_check_window(daily_dt, ini_date, end_date, "daily_dt")
+message(sprintf("Verificacao: todas as series diarias (%d linhas) dentro da janela %s a %s.", nrow(daily_dt), format(ini_date), format(end_date)))
+
 data_coverage_dt <- rbindlist(lapply(names(farm_data), function(f) {
   m <- farm_data[[f]]$monitored
-  data.table(farm = f, first_day = m$first_day, last_day = m$last_day,
+  data.table(farm = f, first_day = farm_data[[f]]$first_track_day, last_day = farm_data[[f]]$last_track_day,
              n_days_monitored = length(m$monitored), n_track_rows = farm_data[[f]]$n_tracks_rows)
 }))
 print(data_coverage_dt)
@@ -230,7 +246,7 @@ save_plot <- function(p, base, width = 10, height = 7) {
 n_panels <- nrow(season_dates)
 for (sp in species_regional) {
   tag <- gsub("[^A-Za-z]", "", sp)
-  save_plot(plot_regional_weekly_timeline(weekly_dt, sp), paste0("weekly_max_timeline_", tag), height = 8)
+  save_plot(plot_regional_weekly_timeline(weekly_dt, sp, window_dates), paste0("weekly_max_timeline_", tag), height = 8)
   save_plot(plot_regional_annual_overlay(weekly_dt, sp), paste0("annual_pattern_", tag), height = 6)
   save_plot(plot_regional_annual_overlay(weekly_dt, sp, normalise = TRUE), paste0("annual_pattern_relative_", tag), height = 6)
   save_plot(plot_regional_season_series(daily_dt, season_dates, sp, smooth_days), paste0("seasonal_series_", tag), height = 3 * max(n_panels, 1))
@@ -304,7 +320,7 @@ if (isTRUE(generate_report)) {
   season_keys <- names(seasons)
 
   report_plots <- list(
-    weekly = by_species(function(sp) fig(plot_regional_weekly_timeline(weekly_dt, sp), 6)),
+    weekly = by_species(function(sp) fig(plot_regional_weekly_timeline(weekly_dt, sp, window_dates), 6)),
     annual = by_species(function(sp) fig(plot_regional_annual_overlay(weekly_dt, sp), 4.2)),
     season_series = stats::setNames(lapply(season_keys, function(k) by_species(function(sp) {
       p <- plot_regional_season_series(daily_dt, season_dates[season_dates$season == k], sp, smooth_days)
