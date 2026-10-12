@@ -297,3 +297,34 @@ check("dedup entre ficheiros sobrepostos: 4 linhas lidas -> 2", nrow(r8$tracks) 
 
 check("0 ficheiros -> erro explicito",
       inherits(try(load_test(pattern = "NaoExiste"), silent = TRUE), "try-error"))
+
+
+##
+## 8. Tabelas e textos do relatorio
+##
+wp_test <- regional_weekly_peak_summary(weekly_all_test)
+check("resumo de picos: 1 linha por especie x parque (3), ordem ZRF, BSH, DGY",
+      nrow(wp_test) == 3L && identical(wp_test$farm, c("ZRF", "BSH", "DGY")))
+check("resumo de picos: pico = 3 (altura dos pulsos simulados) e semanas com presenca > 0", all(wp_test$peak_weekly_max == 3L) && all(wp_test$weeks_present > 0L))
+
+tt_test <- regional_format_timing_table(lead_test, pairs_test, season_dates_test, "Egyptian-Vulture", "autumn")
+check("tabela timing outono: 2 linhas (ZRF->BSH, ZRF->DGY), lead mediana 5 e 7",
+      nrow(tt_test) == 2L && identical(tt_test$Pair, c("ZRF -> BSH", "ZRF -> DGY")) && identical(tt_test$`Lead, median (d)`, c("5", "7")))
+tt_gap_test <- regional_format_timing_table(lead_test[0], pairs_test, season_dates_test, c("Egyptian-Vulture", "Steppe-Eagle"), "spring")
+check("tabela timing sem dados: linhas esperadas aparecem como 'insufficient data'",
+      nrow(tt_gap_test) == 4L && all(tt_gap_test$`Lead, median (d)` == "insufficient data"))
+ct_test <- regional_format_ccf_table(ccf_sum_test, pairs_test, season_dates_test, "Egyptian-Vulture", "spring")
+check("tabela ccf primavera: lag 6 nos 2 pares", nrow(ct_test) == 2L && all(ct_test$`Best lag (d)` == "6"))
+pt_test <- regional_format_pulse_table(pulse_sum_test, timing_test, pairs_test, season_dates_test, "Egyptian-Vulture", "autumn")
+check("tabela pulsos outono: 4 pulsos do lider, 100% seguidos, lag mediano 5 (ZRF -> BSH)",
+      pt_test$`Leader pulses`[1] == "4" && pt_test$`% followed`[1] == "100" && pt_test$`Median lag (d)`[1] == "5")
+pt_gap_test <- regional_format_pulse_table(pulse_sum_test[0], timing_gap_test, pairs_test, season_dates_test, "Egyptian-Vulture", "autumn")
+check("tabela pulsos: DGY sem cobertura -> 'insufficient data'; BSH sem pulsos mas com dados -> 0",
+      pt_gap_test$`Leader pulses`[2] == "insufficient data" && pt_gap_test$`Leader pulses`[1] == "0")
+check("titulos: outono e primavera", identical(regional_season_title(pairs_test, "autumn", "Autumn"), "Autumn: does ZRF anticipate BSH and DGY?") &&
+        identical(regional_season_title(pairs_test, "spring", "Spring"), "Spring: do BSH and DGY anticipate ZRF?"))
+check("altura da figura cresce com os paineis e tem teto",
+      regional_fig_height(plot_regional_season_series(daily_pair_test, season_dates_test[season == "autumn"], sp)) <
+        regional_fig_height(plot_regional_season_series(daily_pair_test, season_dates_test, sp)))
+check("tabelas: Year como texto (sem separador de milhares, ex: 2025 e nao 2,025)",
+      identical(tt_test$Year, c("2025", "2025")) && is.character(ct_test$Year) && is.character(pt_test$Year))

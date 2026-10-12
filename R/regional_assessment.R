@@ -672,3 +672,127 @@ plot_regional_lead_days <- function(lead_dt, species) {
     ) +
     .regional_theme()
 }
+
+
+## 10. Tabelas e textos para o relatorio Word (report/regional_assessment_report_template.rmd) ----
+##
+## O template so' formata -- tudo o que e' resumo/formatacao fica aqui, onde
+## pode ser testado. Epocas/pares sem dados suficientes aparecem como
+## "insufficient data" (nao ficam em falta, nem como 0).
+
+regional_insufficient <- "insufficient data"
+
+## Resumo do pico semanal, por especie e parque
+regional_weekly_peak_summary <- function(weekly_dt) {
+  out <- weekly_dt[!is.na(max_individuals), {
+    pk <- max(max_individuals)
+    .(peak_weekly_max = pk, peak_week_start = as.character(week_start[which(max_individuals == pk)[1]]),
+      weeks_with_data = .N, weeks_present = sum(max_individuals > 0))
+  }, by = .(spec, farm)]
+  out[, farm := factor(farm, levels = regional_farm_levels)]
+  data.table::setorder(out, spec, farm)
+  out[, farm := as.character(farm)]
+  out[]
+}
+
+## Grelha esperada: 1 linha por especie x ano x par (na ordem dos pares),
+## para a epoca pedida -- assim as epocas sem dados aparecem como linhas
+.regional_expected_rows <- function(pairs, season_dates, species, season) {
+  # season_target: dentro de [.data.table "season" seria a coluna, nao o argumento
+  season_target <- season
+  p <- pairs[pairs$season == season_target]
+  sd <- season_dates[season_dates$season == season_target]
+  if (nrow(p) == 0L || nrow(sd) == 0L) return(data.table::data.table())
+  g <- data.table::CJ(spec = species, season_year = sd$season_year, pair_i = seq_len(nrow(p)))
+  g[, `:=`(leader = p$leader[pair_i], follower = p$follower[pair_i])]
+  g[, pair := sprintf("%s -> %s", leader, follower)]
+  data.table::setorder(g, spec, season_year, pair_i)
+  g
+}
+
+.regional_txt <- function(x, digits = NULL) {
+  if (is.null(digits)) {
+    ifelse(is.na(x), regional_insufficient, as.character(x))
+  } else {
+    ifelse(is.na(x), regional_insufficient, format(round(x, digits), nsmall = digits))
+  }
+}
+
+regional_format_timing_table <- function(lead_dt, pairs, season_dates, species, season) {
+  g <- .regional_expected_rows(pairs, season_dates, species, season)
+  if (nrow(g) == 0L) return(data.frame())
+  m <- merge(g, lead_dt, by = c("spec", "season_year", "leader", "follower"), all.x = TRUE, sort = FALSE)
+  data.table::setorder(m, spec, season_year, pair_i)
+  data.frame(
+    Species = m$spec, Year = as.character(m$season_year), Pair = m$pair,
+    `Leader median date` = .regional_txt(m$leader_median),
+    `Follower median date` = .regional_txt(m$follower_median),
+    `Lead, onset (d)` = .regional_txt(m$lead_days_onset),
+    `Lead, median (d)` = .regional_txt(m$lead_days_median),
+    `Lead, end (d)` = .regional_txt(m$lead_days_end),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+}
+
+regional_format_ccf_table <- function(ccf_summary_dt, pairs, season_dates, species, season) {
+  g <- .regional_expected_rows(pairs, season_dates, species, season)
+  if (nrow(g) == 0L) return(data.frame())
+  m <- merge(g, ccf_summary_dt, by = c("spec", "season_year", "leader", "follower"), all.x = TRUE, sort = FALSE)
+  data.table::setorder(m, spec, season_year, pair_i)
+  data.frame(
+    Species = m$spec, Year = as.character(m$season_year), Pair = m$pair,
+    `Best lag (d)` = .regional_txt(m$best_lag_days),
+    `r at best lag` = .regional_txt(m$r_best, 2),
+    `r at lag 0` = .regional_txt(m$r_lag0, 2),
+    `Overlap days (lag 0)` = .regional_txt(m$n_overlap_lag0),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+}
+
+## timing_dt serve para distinguir "sem pulsos" de "sem dados": se a epoca do
+## lider (ou do seguidor) nao tem timing valido, a linha e' "insufficient data"
+regional_format_pulse_table <- function(pulse_summary_dt, timing_dt, pairs, season_dates, species, season) {
+  g <- .regional_expected_rows(pairs, season_dates, species, season)
+  if (nrow(g) == 0L) return(data.frame())
+  m <- merge(g, pulse_summary_dt, by = c("spec", "season_year", "leader", "follower"), all.x = TRUE, sort = FALSE)
+  data.table::setorder(m, spec, season_year, pair_i)
+  # indexa o vetor timing_dt$valid (nao timing_dt[...]) -- dentro de [.data.table
+  # "farm"/"spec"/"season" seriam as colunas, nao os argumentos
+  season_target <- season
+  valid_of <- function(farm_q, spec_q, year_q) {
+    v <- timing_dt$valid[timing_dt$farm == farm_q & timing_dt$spec == spec_q &
+                           timing_dt$season == season_target & timing_dt$season_year == year_q]
+    length(v) == 1L && isTRUE(v)
+  }
+  has_data <- mapply(function(l, f, s, y) valid_of(l, s, y) && valid_of(f, s, y),
+                     m$leader, m$follower, m$spec, m$season_year)
+  none <- is.na(m$n_leader_pulses)
+  txt_int <- function(x) ifelse(!has_data, regional_insufficient, ifelse(none, "0", as.character(x)))
+  txt_dash <- function(x) ifelse(!has_data, regional_insufficient, ifelse(none | is.na(x), "-", as.character(x)))
+  data.frame(
+    Species = m$spec, Year = as.character(m$season_year), Pair = m$pair,
+    `Leader pulses` = txt_int(m$n_leader_pulses),
+    `Followed within window` = txt_int(m$n_followed_within_window),
+    `% followed` = txt_dash(m$pct_followed),
+    `Median lag (d)` = txt_dash(m$median_lag_days),
+    `% with follower pulse before` = txt_dash(m$pct_follower_pulse_before),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+}
+
+## "Autumn: does ZRF anticipate BSH and DGY?" / "Spring: do BSH and DGY anticipate ZRF?"
+regional_season_title <- function(pairs, season, label) {
+  season_target <- season # dentro de [.data.table "season" seria a coluna, nao o argumento
+  p <- pairs[pairs$season == season_target]
+  if (nrow(p) == 0L) return(label)
+  join <- function(x) paste(unique(x), collapse = " and ")
+  leaders <- unique(p$leader)
+  sprintf("%s: %s %s anticipate %s?", label, if (length(leaders) == 1L) "does" else "do", join(p$leader), join(p$follower))
+}
+
+## Altura da figura (polegadas) por numero de paineis (epoca x ano)
+regional_fig_height <- function(p, per_panel = 2.3, base = 1.3, max_h = 8.5) {
+  if (is.null(p)) return(1)
+  n <- length(unique(p$data$panel))
+  min(max_h, base + per_panel * max(n, 1L))
+}

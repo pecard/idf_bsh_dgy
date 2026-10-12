@@ -24,8 +24,9 @@
 ## ANALISE" abaixo (podem passar para o userSettings quando estabilizarem).
 ##
 ## Uso: source("run_regional_assessment.R") (Ctrl+Shift+S no RStudio).
-## Outputs: outputs/<AAAAMMDD>_REGIONAL/ -- xlsx (em ingles) + PNGs, todos com
-## o sufixo _REGIONAL_<AAAAMMDD> (R/output_paths.R).
+## Outputs: outputs/<AAAAMMDD>_REGIONAL/ -- xlsx (em ingles), PNGs e relatorio Word
+## (report/regional_assessment_report_template.rmd, com o template da empresa), todos
+## com o sufixo _REGIONAL_<AAAAMMDD> (R/output_paths.R).
 ##
 
 
@@ -34,7 +35,8 @@
 ##
 
 packages <- c(
-  'data.table', 'lubridate', 'ggplot2', 'scales', 'janitor', 'fst', 'rstudioapi', 'writexl'
+  'data.table', 'lubridate', 'ggplot2', 'scales', 'janitor', 'fst', 'rstudioapi', 'writexl',
+  'rmarkdown', 'flextable'
 )
 for (p in packages) {
   if (!require(p, character.only = TRUE)) install.packages(p)
@@ -65,6 +67,7 @@ source("R/data_cache.R")
 source("R/output_paths.R")
 source("R/track_min_individuals.R")
 source("R/regional_assessment.R")
+source("R/report.R")
 
 
 ##
@@ -79,6 +82,7 @@ source(file.path(folder_input, regional_settings_file))
 
 if (!exists("force_reread_cache")) force_reread_cache <- FALSE # TRUE = relê os brutos (dados novos ou padrao mudou)
 force_recompute_bins <- FALSE # TRUE = recalcula os bins de 2 min mesmo com cache
+if (!exists("generate_report")) generate_report <- TRUE # FALSE = so xlsx + PNGs, sem o relatorio Word
 
 ##
 ## PARAMETROS DA ANALISE (ficam aqui por agora; so' leitura/janela/especies/bins
@@ -270,3 +274,93 @@ write_xlsx_local(
 )
 
 message("\nRegional assessment concluido -- outputs em: ", folder_output)
+
+
+##
+## 5. Relatorio Word ----
+##
+## O template so' formata -- tudo o que mostra (graficos por epoca, tabelas,
+## textos) e' preparado aqui. 4 tipos de figura no corpo (cronologica semanal,
+## sobreposicao anual, series sazonais, correlacao por lag); as restantes
+## (relativo, acumulado, diferenca de timing) ficam so' como PNG (anexo).
+##
+
+username <- tryCatch(Sys.info()[["user"]], error = function(e) "unknown")
+get_code_version <- function() {
+  run_git <- function(args) tryCatch(system2("git", args, stdout = TRUE, stderr = FALSE), error = function(e) character(0))
+  hash <- run_git(c("log", "-1", "--format=%h"))
+  if (length(hash) == 0L || !nzchar(hash[1])) return("unknown (not a git checkout, or git unavailable)")
+  commit_date <- run_git(c("log", "-1", "--format=%ci"))
+  dirty <- length(run_git(c("status", "--porcelain"))) > 0L
+  out <- if (length(commit_date) > 0L && nzchar(commit_date[1])) sprintf("%s (%s)", hash[1], commit_date[1]) else hash[1]
+  if (dirty) paste0(out, " + uncommitted local changes") else out
+}
+
+if (isTRUE(generate_report)) {
+
+  farm_names <- c(ZRF = "Zarafshan", BSH = "Bash", DGY = "Djangeldy")
+  fig <- function(p, h) list(p = p, h = h)
+  by_species <- function(f) stats::setNames(lapply(species_regional, f), species_regional)
+  season_keys <- names(seasons)
+
+  report_plots <- list(
+    weekly = by_species(function(sp) fig(plot_regional_weekly_timeline(weekly_dt, sp), 6)),
+    annual = by_species(function(sp) fig(plot_regional_annual_overlay(weekly_dt, sp), 4.2)),
+    season_series = stats::setNames(lapply(season_keys, function(k) by_species(function(sp) {
+      p <- plot_regional_season_series(daily_dt, season_dates[season_dates$season == k], sp, smooth_days)
+      fig(p, regional_fig_height(p))
+    })), season_keys),
+    ccf = stats::setNames(lapply(season_keys, function(k) by_species(function(sp) {
+      p <- plot_regional_ccf(ccf_dt[ccf_dt$season == k], sp)
+      fig(p, regional_fig_height(p))
+    })), season_keys)
+  )
+
+  report_tables <- list(
+    timing = stats::setNames(lapply(season_keys, function(k) regional_format_timing_table(lead_dt, regional_pairs, season_dates, species_regional, k)), season_keys),
+    ccf    = stats::setNames(lapply(season_keys, function(k) regional_format_ccf_table(ccf_summary_dt, regional_pairs, season_dates, species_regional, k)), season_keys),
+    pulses = stats::setNames(lapply(season_keys, function(k) regional_format_pulse_table(pulse_summary_dt, timing_dt, regional_pairs, season_dates, species_regional, k)), season_keys)
+  )
+
+  season_labels <- c(autumn = "Autumn", spring = "Spring")
+  report_params <- list(
+    title = paste("Regional Assessment -", paste(regional_farms$farm, collapse = ", ")),
+    analysis_date = format(Sys.time(), "%Y-%m-%d"), username = username, code_version = get_code_version(),
+    window_start = format(ini, "%Y-%m-%d"), window_end = format(end, "%Y-%m-%d"),
+    farms_text = paste(sprintf("%s (%s)", farm_names[regional_farms$farm], regional_farms$farm), collapse = ", "),
+    species = species_regional, species_text = paste(species_regional, collapse = ", "),
+    bin_min = bin_min, merge_dist_m = merge_dist_m,
+    min_tracks_per_day = min_tracks_per_day, min_monitored_days = min_monitored_days,
+    seasons_text = paste(sprintf("%s, %s to %s", names(seasons), vapply(seasons, `[`, "", 1), vapply(seasons, `[`, "", 2)), collapse = "; "),
+    onset_share = onset_share, median_share = median_share, end_share = end_share,
+    min_season_total = min_season_total, min_season_coverage = min_season_coverage,
+    max_lag_days = max_lag_days, smooth_days = smooth_days, min_overlap_days = min_overlap_days,
+    pulse_min_individuals = pulse_min_individuals, pulse_merge_gap_days = pulse_merge_gap_days,
+    pulse_window_days = pulse_window_days,
+    data_coverage = as.data.frame(data_coverage_dt),
+    weekly_peak = as.data.frame(regional_weekly_peak_summary(weekly_dt)),
+    plots = report_plots, tables = report_tables,
+    season_titles = stats::setNames(lapply(season_keys, function(k) regional_season_title(regional_pairs, k, season_labels[[k]])), season_keys),
+    season_pairs_text = stats::setNames(lapply(season_keys, function(k) {
+      p <- regional_pairs[regional_pairs$season == k]
+      paste(sprintf("%s -> %s", p$leader, p$follower), collapse = "; ")
+    }), season_keys),
+    parameters = as.data.frame(parameters_dt),
+    xlsx_name = out_name("regional_assessment", "xlsx", regional_tag, run_date),
+    extra_png_files = unlist(lapply(species_regional, function(sp) {
+      tag <- gsub("[^A-Za-z]", "", sp)
+      vapply(c("annual_pattern_relative_", "cumulative_passage_", "timing_difference_"),
+             function(b) out_name(paste0(b, tag), "png", regional_tag, run_date), character(1))
+    }), use.names = FALSE)
+  )
+
+  reference_docx <- file.path(folder_input, "Mod.001.05_template_documentos_gerais.docx")
+  build_idf_report(
+    output_file    = out_file("Regional_Assessment_Report", "docx"),
+    report_params  = report_params,
+    template       = "report/regional_assessment_report_template.rmd",
+    reference_docx = if (file.exists(reference_docx)) reference_docx else NULL
+  )
+} else {
+  message("generate_report = FALSE -- relatorio Word NAO gerado nesta ronda (xlsx e PNGs em ", folder_output, ").")
+}
