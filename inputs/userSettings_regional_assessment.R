@@ -25,11 +25,14 @@ proj_timezone <- "Asia/Samarkand"
 ##
 ## Raw databases (so' tracks)
 ##
-## UMA pasta por parque -- BSH e DGY: pasta de rede (UNC, //192.168.1.11/...),
-## nao a unidade mapeada W:\\ (so' existe com a rede mapeada; o caminho UNC
-## resolve igual dentro e fora do escritorio, via acesso remoto); ZRF: pasta
-## partilhada data-raw (G:). Cada pasta so' e' lida para o seu parque.
+## Duas origens possiveis por parque, lidas em conjunto (mesma convencao dos
+## outros settings): databases_dir = data-raw (G:), em todos os parques;
+## databases_dir_alt = pasta de rede (UNC, //192.168.1.11/..., nao a unidade
+## mapeada W:\\, que so' existe com a rede mapeada) para BSH e DGY; ZRF so'
+## tem a data-raw (NA). Se o mesmo nome de ficheiro existir nas 2 pastas, fica
+## o da 1a, databases_dir (ver list_files_multi_dir(), R/read_utils.R).
 ##
+
 ## Nomes dos ficheiros consistentes nos 3 parques: "TrackReport_Default" +
 ## codigo do parque (ex: TrackReport_Default_ZRF_20260901_....csv).
 ## ATENCAO: o padrao e' uma expressao regular -- "TrackReport_Default+ZRF"
@@ -48,10 +51,11 @@ data_raw_dir    <- "G:/O meu disco/Programacao/r/Bsh_Dgy_WPP/data-raw"
 ## cache propria do regional (regional_cache_dir) -- nao mistura com as caches
 ## dos outros relatorios, que usam outros padroes de ficheiro.
 regional_farms <- data.table::data.table(
-  farm          = c("ZRF", "BSH", "DGY"),
-  databases_dir = c(data_raw_dir,
-                    file.path(portal_data_dir, "BSH"),
-                    file.path(portal_data_dir, "DGY"))
+  farm              = c("ZRF", "BSH", "DGY"),
+  databases_dir     = data_raw_dir,
+  databases_dir_alt = c(NA_character_,
+                        file.path(portal_data_dir, "BSH"),
+                        file.path(portal_data_dir, "DGY"))
 )
 regional_farms[, `:=`(
   trackreport_pattern = paste0(trackreport_prefix, ".*", farm),

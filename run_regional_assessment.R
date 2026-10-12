@@ -130,14 +130,14 @@ out_file <- function(base, ext) file.path(folder_output, out_name(base, ext, reg
 ##
 
 farm_data <- list()
-print(regional_farms[, .(farm, databases_dir, trackreport_pattern, farm_pattern)])
+print(regional_farms[, .(farm, databases_dir, databases_dir_alt, trackreport_pattern, farm_pattern)])
 
 for (i in seq_len(nrow(regional_farms))) {
   farm <- regional_farms$farm[i]
 
   fd <- regional_load_farm(
     farm = farm,
-    databases_dirs = regional_farms$databases_dir[i],
+    databases_dirs = c(regional_farms$databases_dir[i], regional_farms$databases_dir_alt[i]),
     trackreport_pattern = regional_farms$trackreport_pattern[i],
     farm_pattern = regional_farms$farm_pattern[i],
     tz = proj_timezone, ini = ini, end = end,
