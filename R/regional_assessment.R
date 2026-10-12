@@ -44,16 +44,91 @@ regional_farm_levels <- c("ZRF", "BSH", "DGY")
 regional_farm_colours <- c(ZRF = "#1b9e77", BSH = "#d95f02", DGY = "#7570b3")
 
 
-## 1. Leitura dos tracks de um parque (data-raw + pasta remota) ----
+## 1. Leitura dos tracks de um parque (data-raw + pasta remota), com cache incremental ----
 ##
 ## Recebe os parametros diretamente (vindos de inputs/userSettings_regional_assessment.R,
 ## ver run_regional_assessment.R) -- nao le os settings de incidente/anual/mensal.
-## Le TODOS os ficheiros que batem com trackreport_pattern (+ farm_pattern,
-## 2a camada de filtro) nas pastas dadas, e guarda a leitura bruta numa cache
-## fst PROPRIA do regional (cache_dir/<farm>/track_dt_unfilt.fst) -- mudar
-## ini/end nao exige reler; force_reread = TRUE quando ha' dados novos ou o
-## padrao mudou. So' depois de carregar aplica a janela ini/end e guarda as
-## colunas necessarias (track_id, timestamp, utm_x, utm_y, spec).
+##
+## Cache INCREMENTAL por ficheiro (cache_dir/<farm>/tracks_by_file.fst +
+## tracks_manifest.rds): cada CSV lido fica registado com tamanho e data de
+## modificacao. Numa nova corrida, ficheiros iguais ao registado vem da cache
+## (sem tocar nos CSV originais); so' os ficheiros NOVOS ou ALTERADOS sao
+## lidos. Ficheiros que deixaram de aparecer (ex: pasta de rede inacessivel)
+## mantem as linhas em cache, com aviso -- nunca se perdem dados por uma pasta
+## temporariamente em baixo. Se o padrao de ficheiros mudou, a cache e'
+## invalidada e relê tudo; force_reread = TRUE tambem relê tudo.
+## A cache guarda so' as colunas necessarias (track_id, timestamp, utm_x,
+## utm_y, spec) + source_file.
+
+.regional_fst_io <- list(
+  read  = function(path) fst::read_fst(path, as.data.table = TRUE),
+  write = function(x, path) fst::write_fst(x, path)
+)
+
+regional_read_tracks_cached <- function(files, tz, cache_dir, pattern_sig, read_file_fn,
+                                        force_reread = FALSE, cache_io = .regional_fst_io) {
+
+  data_file     <- file.path(cache_dir, "tracks_by_file.fst")
+  manifest_file <- file.path(cache_dir, "tracks_manifest.rds")
+  cols_keep <- c("track_id", "timestamp", "utm_x", "utm_y", "spec")
+
+  info <- file.info(files)
+  now <- data.table::data.table(file = basename(files), size = as.numeric(info$size),
+                                mtime = floor(as.numeric(info$mtime)))
+
+  manifest <- data.table::data.table(file = character(), size = numeric(), mtime = numeric())
+  cached <- NULL
+  if (!force_reread && file.exists(data_file) && file.exists(manifest_file)) {
+    m <- readRDS(manifest_file)
+    if (identical(m$pattern_sig, pattern_sig)) {
+      manifest <- m$files
+      cached <- cache_io$read(data_file)
+    } else {
+      message("regional: cache ignorada -- o padrao de ficheiros mudou; a ler tudo de novo.")
+    }
+  }
+
+  idx <- match(now$file, manifest$file)
+  changed <- is.na(idx) | now$size != manifest$size[idx] | now$mtime != manifest$mtime[idx]
+  missing_files <- setdiff(manifest$file, now$file)
+  if (length(missing_files) > 0L) {
+    message(sprintf(
+      "regional: %d ficheiro(s) em cache ja' nao aparecem nas pastas (mantidas as linhas em cache): %s",
+      length(missing_files), paste(utils::head(missing_files, 5), collapse = ", ")
+    ))
+  }
+
+  new_rows <- NULL
+  if (any(changed)) {
+    message(sprintf("regional: a ler %d ficheiro(s) novo(s)/alterado(s) de %d (os restantes %d vem da cache).",
+                    sum(changed), nrow(now), sum(!changed)))
+    parts <- lapply(files[changed], function(f) {
+      d <- read_file_fn(f)
+      if (is.null(d) || nrow(d) == 0L) return(NULL)
+      d <- data.table::as.data.table(d)[, ..cols_keep]
+      d[, source_file := basename(f)]
+      d
+    })
+    new_rows <- data.table::rbindlist(parts, use.names = TRUE)
+  } else {
+    message(sprintf("regional: os %d ficheiro(s) estao inalterados -- lidos da cache, sem ler os CSV originais.", nrow(now)))
+  }
+
+  kept <- if (!is.null(cached)) cached[!source_file %in% now$file[changed]] else NULL
+  tracks <- data.table::rbindlist(list(kept, new_rows), use.names = TRUE)
+  if (nrow(tracks) > 0L) attr(tracks$timestamp, "tzone") <- tz
+
+  if (any(changed) || is.null(cached) || length(missing_files) > 0L) {
+    new_manifest <- data.table::rbindlist(list(now, manifest[file %in% missing_files]))
+    dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
+    cache_io$write(tracks, data_file)
+    saveRDS(list(pattern_sig = pattern_sig, files = new_manifest), manifest_file)
+  }
+
+  list(tracks = tracks, n_files = nrow(now), n_read = sum(changed), n_cached = sum(!changed),
+       n_missing = length(missing_files))
+}
+
 
 regional_filter_window <- function(track_dt, ini, end) {
   track_dt[timestamp >= ini & timestamp <= end]
@@ -75,36 +150,35 @@ regional_dedup_tracks <- function(track_dt) {
 
 regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_pattern = NULL,
                                tz, ini, end, cache_dir = file.path("cache", "regional"),
-                               force_reread = FALSE) {
+                               force_reread = FALSE, read_file_fn = NULL, cache_io = .regional_fst_io) {
 
   message(sprintf("\n===== regional: a ler tracks de %s (padrao '%s') =====", farm, trackreport_pattern))
 
   dirs <- unique(databases_dirs[!is.na(databases_dirs) & nzchar(databases_dirs)])
-  cache_file <- file.path(cache_dir, farm, "track_dt_unfilt.fst")
+  files <- list_files_multi_dir(dirs, trackreport_pattern, farm_pattern)
 
-  tracks <- load_or_read_cache(
-    cache_file,
-    function() read_tracks_data(dirs, trackreport_pattern, tz = tz, farm_pattern = farm_pattern),
-    force_reread = force_reread, tz = tz
-  )
-
-  if (is.null(tracks) || nrow(tracks) == 0L) {
+  if (length(files) == 0L) {
     stop(sprintf(
-      "regional_load_farm(%s): 0 tracks lidos (pastas: %s; padrao: %s) -- confirmar pastas/padrao e apagar %s se a cache estiver vazia.",
-      farm, paste(dirs, collapse = " | "), trackreport_pattern, cache_file
+      "regional_load_farm(%s): 0 ficheiros encontrados (pastas: %s; padrao: %s; farm_pattern: %s) -- confirmar pastas e padrao.",
+      farm, paste(dirs, collapse = " | "), trackreport_pattern, if (is.null(farm_pattern)) "nenhum" else farm_pattern
     ))
   }
 
-  tracks <- data.table::as.data.table(tracks)
+  if (is.null(read_file_fn)) read_file_fn <- function(f) read_tracks_data(NULL, tz = tz, files = f)
+
+  res <- regional_read_tracks_cached(
+    files, tz, file.path(cache_dir, farm),
+    pattern_sig = paste(trackreport_pattern, if (is.null(farm_pattern)) "" else farm_pattern, sep = "|"),
+    read_file_fn = read_file_fn, force_reread = force_reread, cache_io = cache_io
+  )
+  tracks <- res$tracks
+
+  if (nrow(tracks) == 0L) {
+    stop(sprintf("regional_load_farm(%s): 0 tracks nos %d ficheiro(s) lidos.", farm, res$n_files))
+  }
+
   range_all <- range(tracks$timestamp)
   tracks <- regional_filter_window(tracks, ini, end)[, .(track_id, timestamp, utm_x, utm_y, spec)]
-
-  n_before <- nrow(tracks)
-  tracks <- regional_dedup_tracks(tracks)
-  message(sprintf(
-    "%s: %d linha(s) duplicada(s) (mesmo track_id + timestamp) removida(s) de %d.",
-    farm, attr(tracks, "n_removed"), n_before
-  ))
 
   if (nrow(tracks) == 0L) {
     stop(sprintf(
@@ -112,6 +186,13 @@ regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_p
       farm, format(ini), format(end), format(range_all[1]), format(range_all[2])
     ))
   }
+
+  n_before <- nrow(tracks)
+  tracks <- regional_dedup_tracks(tracks)
+  message(sprintf(
+    "%s: %d linha(s) duplicada(s) (mesmo track_id + timestamp) removida(s) de %d.",
+    farm, attr(tracks, "n_removed"), n_before
+  ))
 
   message(sprintf(
     "%s: %d registos na janela, %s a %s", farm, nrow(tracks),

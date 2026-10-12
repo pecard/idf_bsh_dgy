@@ -220,3 +220,80 @@ bins_dup_test <- regional_min_individuals_bins(dup_test, "Egyptian-Vulture")
 bins_dedup_test <- regional_min_individuals_bins(dedup_test, "Egyptian-Vulture")
 check("duplicados nao alteram o minimo de individuos (a e b a 5 m -> 1)",
       identical(bins_dup_test$n_individuals_min, bins_dedup_test$n_individuals_min))
+
+
+##
+## 7. Cache incremental por ficheiro (so' le ficheiros novos/alterados)
+##
+## Ficheiros CSV simulados numa pasta temporaria; cache_io em RDS (fst nao
+## precisa de ser instalado para testar a logica); read_file_fn conta chamadas.
+##
+source("R/read_utils.R")
+dir_test <- file.path(tempdir(), "regional_cache_test_raw"); unlink(dir_test, recursive = TRUE)
+dir.create(dir_test); cache_dir_test <- file.path(tempdir(), "regional_cache_test_cache"); unlink(cache_dir_test, recursive = TRUE)
+rds_io_test <- list(read = function(path) readRDS(path), write = function(x, path) saveRDS(x, path))
+n_calls_test <- 0L
+read_file_test <- function(f) {
+  n_calls_test <<- n_calls_test + 1L
+  d <- fread(f); d[, timestamp := as.POSIXct(timestamp, tz = tz_test)]; d
+}
+write_csv_test <- function(name, ids, day) {
+  fwrite(data.table(track_id = ids, timestamp = format(as.POSIXct(paste(day, "10:00:00"), tz = tz_test) + seq_along(ids)),
+                    utm_x = 1, utm_y = 1, spec = "Egyptian-Vulture"), file.path(dir_test, name))
+}
+write_csv_test("TrackReport_Default_XXX_a.csv", c("a1", "a2"), "2025-03-01")
+write_csv_test("TrackReport_Default_XXX_b.csv", c("b1", "b2", "b3"), "2025-03-02")
+write_csv_test("TrackReport_Default_XXX_c.csv", c("c1"), "2025-03-03")
+load_test <- function(pattern = "TrackReport_Default.*XXX", force = FALSE) {
+  regional_load_farm("XXX", dir_test, pattern, farm_pattern = "XXX", tz = tz_test,
+                     ini = as.POSIXct("2025-01-01", tz = tz_test), end = as.POSIXct("2025-12-31", tz = tz_test),
+                     cache_dir = cache_dir_test, force_reread = force, read_file_fn = read_file_test, cache_io = rds_io_test)
+}
+
+r1 <- load_test()
+check("cache: 1a corrida le os 3 ficheiros (6 linhas)", n_calls_test == 3L && nrow(r1$tracks) == 6L)
+
+n_calls_test <- 0L; r2 <- load_test()
+check("cache: 2a corrida sem alteracoes NAO le nenhum CSV (0 chamadas) e devolve os mesmos dados",
+      n_calls_test == 0L && identical(sort(r2$tracks$track_id), sort(r1$tracks$track_id)))
+check("cache: fuso do timestamp preservado", attr(r2$tracks$timestamp, "tzone") == tz_test)
+
+write_csv_test("TrackReport_Default_XXX_b.csv", c("b1", "b2", "b3", "b4"), "2025-03-02")
+n_calls_test <- 0L; r3 <- load_test()
+check("cache: ficheiro alterado (tamanho) -> le so' esse (1 chamada), substitui as linhas antigas",
+      n_calls_test == 1L && nrow(r3$tracks) == 7L && sum(r3$tracks$track_id == "b1") == 1L)
+
+# so' a data de modificacao muda (mesmo tamanho)
+Sys.setFileTime(file.path(dir_test, "TrackReport_Default_XXX_a.csv"), Sys.time() + 3600)
+n_calls_test <- 0L; r3b <- load_test()
+check("cache: so' mtime alterado -> relê esse ficheiro (1 chamada)", n_calls_test == 1L)
+
+write_csv_test("TrackReport_Default_XXX_d.csv", c("d1", "d2"), "2025-03-04")
+n_calls_test <- 0L; r4 <- load_test()
+check("cache: ficheiro novo -> le so' o novo (1 chamada), 9 linhas", n_calls_test == 1L && nrow(r4$tracks) == 9L)
+
+# ficheiros de outro parque / de outro tipo na mesma pasta nao entram
+write_csv_test("TrackReport_Default_YYY_z.csv", c("z1"), "2025-03-05")
+write_csv_test("SCADA_XXX_x.csv", c("s1"), "2025-03-05")
+n_calls_test <- 0L; r4b <- load_test()
+check("padrao/farm_pattern: ficheiros YYY e SCADA ignorados (0 leituras, 9 linhas)", n_calls_test == 0L && nrow(r4b$tracks) == 9L)
+
+file.remove(file.path(dir_test, "TrackReport_Default_XXX_c.csv"))
+n_calls_test <- 0L; r5 <- load_test()
+check("cache: ficheiro desaparecido (pasta inacessivel) mantem as linhas em cache, sem ler nada",
+      n_calls_test == 0L && nrow(r5$tracks) == 9L)
+
+n_calls_test <- 0L; r6 <- load_test(pattern = "TrackReport_Default_XXX_[ab]")
+check("cache: padrao mudou -> cache invalidada, relê so' os ficheiros do novo padrao (2 chamadas, 6 linhas)",
+      n_calls_test == 2L && nrow(r6$tracks) == 6L)
+
+n_calls_test <- 0L; r7 <- load_test(pattern = "TrackReport_Default_XXX_[ab]", force = TRUE)
+check("cache: force_reread = TRUE relê tudo (2 chamadas)", n_calls_test == 2L)
+
+# dedup entre ficheiros sobrepostos: o mesmo ponto em 2 ficheiros so' conta uma vez
+write_csv_test("TrackReport_Default_XXX_a2.csv", c("a1", "a2"), "2025-03-01")
+r8 <- load_test(pattern = "TrackReport_Default_XXX_(a|a2)[.]csv", force = TRUE)
+check("dedup entre ficheiros sobrepostos: 4 linhas lidas -> 2", nrow(r8$tracks) == 2L)
+
+check("0 ficheiros -> erro explicito",
+      inherits(try(load_test(pattern = "NaoExiste"), silent = TRUE), "try-error"))

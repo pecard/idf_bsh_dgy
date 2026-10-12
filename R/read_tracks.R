@@ -4,9 +4,13 @@
 ## Depende de: data.table, janitor, R/read_utils.R
 ##
 
-read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv", tz = "UTC", farm_pattern = NULL) {
+# files: vetor de caminhos a ler (NULL = lista os ficheiros de databases_dirs
+# que batem com pattern/farm_pattern, como sempre). Passar files le so' esses
+# -- usado pela cache incremental do regional assessment (R/regional_assessment.R)
+read_tracks_data <- function(databases_dirs, pattern = "TrackReport.+csv", tz = "UTC", farm_pattern = NULL,
+                             files = NULL) {
 
-  files <- list_files_multi_dir(databases_dirs, pattern, farm_pattern)
+  if (is.null(files)) files <- list_files_multi_dir(databases_dirs, pattern, farm_pattern)
 
   vars <- c(
     'TrackId',
