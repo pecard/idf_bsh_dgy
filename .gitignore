@@ -50,3 +50,7 @@ rsconnect/
 
 # Outputs gerados pelas analises (relatorios, graficos, excel)
 outputs/
+
+# Apresentacoes PowerPoint (nao versionar)
+*.pptx
+*.ppt
