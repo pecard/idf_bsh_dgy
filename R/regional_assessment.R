@@ -59,6 +59,20 @@ regional_filter_window <- function(track_dt, ini, end) {
   track_dt[timestamp >= ini & timestamp <= end]
 }
 
+## Remove linhas duplicadas: ficheiros que se sobrepoem no tempo (mesmo
+## periodo exportado 2x, ex: data-raw + pasta de rede com nomes diferentes)
+## repetem o mesmo ponto (track_id + timestamp). read_tracks_data() ja' remove
+## linhas TOTALMENTE identicas; esta chave apanha tambem as que diferem numa
+## coluna qualquer. Mantem a 1a ocorrencia. Duplicados nao inflacionariam os
+## individuos (contam-se track_id distintos), mas pesam nas leituras/cache e
+## nas contagens de registos. Devolve o data.table sem duplicados, com o
+## numero removido em attr(, "n_removed").
+regional_dedup_tracks <- function(track_dt) {
+  out <- unique(track_dt, by = c("track_id", "timestamp"))
+  attr(out, "n_removed") <- nrow(track_dt) - nrow(out)
+  out
+}
+
 regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_pattern = NULL,
                                tz, ini, end, cache_dir = file.path("cache", "regional"),
                                force_reread = FALSE) {
@@ -84,6 +98,13 @@ regional_load_farm <- function(farm, databases_dirs, trackreport_pattern, farm_p
   tracks <- data.table::as.data.table(tracks)
   range_all <- range(tracks$timestamp)
   tracks <- regional_filter_window(tracks, ini, end)[, .(track_id, timestamp, utm_x, utm_y, spec)]
+
+  n_before <- nrow(tracks)
+  tracks <- regional_dedup_tracks(tracks)
+  message(sprintf(
+    "%s: %d linha(s) duplicada(s) (mesmo track_id + timestamp) removida(s) de %d.",
+    farm, attr(tracks, "n_removed"), n_before
+  ))
 
   if (nrow(tracks) == 0L) {
     stop(sprintf(

@@ -193,8 +193,30 @@ check("padrao DGY apanha so' o TrackReport de DGY", identical(hit(3), files_test
 check("'TrackReport_Default+ZRF' (regex literal) NAO apanha TrackReport_Default_ZRF_...",
       !grepl("TrackReport_Default+ZRF", files_test[1]))
 
+# limites relativos a ini/end do settings (nao fixos -- a janela pode ser ajustada)
+ini_t <- settings_env_test$ini; end_t <- settings_env_test$end
 win_test <- regional_filter_window(
-  data.table(timestamp = as.POSIXct(c("2024-12-31 23:00:00", "2025-01-01 00:00:00", "2026-10-01 23:59:59", "2026-10-02 00:00:01"), tz = tz_test)),
-  settings_env_test$ini, settings_env_test$end
+  data.table(timestamp = c(ini_t - 1, ini_t, end_t, end_t + 1)),
+  ini_t, end_t
 )
 check("janela ini/end: mantem os limites inclusivos, descarta o resto", nrow(win_test) == 2L)
+
+
+##
+## 6. Linhas duplicadas (mesmo track_id + timestamp)
+##
+t0_test <- as.POSIXct("2026-03-02 10:00:00", tz = tz_test)
+dup_test <- data.table(
+  track_id  = c("a", "a", "a", "b", "b"),
+  timestamp = t0_test + c(0, 0, 60, 0, 0),
+  utm_x     = c(1, 1, 2, 5, 5.5),   # a@0 exato duplicado; b@0 repetido com utm_x diferente
+  utm_y     = 0, spec = "Egyptian-Vulture"
+)
+dedup_test <- regional_dedup_tracks(dup_test)
+check("dedup: 5 linhas -> 3 (1 duplicado exato + 1 com valor diferente)", nrow(dedup_test) == 3L && attr(dedup_test, "n_removed") == 2L)
+check("dedup: mantem a 1a ocorrencia", dedup_test[track_id == "b", utm_x] == 5)
+check("dedup: sem duplicados -> nada removido", attr(regional_dedup_tracks(dedup_test), "n_removed") == 0L)
+bins_dup_test <- regional_min_individuals_bins(dup_test, "Egyptian-Vulture")
+bins_dedup_test <- regional_min_individuals_bins(dedup_test, "Egyptian-Vulture")
+check("duplicados nao alteram o minimo de individuos (a e b a 5 m -> 1)",
+      identical(bins_dup_test$n_individuals_min, bins_dedup_test$n_individuals_min))
