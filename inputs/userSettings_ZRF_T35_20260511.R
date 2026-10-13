@@ -2,9 +2,6 @@
 ## User settings -- Zarafshan WPP (ZRSHAN), incident report
 ## Incidente: Egyptian Vulture, turbina T35, 11/05/2026
 ##
-## userSettings_ZRF.R (T35) fica intacto, para poderes regenerar esse
-## relatorio mais tarde sem reconstruir os parametros.
-##
 ## O que mudou face a userSettings_ZRF.R (T35): fatality_incidents,
 ## turbinas_scada, wtg_3d_coverage, heartbeat_idf_units, end/scada_end
 ## (alargados para cobrir o incidente, 2026-10-01 -- o ficheiro do T35 so'
@@ -30,7 +27,7 @@ idf_filename <- "identiflight.shp"
 ## Nome da coluna de ID no shapefile de origem -- ver normalizacao em
 ## run_incident_zrshan.R (mesma logica de IDF_analysis.R secção 0, com um
 ## ajuste extra para o formato "IDF-1" do parque, ver esse ficheiro)
-wtg_source_id_col <- "ID"     # turbina de incidente: "T23"
+wtg_source_id_col <- "ID"     # turbina de incidente: "T35"
 idf_source_id_col <- "Name"   # unidades no formato "IDF-1", "IDF-2", ... "IDF-22", ...
 
 ## Ainda nao existe matriz manual turbina<->IDF para este parque -- aponta
@@ -88,12 +85,12 @@ curtailments_pattern <- "^Curtailments_ZRF"       # ex: Curtailments_ZRF_2026090
 scada_pattern        <- "SCADA_ZRF.+csv"          # ex: SCADA_ZRF_20260901_....csv
 heartbeats_pattern   <- "Heartbeats_ZRF.+csv"     # ex: Heartbeats_ZRF_20260901_....csv
 
-## So as unidades IDF de interesse para ESTE incidente (na T23) --
+## So as unidades IDF de interesse para ESTE incidente (na T35) --
 ## usadas como fallback_idf_units em summarise_fatality_windows() (R/
 ## fatality_window_analysis.R) e no calendario de disponibilidade.
 ##
 ## ROTULOS "IDF<NN>" CONFIRMADOS (Paulo/Claude, 2026-10) por calculo
-## geometrico (buffers de 1000m, cobertura >= 20% do buffer da turbina
+## geometrico (buffers de 1000m, cobertura >= 20% do buffer da turbina T35).
 ##
 ## Codigos BRUTOS ("GW<turbina que aloja a unidade>-<numero>", formato
 ## confirmado para o T35 em "GW32-22" etc.) CONFIRMADOS pelo Paulo a
