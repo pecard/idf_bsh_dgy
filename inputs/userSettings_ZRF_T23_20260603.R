@@ -121,11 +121,11 @@ names(heartbeat_idf_units) <- c("IDF13", "IDF15", "IDF19", "IDF70", "IDF20")    
 ## ter de voltar a alargar manualmente a cada novo incidente.
 ##
 
-ini <- as.POSIXct('2026-04-03 00:00:00', tz = proj_timezone)
-end <- as.POSIXct('2026-05-03 00:00:00', tz = proj_timezone)
+ini <- as.POSIXct('2026-05-03 00:00:00', tz = proj_timezone)
+end <- as.POSIXct('2026-06-03 23:59:59', tz = proj_timezone)
 
-scada_ini <- as.POSIXct('2026-04-03 00:00:00', tz = proj_timezone)
-scada_end <- as.POSIXct('2026-05-03 00:00:00', tz = proj_timezone)
+scada_ini <- as.POSIXct('2026-05-03 00:00:00', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-06-03 23:59:59', tz = proj_timezone)
 
 ## So a turbina do incidente -- e' o unico foco deste relatorio
 turbinas_scada <- c("T23")
@@ -291,9 +291,9 @@ min_individuals_merge_dist_m <- 200
 ##
 
 fatality_incidents <- data.table::data.table(
-  incident_id   = "ZRF_May032026",
+  incident_id   = "ZRF_June032026",
   turbine       = "T23",
   species       = "Egyptian-Vulture",
-  incident_date = as.Date("2026-05-03"),
+  incident_date = as.Date("2026-06-03"),
   days_before   = 15
 )
