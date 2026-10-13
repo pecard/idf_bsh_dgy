@@ -109,8 +109,9 @@ heartbeats_pattern   <- "Heartbeats_ZRF.+csv"     # ex: Heartbeats_ZRF_20260901_
 ## Codigos BRUTOS ("GW<turbina que aloja a unidade>-<numero>", formato
 ## confirmado para o T35 em "GW32-22" etc.) CONFIRMADOS pelo Paulo a
 ## partir dos heartbeats brutos (instance_name), 2026-10.
-heartbeat_idf_units <- c("GW94-60", "GW89-58", "GW82-53", "GW105-66")
-names(heartbeat_idf_units) <- c("IDF60", "IDF58", "IDF53", "IDF66")
+## !! IDF66 apparently not recording tracks for Aug, Sep, Oct 2026 !!
+heartbeat_idf_units <- c("GW94-60", "GW89-58", "GW82-53") #, "GW105-66")
+names(heartbeat_idf_units) <- c("IDF60", "IDF58", "IDF53") #, "IDF66")
 
 
 ##
@@ -292,7 +293,7 @@ min_individuals_merge_dist_m <- 200
 ##
 
 fatality_incidents <- data.table::data.table(
-  incident_id   = "ZRF_Oct2026",
+  incident_id   = "ZRF_Oct012026",
   turbine       = "T94",
   species       = "Egyptian-Vulture",
   incident_date = as.Date("2026-10-01"),
