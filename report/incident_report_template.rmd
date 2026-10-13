@@ -608,7 +608,7 @@ if (!is.null(params$coverage3d_by_turbine) && nrow(params$coverage3d_by_turbine)
     c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered",
       n_low_terrain_mesh = "Low-Terrain Cells", n_low_terrain_covered = "Low-Terrain Covered Cells",
       pct_low_terrain_covered = "% Low-Terrain Covered")
-  ))
+  ), fixed_col_width_cm = 1.5)
 } else {
   cat("DEM not available or 3D coverage not computed for this run.\n\n")
 }
@@ -626,7 +626,7 @@ if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_r
     drop_cols(params$coverage3d_by_risk_dist_band, "wtg_id"),
     c(risk_band = "Height Band", dist_band = "Distance Band", n_mesh = "Air Mesh Cells",
       n_covered = "Covered Cells", pct_covered = "% Covered")
-  ))
+  ), fixed_col_width_cm = 1.5)
 } else {
   cat("No height x distance breakdown available for this run -- this needs `dist_band_breaks` to have been passed to `run_coverage_3d_all_turbines()` (R/coverage_3d_topography.R) in addition to the risk-band breaks; without it, only the overall table above is computed.\n\n")
 }
