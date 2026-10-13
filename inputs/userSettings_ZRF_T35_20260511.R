@@ -1,13 +1,7 @@
 ##
 ## User settings -- Zarafshan WPP (ZRSHAN), incident report
-## Incidente: Egyptian Vulture, turbina T23, 03/05/2026
+## Incidente: Egyptian Vulture, turbina T35, 11/05/2026
 ##
-## Copia de inputs/userSettings_ZRF.R (incidente anterior, T35/Maio 2026),
-## adaptada para ESTE incidente -- ver run_incident_zrshan.R, secção
-## "project_settings_file" (topo do ficheiro): corre com
-##   project_settings_file <- "userSettings_ZRF_T94_20261001.R"
-##   source("run_incident_zrshan.R")
-## (ou usa o lancador dedicado run_incident_zrshan_T94_20261001.R).
 ## userSettings_ZRF.R (T35) fica intacto, para poderes regenerar esse
 ## relatorio mais tarde sem reconstruir os parametros.
 ##
@@ -100,17 +94,12 @@ heartbeats_pattern   <- "Heartbeats_ZRF.+csv"     # ex: Heartbeats_ZRF_20260901_
 ##
 ## ROTULOS "IDF<NN>" CONFIRMADOS (Paulo/Claude, 2026-10) por calculo
 ## geometrico (buffers de 1000m, cobertura >= 20% do buffer da turbina
-## T94 -- check_turbine_idf_coverage_ZRF.R, corrido com turbine_id <-
-## "T94", apos corrigir o bug do regex guloso que truncava rotulos de 2+
-## digitos -- ver run_incident_zrshan.R, secção "2. Turbine/IDF
-## coverage"): IDF60 (79.5%), IDF58 (43.1%), IDF53 (31.9%), IDF66 (21.8%).
-## IDF65 fica de fora (2.7%, abaixo do limiar de 20%).
 ##
 ## Codigos BRUTOS ("GW<turbina que aloja a unidade>-<numero>", formato
 ## confirmado para o T35 em "GW32-22" etc.) CONFIRMADOS pelo Paulo a
 ## partir dos heartbeats brutos (instance_name), 2026-10.
-heartbeat_idf_units <- c("GW19-13", "GW23-15", "GW27-19", "GW26-70")  # ALTERAR !
-names(heartbeat_idf_units) <- c("IDF13", "IDF15", "IDF19", "IDF70")   # ALTERAR !
+heartbeat_idf_units <- c("GW25-24", "GW40-26", "GW32-22", "GW37-71", "GW30-21")  # ALTERAR !
+names(heartbeat_idf_units) <- c("IDF24", "IDF26", "IDF22", "IDF71", "IDF21")   # ALTERAR !
 
 
 ##
@@ -121,14 +110,14 @@ names(heartbeat_idf_units) <- c("IDF13", "IDF15", "IDF19", "IDF70")   # ALTERAR 
 ## ter de voltar a alargar manualmente a cada novo incidente.
 ##
 
-ini <- as.POSIXct('2026-04-20 00:00:00', tz = proj_timezone)
-end <- as.POSIXct('2026-05-03 00:00:00', tz = proj_timezone)
+ini <- as.POSIXct('2026-04-16 00:00:00', tz = proj_timezone)
+end <- as.POSIXct('2026-05-16 00:00:00', tz = proj_timezone)
 
-scada_ini <- as.POSIXct('2026-04-20 00:00:00', tz = proj_timezone)
-scada_end <- as.POSIXct('2026-05-03 00:00:00', tz = proj_timezone)
+scada_ini <- as.POSIXct('2026-04-16 00:00:00', tz = proj_timezone)
+scada_end <- as.POSIXct('2026-05-16 00:00:00', tz = proj_timezone)
 
 ## So a turbina do incidente -- e' o unico foco deste relatorio
-turbinas_scada <- c("T23")
+turbinas_scada <- c("T35")
 
 
 ##
@@ -199,7 +188,7 @@ idf_op_detection_range <- 1000 # em metros; raio de deteção operacional do IDF
 
 ## -- 3D Coverage (topography-corrected, DEM) --
 dem_filename <- "dem_copernicus_30m_zrfshan.tif"
-wtg_3d_coverage <- c("T23")
+wtg_3d_coverage <- c("T35")
 
 ## Restantes parametros do cilindro/malha -- copiados VERBATIM de
 ## userSettings_BSH.R (metodologia farm-independente)
@@ -265,9 +254,9 @@ min_individuals_merge_dist_m <- 200
 ##
 
 fatality_incidents <- data.table::data.table(
-  incident_id   = "ZRF_May032026",
-  turbine       = "T23",
+  incident_id   = "ZRF_May112026",
+  turbine       = "T35",
   species       = "Egyptian-Vulture",
-  incident_date = as.Date("2026-05-03"),
+  incident_date = as.Date("2026-05-11"),
   days_before   = 15
 )
