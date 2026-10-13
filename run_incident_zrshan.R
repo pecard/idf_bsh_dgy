@@ -527,6 +527,12 @@ p_fatality_example_curtailment <- if (nrow(fatality_example_curtailment_dt) > 0 
 ## userSettings_ZRF.R, T35, nao atualizado de proposito), estas 2 seccoes
 ## ficam NULL e desaparecem do relatorio, sem erro -- mesmo padrao de
 ## rotor_radius_m acima.
+## Janela de investigacao -- tem de existir ANTES do primeiro uso (filtro de
+## track_dt_window/curtl_dt_window abaixo); antes estava definida mais
+## abaixo, so' funcionava se sobrasse da sessao R de uma corrida anterior.
+incident_window_start <- as.POSIXct(paste(fatality_incidents$incident_date - fatality_incidents$days_before, "00:00:00"), tz = proj_timezone)
+incident_window_end   <- as.POSIXct(paste(fatality_incidents$incident_date, "23:59:59"), tz = proj_timezone)
+
 if (exists("id_transition_late_time_sec") && exists("shorttrack_min_points") && exists("shorttrack_eval_range")) {
 
   source("R/id_transitions.R")
@@ -881,13 +887,9 @@ write_xlsx_local(
 )
 
 
-## incident_window_start/end -- usados em report_params (secção "7. Word
-## report" abaixo). A secção "6. Candidate/duplicate tracks" que existia
-## aqui (R/track_harmonization.R) foi removida do pipeline e do relatorio
-## (pedido do Paulo, 2026-10 -- "it is not useful"); estas 2 linhas ficam,
-## isoladas, por serem usadas por outras partes do relatorio.
-incident_window_start <- as.POSIXct(paste(fatality_incidents$incident_date - fatality_incidents$days_before, "00:00:00"), tz = proj_timezone)
-incident_window_end   <- as.POSIXct(paste(fatality_incidents$incident_date, "23:59:59"), tz = proj_timezone)
+## incident_window_start/end -- definidos mais acima (antes de "ID
+## Transitions"/"Short-Track Curtailments"), onde sao usados pela primeira
+## vez, e reutilizados em report_params (secção "7. Word report" abaixo).
 
 
 ##
