@@ -426,7 +426,7 @@ Each slot in the calendar below is colored by one of six statuses:
 &nbsp;
 
 <!-- Source: offline_evidence_slot_grid()/plot_offline_evidence_slots(), R/availability_daylight.R; classification from summarise_offline_evidence_window(), R/fatality_window_analysis.R (same methodology as classify_offline_evidence(), R/offline_curtailment_check.R, used in the monthly reports) -->
-```{r fatality-offline-evidence-calendar-plot, fig.width=6.30, fig.height=5, results='asis'}
+```{r fatality-offline-evidence-calendar-plot, fig.width=6.30, fig.height=5, dpi=220, results='asis'}
 if (!is.null(params$fatality_offline_evidence_calendar_plot)) {
   print(params$fatality_offline_evidence_calendar_plot)
 } else {

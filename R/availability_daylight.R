@@ -387,7 +387,7 @@ plot_heartbeat_slots <- function(slot_grid_dt, date_breaks = "2 days", title = N
   # por nivel de slot_status, para a legenda nunca depender do caminho
   # "nivel sem dados nenhures" (fragil entre versoes do ggplot2).
   dummy_legend_dt <- data.table::data.table(
-    idf = slot_grid_dt$idf[1], date = slot_grid_dt$date[1], time_decimal = slot_grid_dt$time_decimal[1],
+    idf = slot_grid_dt$idf[1], date = slot_grid_dt$date[1], time_decimal = 12, # no meio do eixo: um tile em 0 sai dos limites e gerava o aviso "Removed rows"
     slot_status = factor(levels(slot_grid_dt$slot_status), levels = levels(slot_grid_dt$slot_status))
   )
 
@@ -539,7 +539,9 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
     )
   }
 
-  tile_height <- (slot_mins / 60) * 0.96
+  # (so' usado pela layer invisivel da legenda abaixo; os slots reais sao
+  # desenhados como retangulos fundidos, ver rect_dt)
+  tile_height <- slot_mins / 60
 
   # Vetor de cores extraido para variavel -- reutilizado abaixo em
   # override.aes$fill (nao so' em scale_fill_manual(values=...)), ver nota
@@ -567,13 +569,25 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
   # legenda ser construida pelo MESMO caminho de codigo ja usado (e que
   # sempre funcionou) para os niveis que tem dados reais.
   dummy_legend_dt <- data.table::data.table(
-    idf = slot_grid_dt$idf[1], date = slot_grid_dt$date[1], time_decimal = slot_grid_dt$time_decimal[1],
+    idf = slot_grid_dt$idf[1], date = slot_grid_dt$date[1], time_decimal = 12, # no meio do eixo: um tile em 0 sai dos limites e gerava o aviso "Removed rows"
     slot_status = factor(levels(slot_grid_dt$slot_status), levels = levels(slot_grid_dt$slot_status))
   )
 
-  ggplot(slot_grid_dt, aes(x = date, y = time_decimal, fill = slot_status)) +
-    geom_tile(width = 0.95, height = tile_height) +
-    geom_tile(data = dummy_legend_dt, width = 0.95, height = tile_height, alpha = 0) +
+  # Slots consecutivos com o MESMO estado, no mesmo dia/unidade, sao fundidos
+  # num unico retangulo (run-length): sem costuras entre slots (cada tile
+  # separado tem as bordas "anti-aliased" contra o fundo branco, o que
+  # aparecia como linhas finas claras em alguns paineis, conforme o
+  # alinhamento de pixeis). So' ficam fronteiras onde o estado muda.
+  rect_dt <- data.table::as.data.table(slot_grid_dt)[order(idf, date, time_decimal)]
+  rect_dt[, run_id := data.table::rleid(slot_status), by = .(idf, date)]
+  half_h <- (slot_mins / 60) / 2
+  rect_dt <- rect_dt[, .(ymin = min(time_decimal) - half_h, ymax = max(time_decimal) + half_h),
+                     by = .(idf, date, run_id, slot_status)]
+  rect_dt[, `:=`(ymin = pmax(ymin, 0), ymax = pmin(ymax, 24))]
+
+  ggplot(rect_dt, aes(fill = slot_status)) +
+    geom_rect(aes(xmin = date - 0.475, xmax = date + 0.475, ymin = ymin, ymax = ymax)) +
+    geom_tile(data = dummy_legend_dt, aes(x = date, y = time_decimal), width = 0.95, height = tile_height, alpha = 0) +
     facet_wrap(~idf, ncol = 1) +
     scale_fill_manual(name = "Slot status", values = slot_status_colors, drop = FALSE) +
     # override.aes mantido como 2a camada de proteção (nao faz mal a mais,
