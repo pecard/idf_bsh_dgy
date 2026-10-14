@@ -202,7 +202,7 @@ fatality_signal_labels <- c(
 
 **`r params$project_ref`** -- Incident Report `r params$incident_id`
 
-Turbine: **`r params$incident_turbine`** | Species: **`r params$incident_species`** | Incident date (carcass found, not date of collision): **`r params$incident_date`**
+Turbine: **`r params$incident_turbine`** | Species: **`r params$incident_species`** | Incident date (when individual was found, not date of collision): **`r params$incident_date`**
 
 Investigation window: `r params$incident_window_start` to `r params$incident_window_end` (`r params$incident_days_before` days before, and including, the incident date)
 
@@ -242,7 +242,7 @@ syn_cand <- params$fatality_candidates
 
 ```{r synopsis-text, results='asis'}
 cat(sprintf(
-  "Incident on turbine %s (%s), recorded on %s (date the carcass was found, not the date of collision); investigation window %s to %s.\n\n",
+  "Incident on turbine %s (%s), recorded on %s (date of the finding, not the date of collision); investigation window %s to %s.\n\n",
   params$incident_turbine, params$incident_species, params$incident_date,
   params$incident_window_start, params$incident_window_end
 ))
@@ -256,6 +256,8 @@ w_net <- params$fatality_window_net_availability
 g_net <- params$fatality_global_net_availability
 w_rsp <- params$fatality_window_response_summary
 g_rsp <- if (!is.null(params$latency_by_turbine)) params$latency_by_turbine[params$latency_by_turbine$turbine == params$incident_turbine, , drop = FALSE] else NULL
+gap_min <- if (is.null(params$heartbeat_offline_gap_min)) "60" else params$heartbeat_offline_gap_min
+decl_pct <- if (is.null(params$curtailment_latency_decline_pct)) "10" else format(100 * params$curtailment_latency_decline_pct)
 perf <- data.frame(
   Metric = c("Raw offline (% of daylight time)", "Net / confirmed offline (%)", "No evidence, pending manual review (%)",
              "Curtailments assessed (n)", "Reached (%)", "No response (n)", "Median latency (s)"),
@@ -269,9 +271,20 @@ perf <- data.frame(
     syn_num(syn_first(g_rsp, "n_eligible"), 0), syn_num(syn_first(g_rsp, "pct_reached")),
     syn_num(syn_first(g_rsp, "n_no_response"), 0), syn_num(syn_first(g_rsp, "median_latency_sec"))
   ),
+  `What it means` = c(
+    sprintf("Share of daylight hours in which the IDF unit(s) sent no status signal (heartbeat) for %s minutes or more, i.e. were considered offline.", gap_min),
+    "The same, after removing the periods in which a curtailment was still triggered at the turbine -- evidence that the system was working despite the missing signal.",
+    "Offline periods with neither a curtailment nor turbine speed (RPM) data available; these need manual review.",
+    "Curtailments (turbine slow-down or stop orders triggered by a bird detection) at the incident turbine that could be assessed.",
+    sprintf("Share of those curtailments after which the turbine rotor speed dropped by at least %s%%, i.e. the turbine reacted to the order.", decl_pct),
+    "Curtailments after which no such drop in rotor speed was observed.",
+    "Typical time (median) between the curtailment order and the first measurable drop in rotor speed; lower means a faster reaction."
+  ),
   check.names = FALSE
 )
-report_table(perf, max_col_width_cm = 6)
+ft_perf <- report_table(perf)
+# largura total 16 cm (area util da pagina A4 vertical do template)
+flextable::width(ft_perf, j = 1:4, width = c(3.8, 2.8, 2.4, 7.0), unit = "cm")
 ```
 
 ```{r synopsis-text-2, results='asis'}
@@ -342,7 +355,7 @@ if (!is.null(st) && nrow(st) >= 3L && !is.null(params$shorttrack_min_points)) {
   ))
 }
 
-cat("\n\nThis summary restates figures from the sections that follow; it does not establish the cause of the mortality.\n")
+cat("\n\nThis summary restates figures from the sections that follow; it does not establish the cause of the incident.\n")
 ```
 
 ---

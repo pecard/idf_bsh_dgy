@@ -132,6 +132,9 @@ write_run_info(folder_output, incident_tag, run_date, project_settings_file, fil
 folder_cache <- file.path("cache", farm_code)
 
 username <- tryCatch(Sys.info()[["user"]], error = function(e) "unknown")
+## Equipa responsavel mostrada no cabecalho do relatorio ("Responsible Team")
+## -- definir em settings/launcher para outra equipa; omissao abaixo
+if (!exists("report_team")) report_team <- "Paulo Cardoso; Sandra Rodrigues"
 
 ## Mesma logica de IDF_analysis.R -- identifica o commit exato (e se havia
 ## alteracoes locais nao commitadas) que produziu este relatorio especifico
@@ -944,7 +947,7 @@ report_params <- list(
   report_start  = as.character(as.Date(ini, tz = proj_timezone)),
   report_end    = as.character(as.Date(end, tz = proj_timezone)),
   analysis_date = format(Sys.time(), "%Y-%m-%d"),
-  username      = username,
+  username      = report_team,
   code_version  = code_version,
 
   coverage_turbine_of_interest = coverage_turbine_of_interest_dt,
