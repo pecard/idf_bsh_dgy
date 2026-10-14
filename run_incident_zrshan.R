@@ -966,6 +966,13 @@ report_params <- list(
 
   fatality_signal_counts           = fatality_summary$counts_by_signal,
   fatality_top_candidates          = fatality_summary$top_candidates,
+  fatality_candidates              = {
+    ## TODOS os candidatos (2 sinais mais criticos), nao so' o top_n da tabela 4.2 -- sinopse do relatorio
+    cand_dt <- fatality_tracks_dt[signal %in% c("no_curtailment_lost_near_turbine", "curtailment_lost_near_turbine")]
+    cand_dt[, signal_ord := match(signal, c("no_curtailment_lost_near_turbine", "curtailment_lost_near_turbine"))]
+    data.table::setorder(cand_dt, signal_ord, last_dist_m)
+    as.data.frame(cand_dt[, .(track_id, signal, rpm_at_identification, blade_tip_speed_ms, curtailment_active_at_identification, triggered_curtailment)])
+  },
   fatality_example_no_curtailment_plot     = p_fatality_example_no_curtailment,
   fatality_example_curtailment_plot        = p_fatality_example_curtailment,
   fatality_example_no_curtailment_track_id = if (nrow(fatality_example_no_curtailment_dt) > 0) fatality_example_no_curtailment_dt$track_id else NULL,

@@ -27,6 +27,7 @@ params:
 
   fatality_signal_counts: !r NULL
   fatality_top_candidates: !r NULL
+  fatality_candidates: !r NULL
   fatality_example_no_curtailment_plot: !r NULL
   fatality_example_curtailment_plot: !r NULL
   fatality_example_no_curtailment_track_id: !r NULL
@@ -212,6 +213,137 @@ Data coverage used for the overall/context figures in this report: `r params$rep
 Analysis date: `r params$analysis_date` | Responsible Team: `r params$username` | Code version: `r params$code_version`
 
 This report is descriptive and fully automated, generated end-to-end by an R code pipeline. The recorded incident date is when the carcass or injured bird was reported, not the date of collision, and this is why the investigation covers a window of days before that date, not the single day.
+
+**Technical Summary**
+
+```{r synopsis-helpers, include=FALSE}
+syn_first <- function(dt, col) {
+  if (is.null(dt) || nrow(dt) == 0L || !col %in% names(dt)) return(NA)
+  dt[[col]][1]
+}
+syn_num <- function(x, digits = 1) if (length(x) == 0L || is.na(x)) "Not available" else formatC(as.numeric(x), format = "f", digits = digits)
+syn_range <- function(v, digits = 1) {
+  v <- v[!is.na(v)]
+  if (length(v) == 0L) return(NULL)
+  if (length(v) == 1L) return(sprintf("%s m/s", syn_num(v, digits)))
+  sprintf("%s to %s m/s (median %s m/s)", syn_num(min(v), digits), syn_num(max(v), digits), syn_num(stats::median(v), digits))
+}
+syn_group_text <- function(d, what) {
+  n <- nrow(d)
+  if (n == 0L) return(sprintf("None of the candidate tracks %s.", what))
+  rng <- syn_range(d$blade_tip_speed_ms)
+  n_known <- sum(!is.na(d$blade_tip_speed_ms))
+  speed_txt <- if (is.null(rng)) "no RPM reading was available to compute the blade tip speed" else
+    sprintf("blade tip speed at the moment of identification, %s (%d of %d with an RPM reading)", rng, n_known, n)
+  sprintf("%d candidate track%s %s; %s.", n, if (n == 1L) "" else "s", what, speed_txt)
+}
+syn_cand <- params$fatality_candidates
+```
+
+```{r synopsis-text, results='asis'}
+cat(sprintf(
+  "Incident on turbine %s (%s), recorded on %s (date the carcass was found, not the date of collision); investigation window %s to %s.\n\n",
+  params$incident_turbine, params$incident_species, params$incident_date,
+  params$incident_window_start, params$incident_window_end
+))
+cat("IDF system performance for the IDF unit(s) covering the incident turbine and for the curtailments recorded at that turbine, in the investigation window and over the overall baseline period:\n\n")
+```
+
+&nbsp;
+
+```{r synopsis-performance-table}
+w_net <- params$fatality_window_net_availability
+g_net <- params$fatality_global_net_availability
+w_rsp <- params$fatality_window_response_summary
+g_rsp <- if (!is.null(params$latency_by_turbine)) params$latency_by_turbine[params$latency_by_turbine$turbine == params$incident_turbine, , drop = FALSE] else NULL
+perf <- data.frame(
+  Metric = c("Raw offline (% of daylight time)", "Net / confirmed offline (%)", "No evidence, pending manual review (%)",
+             "Curtailments assessed (n)", "Reached (%)", "No response (n)", "Median latency (s)"),
+  `Investigation window` = c(
+    syn_num(syn_first(w_net, "raw_offline_pct")), syn_num(syn_first(w_net, "net_offline_pct")), syn_num(syn_first(w_net, "no_evidence_pct")),
+    syn_num(syn_first(w_rsp, "n_eligible"), 0), syn_num(syn_first(w_rsp, "pct_reached")),
+    syn_num(syn_first(w_rsp, "n_no_response"), 0), syn_num(syn_first(w_rsp, "median_latency_sec"))
+  ),
+  `Overall baseline` = c(
+    syn_num(syn_first(g_net, "raw_offline_pct")), syn_num(syn_first(g_net, "net_offline_pct")), syn_num(syn_first(g_net, "no_evidence_pct")),
+    syn_num(syn_first(g_rsp, "n_eligible"), 0), syn_num(syn_first(g_rsp, "pct_reached")),
+    syn_num(syn_first(g_rsp, "n_no_response"), 0), syn_num(syn_first(g_rsp, "median_latency_sec"))
+  ),
+  check.names = FALSE
+)
+report_table(perf, max_col_width_cm = 6)
+```
+
+```{r synopsis-text-2, results='asis'}
+# unidades IDF sem heartbeats na janela (nao avaliadas)
+wa <- params$fatality_window_availability
+not_eval <- if (!is.null(wa) && "availability_cat" %in% names(wa)) as.character(wa$idf[as.character(wa$availability_cat) %in% "Not evaluated"]) else character()
+if (length(not_eval) > 0L) {
+  cat(sprintf("\n\n&nbsp;\n\nNo heartbeat records were available in the investigation window for IDF unit(s) %s (not evaluated).\n", paste(not_eval, collapse = ", ")))
+}
+
+# cobertura 3D da turbina do incidente
+c3 <- params$coverage3d_by_turbine
+c3b <- params$coverage3d_by_risk_dist_band
+if (!is.null(c3) && nrow(c3) > 0L) {
+  inner <- if (!is.null(c3b) && all(c("risk_band", "dist_band", "pct_covered") %in% names(c3b))) c3b$pct_covered[c3b$risk_band == "at risk" & c3b$dist_band == "inner"] else NA
+  low <- if ("pct_low_terrain_covered" %in% names(c3)) c3$pct_low_terrain_covered[1] else NA
+  cat(sprintf(
+    "\n\n&nbsp;\n\n3D coverage of the air mesh around the incident turbine: %s%% of cells covered overall; %s%% in the at-risk/inner band; %s%% of the low-terrain cells.\n",
+    syn_num(c3$pct_covered[1]), syn_num(if (length(inner)) inner[1] else NA), syn_num(low)
+  ))
+}
+
+# candidatos
+cat("\n\n&nbsp;\n\n")
+if (is.null(syn_cand) || nrow(syn_cand) == 0L) {
+  cat(sprintf("No candidate tracks (last recorded position within %s m of the turbine and below %s m AGL) were found in the investigation window.\n", params$track_proximity_threshold_m, params$curtailment_trigger_height_m))
+} else {
+  A <- syn_cand[syn_cand$signal == "no_curtailment_lost_near_turbine", , drop = FALSE]
+  B <- syn_cand[syn_cand$signal == "curtailment_lost_near_turbine", , drop = FALSE]
+  n_active <- sum(syn_cand$curtailment_active_at_identification %in% TRUE)
+  cat(sprintf(
+    "Candidate tracks (last recorded position within %s m of the turbine and below %s m AGL): %d in total. %s %s",
+    params$track_proximity_threshold_m, params$curtailment_trigger_height_m, nrow(syn_cand),
+    syn_group_text(A, "approached the turbine with no curtailment triggered"),
+    syn_group_text(B, "had a curtailment triggered")
+  ))
+  cat(sprintf(" In %d of the %d candidate tracks the turbine was already under a curtailment order (from any track) when the species was identified.\n", n_active, nrow(syn_cand)))
+  cat("\n\n&nbsp;\n\n") # linha em branco unica antes da tabela de candidatos (chunk seguinte)
+}
+```
+
+```{r synopsis-candidates-table}
+if (!is.null(syn_cand) && nrow(syn_cand) > 0L) {
+  n_show <- min(nrow(syn_cand), 10L)
+  cd <- syn_cand[seq_len(n_show), , drop = FALSE]
+  cd$signal <- unname(fatality_signal_labels[cd$signal])
+  cd$curtailment_active_at_identification <- ifelse(cd$curtailment_active_at_identification %in% TRUE, "Yes", "No")
+  cd <- cd[, c("track_id", "signal", "rpm_at_identification", "blade_tip_speed_ms", "curtailment_active_at_identification")]
+  report_table(rename_display(cd, c(
+    track_id = "Track ID", signal = "Signal", rpm_at_identification = "RPM at Identification",
+    blade_tip_speed_ms = "Blade Tip Speed (m/s)", curtailment_active_at_identification = "Curtailment Already Active"
+  )), max_col_width_cm = 4)
+}
+```
+
+```{r synopsis-text-3, results='asis'}
+if (!is.null(syn_cand) && nrow(syn_cand) > 10L) {
+  cat(sprintf("\n\n&nbsp;\n\nThe table lists the first 10 of %d candidate tracks, ordered by signal and distance to the turbine; the full list is in the accompanying workbook.\n", nrow(syn_cand)))
+}
+
+# tracks curtos
+st <- params$short_track_summary
+if (!is.null(st) && nrow(st) >= 3L && !is.null(params$shorttrack_min_points)) {
+  v <- function(i) st$value[i]
+  cat(sprintf(
+    "\n\n&nbsp;\n\nShort tracks: %s track(s) near the incident turbine in the investigation window had fewer than %s recorded points; %s curtailment(s) were triggered by short tracks within %s m (%s%% of the curtailments in the window).\n",
+    syn_num(v(1), 0), params$shorttrack_min_points, syn_num(v(2), 0), params$shorttrack_eval_range, syn_num(v(3))
+  ))
+}
+
+cat("\n\nThis summary restates figures from the sections that follow; it does not establish the cause of the mortality.\n")
+```
 
 ---
 
