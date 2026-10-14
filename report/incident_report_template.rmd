@@ -706,7 +706,7 @@ annex_note(params$xlsx_fatality)
 
 The tracks most likely associated with the incident -- those whose last recorded position ends closest to the turbine, among the candidate signal categories above (species is omitted below, since this report covers a single species, stated at the top of this report). `last_height_m` is the bird's height above ground at that last recorded position (`min_height_m` is the lowest height reached anywhere in the track) -- for reference against the `r params$curtailment_trigger_height_m` m curtailment-trigger height used above. `RPM at Identification` is the nearest SCADA RPM reading to the moment the species was first identified in this track, and `Blade Tip Speed` the corresponding speed at the tip of the rotor blade (both blank if no RPM reading within the matching tolerance); `Curtailment Already Active` flags whether the turbine was already under a curtailment order -- from this track or any other -- that started at least 1 second before that moment and was still running at it, distinguishing a track that triggered no new curtailment because the turbine was already safely curtailed from one where no curtailment was in effect at all. The full table (point counts, distances, timestamps) is in the accompanying workbook. A fatality can occur with no curtailment ever triggered for the responsible track, particularly when the bird is detected already close to the turbine.
 
-&nbsp;
+LANDSCAPE_SECTION_START
 
 <!-- Source: fatality_summary$top_candidates, R/fatality_track_investigation.R -->
 ```{r fatality-top-candidates-table}
@@ -716,17 +716,25 @@ if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candida
                         "triggered_curtailment", "rpm_at_identification", "blade_tip_speed_ms",
                         "curtailment_active_at_identification", "signal"), names(dt)), drop = FALSE]
   dt$signal <- unname(fatality_signal_labels[dt$signal])
-  report_table(
+  # Coluna vazia para colar manualmente o print do portal de dados do IDF
+  # (Track browser): 5 cm, linhas mais altas para caber a imagem.
+  dt$track_browser_evidence <- ""
+  ft <- report_table(
     rename_display(
       dt,
       c(incident_id = "Incident", track_id = "Track ID", turbine = "Turbine",
         last_height_m = "Last Height (m AGL)", min_height_m = "Min Height (m AGL)",
         triggered_curtailment = "Triggered Curtailment", rpm_at_identification = "RPM at Identification",
         blade_tip_speed_ms = "Blade Tip Speed (m/s)",
-        curtailment_active_at_identification = "Curtailment Already Active", signal = "Signal")
+        curtailment_active_at_identification = "Curtailment Already Active", signal = "Signal",
+        track_browser_evidence = "Track browser evidence")
     ),
     fixed_col_width_cm = 1.5
   )
+  ft <- flextable::width(ft, j = "Track browser evidence", width = 5, unit = "cm")
+  ft <- flextable::height(ft, height = 3, unit = "cm", part = "body")
+  ft <- flextable::hrule(ft, rule = "atleast", part = "body")
+  ft
 }
 ```
 ```{r fatality-top-candidates-empty, results='asis'}
@@ -737,6 +745,8 @@ if (!is.null(params$fatality_top_candidates) && nrow(params$fatality_top_candida
 ```{r fatality-top-candidates-annex, results='asis'}
 annex_note(params$xlsx_fatality)
 ```
+
+LANDSCAPE_SECTION_END
 
 The examples below illustrate the RPM behaviour of the turbine around a candidate track: the first track found with no curtailment triggered (when available), and the first track found with a curtailment triggered (both from the table above, ordered by distance to the turbine). For the no-curtailment example, a candidate is skipped if the turbine was already under a curtailment order triggered by a different track during the plotted window -- otherwise an unrelated RPM drop could look like a missed response, when the turbine was in fact already safely curtailed for another detection. "Track first position"/"Track last position" mark the timestamps of the first and last recorded points of the track; "Curtailment start"/"Curtailment stop" (when present) mark the actual curtailment order recorded for that track at this turbine.
 
