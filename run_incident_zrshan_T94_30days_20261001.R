@@ -18,7 +18,7 @@
 ## confirmados em inputs/userSettings_ZRF_T94_20261001.R.
 ##
 
-project_settings_file <- "userSettings_ZRF_T94_20261001.R"
+project_settings_file <- "userSettings_ZRF_T94_30days_20261001.R"
 
 ## Deixar FALSE na maioria das corridas -- so' TRUE na 1a corrida a seguir
 ## a descarregar dados novos (mesma cache/ZRSHAN/ partilhada com o

@@ -295,7 +295,7 @@ min_individuals_merge_dist_m <- 200
 fatality_incidents <- data.table::data.table(
   incident_id   = "ZRF_Oct012026",
   turbine       = "T94",
-  species       = "Egyptian Vulture",
+  species       = "Egyptian-Vulture",
   incident_date = as.Date("2026-10-01"),
   days_before   = 30
 )
