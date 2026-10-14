@@ -288,7 +288,20 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
     window_to   <- as.POSIXct(paste(inc$incident_date, "23:59:59"), tz = tz)
 
     idf_units <- if (!is.null(manual_matrix_dt)) resolve_incident_idf_units(inc$turbine, manual_matrix_dt) else character()
-    if (length(idf_units) == 0L) idf_units <- fallback_idf_units
+    if (length(idf_units) == 0L) {
+      idf_units <- fallback_idf_units
+    } else if (!is.null(fallback_idf_units) && !any(idf_units %in% heartb_dt$idf)) {
+      # a matriz manual da turbina usa rotulos que NAO existem em heartb_dt$idf
+      # (ex: "IDF-13" vs "IDF13") -- sem isto a disponibilidade ficava vazia
+      # sem aviso; usa as unidades configuradas para o incidente
+      message("AVISO: unidades IDF da matriz manual para ", inc$turbine, " (", paste(idf_units, collapse = ", "),
+              ") nao existem em heartb_dt$idf -- a usar fallback_idf_units (", paste(fallback_idf_units, collapse = ", "), ").")
+      idf_units <- fallback_idf_units
+    }
+    message("Janela ", inc$incident_id, ": ", format(window_from), " a ", format(window_to),
+            " | unidades IDF: ", paste(idf_units, collapse = ", "),
+            " | heartbeats na janela para essas unidades: ",
+            sum(heartb_dt$idf %in% idf_units & heartb_dt$timestamp >= window_from & heartb_dt$timestamp <= window_to))
 
     avail <- summarise_availability_window(
       heartb_dt, idf_units, window_from, window_to, lat, lon, tz,
