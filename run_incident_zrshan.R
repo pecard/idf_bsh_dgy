@@ -122,10 +122,12 @@ source(file.path(folder_input, project_settings_file))
 ## distintos do mesmo parque corridos no mesmo dia ja' nao se sobrepoem
 source("R/output_paths.R")
 incident_tag  <- make_incident_tag(farm_code, fatality_incidents$turbine[1], fatality_incidents$incident_date[1])
-run_date      <- format(Sys.time(), "%Y%m%d")
+run_date      <- make_run_stamp() # "AAAAMMDD_HHMM" -- cada corrida (mesmo incidente, parametros distintos) tem a sua pasta
 folder_output <- incident_output_folder("outputs", run_date, incident_tag)
 out_file <- function(base, ext) file.path(folder_output, out_name(base, ext, incident_tag, run_date))
 dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
+## copia do settings file + run_info (data/hora, commit) dentro da pasta da corrida
+write_run_info(folder_output, incident_tag, run_date, project_settings_file, file.path(folder_input, project_settings_file))
 
 folder_cache <- file.path("cache", farm_code)
 

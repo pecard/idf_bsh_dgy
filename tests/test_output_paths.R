@@ -27,3 +27,21 @@ other_tag_test <- make_incident_tag("ZRF", "T23", as.Date("2026-05-03"))
 cat(sprintf("pastas distintas para incidentes distintos no mesmo dia: %s (esperado TRUE)\n",
             !identical(incident_output_folder("outputs", "20261007", tag_test),
                        incident_output_folder("outputs", "20261007", other_tag_test))))
+
+# make_run_stamp(): AAAAMMDD_HHMM
+stamp_test <- make_run_stamp(as.POSIXct("2026-10-14 15:32:10", tz = "UTC"))
+cat(sprintf("run stamp: %s (esperado 20261014_1532) -- %s\n", stamp_test, if (identical(stamp_test, "20261014_1532")) "OK" else "FALHOU"))
+
+# mesmo incidente, corridas a horas diferentes -> pastas e ficheiros distintos
+tag2_test <- make_incident_tag("ZRF", "T23", as.Date("2026-06-03"))
+f1_test <- incident_output_folder("outputs", "20261014_1532", tag2_test)
+f2_test <- incident_output_folder("outputs", "20261014_1610", tag2_test)
+cat(sprintf("pastas distintas para o mesmo incidente em horas distintas: %s (esperado TRUE)\n", !identical(f1_test, f2_test)))
+cat(sprintf("nome de ficheiro com hora: %s\n", out_name("Incident_Report", "docx", tag2_test, "20261014_1532")))
+
+# write_run_info(): copia do settings + run_info
+dir_test <- tempfile("runinfo_test_"); dir.create(dir_test)
+settings_test <- file.path(dir_test, "userSettings_test.R"); writeLines("x <- 1", settings_test)
+out_test <- write_run_info(dir_test, tag2_test, "20261014_1532", "userSettings_test.R", settings_test)
+cat(sprintf("copia do settings e run_info criados: %s (esperado TRUE)\n", all(file.exists(out_test))))
+cat(sprintf("run_info menciona settings file: %s (esperado TRUE)\n", any(grepl("userSettings_test.R", readLines(out_test[2]), fixed = TRUE))))
