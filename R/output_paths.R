@@ -49,9 +49,16 @@ make_run_stamp <- function(time = Sys.time()) format(time, "%Y%m%d_%H%M")
 ## Copia o settings file usado para a pasta da corrida e escreve um
 ## run_info (texto) com data/hora, incidente, settings file e commit git
 ## (NA se git nao estiver disponivel). Devolve os 2 caminhos escritos.
-write_run_info <- function(folder, incident_tag, run_stamp, settings_file, settings_path = settings_file) {
+write_run_info <- function(folder, incident_tag, run_stamp, settings_file, settings_path = settings_file,
+                           incident_settings_file = NULL, incident_settings_path = incident_settings_file) {
   settings_copy <- file.path(folder, sprintf("settings_%s_%s.R", incident_tag, run_stamp))
   file.copy(settings_path, settings_copy, overwrite = TRUE)
+  # settings do incidente (sobrepostos aos do parque), se existirem
+  incident_copy <- NULL
+  if (!is.null(incident_settings_file)) {
+    incident_copy <- file.path(folder, sprintf("settings_incident_%s_%s.R", incident_tag, run_stamp))
+    file.copy(incident_settings_path, incident_copy, overwrite = TRUE)
+  }
 
   commit <- tryCatch(
     suppressWarnings(system2("git", c("rev-parse", "--short", "HEAD"), stdout = TRUE, stderr = FALSE)),
@@ -66,8 +73,10 @@ write_run_info <- function(folder, incident_tag, run_stamp, settings_file, setti
     paste("Incident tag:   ", incident_tag),
     paste("Settings file:  ", settings_file),
     paste("Settings copy:  ", basename(settings_copy)),
+    if (!is.null(incident_copy)) paste("Incident settings:", incident_settings_file),
+    if (!is.null(incident_copy)) paste("Incident copy:  ", basename(incident_copy)),
     paste("Git commit:     ", commit)
   ), info_file)
 
-  c(settings_copy, info_file)
+  c(settings_copy, incident_copy, info_file)
 }

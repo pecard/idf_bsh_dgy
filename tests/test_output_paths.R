@@ -45,3 +45,12 @@ settings_test <- file.path(dir_test, "userSettings_test.R"); writeLines("x <- 1"
 out_test <- write_run_info(dir_test, tag2_test, "20261014_1532", "userSettings_test.R", settings_test)
 cat(sprintf("copia do settings e run_info criados: %s (esperado TRUE)\n", all(file.exists(out_test))))
 cat(sprintf("run_info menciona settings file: %s (esperado TRUE)\n", any(grepl("userSettings_test.R", readLines(out_test[2]), fixed = TRUE))))
+
+# write_run_info() com settings do incidente (sobrepostos aos do parque)
+inc_settings_test <- file.path(dir_test, "userSettings_incident_test.R"); writeLines("y <- 2", inc_settings_test)
+out2_test <- write_run_info(dir_test, tag2_test, "20261014_1610", "userSettings_test.R", settings_test,
+                            incident_settings_file = "userSettings_incident_test.R", incident_settings_path = inc_settings_test)
+cat(sprintf("copia do settings do incidente criada: %s (esperado TRUE)\n",
+            file.exists(file.path(dir_test, "settings_incident_ZRF_T23_20260603_20261014_1610.R"))))
+cat(sprintf("run_info menciona settings do incidente: %s (esperado TRUE)\n",
+            any(grepl("userSettings_incident_test.R", readLines(out2_test[length(out2_test)]), fixed = TRUE))))
