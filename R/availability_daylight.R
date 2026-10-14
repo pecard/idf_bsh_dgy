@@ -445,7 +445,8 @@ plot_heartbeat_slots <- function(slot_grid_dt, date_breaks = "2 days", title = N
 ## ja devolvido por essa funcao.
 
 offline_evidence_slot_grid <- function(daylight_cal, tz, start_date, end_date,
-                                       offline_evidence_dt, idf_sel = NULL, slot_mins = 30) {
+                                       offline_evidence_dt, idf_sel = NULL, slot_mins = 30,
+                                       no_data_idf = character()) {
 
   all_idf <- if (is.null(idf_sel)) sort(unique(offline_evidence_dt$idf)) else idf_sel
 
@@ -469,13 +470,19 @@ offline_evidence_slot_grid <- function(daylight_cal, tz, start_date, end_date,
   # check_offline_scada_presence() (R/offline_curtailment_check.R) -- ev e'
   # "x", grid e' "i", fronteiras inclusive. Devolve 1 linha por linha de
   # grid (classification = NA quando nenhum intervalo offline cobre esse slot).
-  res <- ev[
-    grid,
-    on = .(idf, off_start <= slot_midpoint, off_end >= slot_midpoint),
-    allow.cartesian = TRUE,
-    .(idf = i.idf, slot = i.slot, date = i.date, time_decimal = i.time_decimal,
-      daylight = i.daylight, classification = x.classification)
-  ]
+  res <- if (nrow(ev) == 0L) {
+    # sem nenhum intervalo offline (todas as unidades sempre online na janela):
+    # o join abaixo com um "x" vazio nao devolve uma linha por slot
+    grid[, .(idf, slot, date, time_decimal, daylight, classification = NA_character_)]
+  } else {
+    ev[
+      grid,
+      on = .(idf, off_start <= slot_midpoint, off_end >= slot_midpoint),
+      allow.cartesian = TRUE,
+      .(idf = i.idf, slot = i.slot, date = i.date, time_decimal = i.time_decimal,
+        daylight = i.daylight, classification = x.classification)
+    ]
+  }
   res <- unique(res, by = c("idf", "slot")) # defensivo -- intervalos offline nao se sobrepoem por construcao
 
   # is.na(daylight) e' testado PRIMEIRO -- fica sempre "No data" mesmo que
@@ -488,8 +495,9 @@ offline_evidence_slot_grid <- function(daylight_cal, tz, start_date, end_date,
   res[, slot_status := fcase(
     is.na(daylight),                  "No data",
     !daylight,                        "Night",
+    daylight & idf %in% no_data_idf,  "No data", # unidade sem heartbeats na janela -- nao avaliada
     daylight & is.na(classification), "Online",
-    default = classification
+    !is.na(classification),           classification # (par em vez de default= -- data.table recentes exigem default de comprimento 1)
   )]
   res[, slot_status := factor(
     slot_status,

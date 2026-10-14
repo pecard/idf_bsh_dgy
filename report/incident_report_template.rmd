@@ -285,7 +285,7 @@ Each slot in the calendar below is colored by one of six statuses:
 if (!is.null(params$fatality_offline_evidence_calendar_plot)) {
   print(params$fatality_offline_evidence_calendar_plot)
 } else {
-  cat("No heartbeat records were found for the IDF unit(s) of interest within the investigation window -- this points to a data issue (e.g. an IDF unit naming/format mismatch between the heartbeat file and the units of interest) rather than a genuine absence of heartbeats.\n\n")
+  cat("No heartbeat records were found for any of the IDF unit(s) of interest within the investigation window -- this points to a data issue (e.g. an IDF unit naming/format mismatch between the heartbeat file and the units of interest) rather than a genuine absence of heartbeats.\n\n")
 }
 ```
 
@@ -293,9 +293,14 @@ if (!is.null(params$fatality_offline_evidence_calendar_plot)) {
 
 ```{r fatality-availability-window-table}
 if (!is.null(params$fatality_window_availability) && nrow(params$fatality_window_availability) > 0) {
+  dt <- drop_cols(params$fatality_window_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct"))
+  # unidade sem heartbeats na janela: "Not available" / "Not evaluated" (nunca 0%)
+  dt$monitoring_period_pct <- ifelse(is.na(dt$monitoring_period_pct), "Not available", sprintf("%.1f", dt$monitoring_period_pct))
+  dt$availability_cat <- as.character(dt$availability_cat)
+  dt$availability_cat[is.na(dt$availability_cat)] <- "Not evaluated"
   report_table(
     rename_display(
-      drop_cols(params$fatality_window_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
+      dt,
       c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
     ),
     max_col_width_cm = 2
@@ -358,9 +363,14 @@ Same calculation as above (daylight-only, same offline definition, same evidence
 
 ```{r fatality-availability-global-table, results='asis'}
 if (!is.null(params$fatality_global_availability) && nrow(params$fatality_global_availability) > 0) {
+  dt <- drop_cols(params$fatality_global_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct"))
+  # unidade sem heartbeats na janela: "Not available" / "Not evaluated" (nunca 0%)
+  dt$monitoring_period_pct <- ifelse(is.na(dt$monitoring_period_pct), "Not available", sprintf("%.1f", dt$monitoring_period_pct))
+  dt$availability_cat <- as.character(dt$availability_cat)
+  dt$availability_cat[is.na(dt$availability_cat)] <- "Not evaluated"
   report_table(
     rename_display(
-      drop_cols(params$fatality_global_availability, c("daylight_mins_total", "days_covered", "offline_mins_total", "availability_pct")),
+      dt,
       c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
     ),
     max_col_width_cm = 2

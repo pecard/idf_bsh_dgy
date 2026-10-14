@@ -106,6 +106,18 @@ summarise_availability_window <- function(heartb_dt, idf_units, window_from, win
   # familia dos bugs de tz ja corrigidos no resto do projeto
   daylight_cal <- build_daylight_calendar(as.Date(window_from, tz = tz), as.Date(window_to, tz = tz), lat, lon, tz)
 
+  # Unidade SEM nenhum heartbeat na janela -> nao avaliada (NA / "Not
+  # evaluated"), NUNCA 0% offline: 0% significaria "avaliada e sempre online",
+  # o que e' o oposto de "nao ha' dados para avaliar".
+  not_evaluated_rows <- function(units) {
+    data.table::data.table(
+      idf = units,
+      offline_mins_total = NA_real_, daylight_mins_total = NA_real_, days_covered = 0L,
+      monitoring_period_pct = NA_real_, availability_pct = NA_real_,
+      availability_cat = factor("Not evaluated", levels = c("<60%", "60-80%", "80-90%", "90-96%", ">96%", "Not evaluated"))
+    )
+  }
+
   empty <- list(
     daily = data.table::data.table(idf = character(), date = as.Date(character())),
     by_idf = data.table::data.table(idf = character()),
@@ -115,10 +127,17 @@ summarise_availability_window <- function(heartb_dt, idf_units, window_from, win
   if (length(idf_units) == 0L) return(empty)
 
   hb <- heartb_dt[idf %in% idf_units & timestamp >= window_from & timestamp <= window_to]
-  if (nrow(hb) == 0L) return(empty)
+  if (nrow(hb) == 0L) {
+    empty$by_idf <- not_evaluated_rows(idf_units)
+    return(empty)
+  }
 
   daily_dt <- daylight_availability(hb, daylight_cal, tz, offline_gap_min, online_grace_min)
   by_idf   <- summarise_availability(daily_dt)$by_idf
+  by_idf[, availability_cat := factor(availability_cat, levels = c(levels(availability_cat), "Not evaluated"))]
+
+  missing_units <- setdiff(idf_units, by_idf$idf)
+  if (length(missing_units) > 0L) by_idf <- data.table::rbindlist(list(by_idf, not_evaluated_rows(missing_units)), use.names = TRUE)
 
   list(daily = daily_dt, by_idf = by_idf, idf_units = idf_units)
 }

@@ -674,6 +674,7 @@ fatality_window_offline_evidence_by_idf_dt <- data.table::rbindlist(lapply(names
 
 fatality_window_net_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
   by_idf_dt <- fatality_windows[[id]]$availability$by_idf
+  by_idf_dt <- by_idf_dt[!is.na(offline_mins_total)] # unidades "Not evaluated" (sem heartbeats) ficam fora dos totais
   if (is.null(by_idf_dt) || nrow(by_idf_dt) == 0L) return(NULL)
   availability_overall_i <- summarise_availability_overall(by_idf_dt)
   net_dt <- summarise_net_availability(availability_overall_i, fatality_windows[[id]]$offline_evidence$overall)
@@ -694,6 +695,7 @@ fatality_global_offline_evidence_by_idf_dt <- data.table::rbindlist(lapply(names
 
 fatality_global_net_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
   by_idf_dt <- fatality_windows[[id]]$availability_global$by_idf
+  by_idf_dt <- by_idf_dt[!is.na(offline_mins_total)] # unidades "Not evaluated" (sem heartbeats) ficam fora dos totais
   if (is.null(by_idf_dt) || nrow(by_idf_dt) == 0L) return(NULL)
   availability_overall_i <- summarise_availability_overall(by_idf_dt)
   net_dt <- summarise_net_availability(availability_overall_i, fatality_windows[[id]]$offline_evidence_global$overall)
@@ -733,13 +735,42 @@ fatality_window_daylight_cal <- build_daylight_calendar(
   proj_lat, proj_lon, proj_timezone
 )
 fatality_window_offline_evidence_combined_dt <- fatality_windows[[1]]$offline_evidence$combined
-p_fatality_offline_evidence_calendar <- if (!is.null(fatality_window_offline_evidence_combined_dt) && nrow(fatality_window_offline_evidence_combined_dt) > 0) {
+## Diagnostico por unidade: n.o de heartbeats e 1.o/ultimo na janela de
+## investigacao (unidade sem nenhum -> "Not evaluated" na tabela e "No data"
+## no calendario; unidade com heartbeats mas sem gaps >= offline_gap_min ->
+## 0% offline legitimo, calendario todo "Online").
+hb_window_diag_dt <- heartb_dt[
+  timestamp >= fatality_windows[[1]]$window_from & timestamp <= fatality_windows[[1]]$window_to,
+  .(n_heartbeats = .N, first_hb = min(timestamp), last_hb = max(timestamp)), by = idf
+]
+hb_window_diag_dt <- hb_window_diag_dt[data.table::data.table(idf = names(heartbeat_idf_units)), on = "idf"]
+hb_window_diag_dt[is.na(n_heartbeats), n_heartbeats := 0L]
+message("Heartbeats na janela de investigacao, por unidade IDF:")
+print(hb_window_diag_dt)
+fatality_units_without_hb <- hb_window_diag_dt[n_heartbeats == 0L, idf]
+if (length(fatality_units_without_hb) > 0L) {
+  message("AVISO: sem heartbeats na janela de investigacao para: ", paste(fatality_units_without_hb, collapse = ", "),
+          " -- ficam 'Not evaluated' (NA) no relatorio. Confirmar heartbeat_idf_units vs. heartb_dt_unfilt$idf e se os ficheiros de heartbeats cobrem a janela.")
+}
+
+## O calendario e' construido sempre que ha' pelo menos 1 unidade com
+## heartbeats na janela (mesmo sem nenhum gap offline -- nesse caso e' todo
+## "Online"); so' fica NULL (mensagem "No heartbeat records...") quando
+## NENHUMA unidade tem heartbeats.
+p_fatality_offline_evidence_calendar <- if (any(hb_window_diag_dt$n_heartbeats > 0L)) {
+  if (is.null(fatality_window_offline_evidence_combined_dt)) {
+    fatality_window_offline_evidence_combined_dt <- data.table::data.table(
+      idf = character(), off_start = as.POSIXct(character(), tz = proj_timezone),
+      off_end = as.POSIXct(character(), tz = proj_timezone), classification = character()
+    )
+  }
   fatality_window_offline_evidence_slots_dt <- offline_evidence_slot_grid(
     fatality_window_daylight_cal, proj_timezone,
     as.Date(fatality_windows[[1]]$window_from, tz = proj_timezone),
     as.Date(fatality_windows[[1]]$window_to, tz = proj_timezone),
     fatality_window_offline_evidence_combined_dt,
-    idf_sel = names(heartbeat_idf_units), slot_mins = heartbeat_interval_min
+    idf_sel = names(heartbeat_idf_units), slot_mins = heartbeat_interval_min,
+    no_data_idf = fatality_units_without_hb
   )
   plot_offline_evidence_slots(
     fatality_window_offline_evidence_slots_dt, slot_mins = heartbeat_interval_min, date_breaks = "1 day"
