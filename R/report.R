@@ -41,7 +41,16 @@ build_idf_report <- function(output_file, report_params,
     params         = report_params,
     envir          = new.env()
   )
-  apply_landscape_sections(out)
+  # o pos-processamento nunca deve impedir a entrega do relatorio: se falhar,
+  # o .docx fica como o pandoc o gerou (com os marcadores LANDSCAPE_SECTION_*
+  # visiveis, sem a secao em paisagem) e o erro e' mostrado por inteiro
+  tryCatch(
+    apply_landscape_sections(out),
+    error = function(e) warning(
+      "apply_landscape_sections() falhou -- o .docx foi gerado SEM a secao em paisagem (os marcadores ",
+      "LANDSCAPE_SECTION_START/END ficam visiveis no texto): ", conditionMessage(e), call. = FALSE
+    )
+  )
   invisible(out)
 }
 
@@ -59,6 +68,30 @@ build_idf_report <- function(output_file, report_params,
 ## largura/altura e w:orient="landscape".
 ##
 ## Sem marcadores no documento, nao faz nada (todos os outros relatorios).
+## Escreve bytes num ficheiro tentando varias formas -- no Windows, abrir
+## document.xml em "wb" com file(path) chegou a falhar com "Invalid
+## argument" (caso real, 2026-10) mesmo depois de o ler com sucesso. Tenta,
+## por ordem: (1) ligacao explicita, (2) ficheiro temporario na raiz de
+## tempdir() copiado por cima, (3) apagar e recriar. Se todas falharem,
+## o erro inclui o motivo de cada tentativa.
+write_bytes_robust <- function(bytes, path) {
+  errs <- character()
+  attempt <- function(label, f) {
+    ok <- tryCatch({ f(); file.exists(path) && file.info(path)$size == length(bytes) },
+                   error = function(e) { errs <<- c(errs, paste0(label, ": ", conditionMessage(e))); FALSE },
+                   warning = function(w) { errs <<- c(errs, paste0(label, ": ", conditionMessage(w))); FALSE })
+    isTRUE(ok)
+  }
+  if (attempt("file(wb)", function() { con <- file(path, "wb"); on.exit(close(con)); writeBin(bytes, con) })) return(invisible(TRUE))
+  if (attempt("tempfile+copy", function() {
+    tf <- tempfile(fileext = ".xml"); writeBin(bytes, tf)
+    if (!file.copy(tf, path, overwrite = TRUE)) stop("file.copy devolveu FALSE")
+    unlink(tf)
+  })) return(invisible(TRUE))
+  if (attempt("unlink+write", function() { unlink(path); writeBin(bytes, path) })) return(invisible(TRUE))
+  stop("nao foi possivel escrever '", path, "' -- ", paste(errs, collapse = " | "))
+}
+
 apply_landscape_sections <- function(docx_path) {
   tmp <- tempfile("docx_landscape_")
   dir.create(tmp)
@@ -103,7 +136,7 @@ apply_landscape_sections <- function(docx_path) {
   }
   xml <- swap(xml, m_start, esc_repl(break_par(sect_portrait)))
   xml <- swap(xml, m_end,   esc_repl(break_par(sect_landscape)))
-  writeBin(charToRaw(enc2utf8(xml)), doc_file)
+  write_bytes_robust(charToRaw(enc2utf8(xml)), doc_file)
 
   old <- setwd(tmp); on.exit(setwd(old), add = TRUE)
   out_abs <- normalizePath(docx_path, winslash = "/", mustWork = TRUE)
