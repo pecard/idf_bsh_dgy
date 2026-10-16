@@ -54,12 +54,12 @@ idf_source_id_col <- "Name"   # coluna de ID das unidades IDF no shapefile ("IDF
 ## 3. Periodo analisado ----
 ##
 
-ini <- as.POSIXct('2026-09-01 00:00:00', tz = proj_timezone)
-end <- as.POSIXct('2026-09-30 23:59:59', tz = proj_timezone)
+ini <- as.POSIXct('2026-08-15 00:00:00', tz = proj_timezone)
+end <- as.POSIXct('2026-10-15 23:59:59', tz = proj_timezone)
 
 ## Turbinas a analisar (NULL = todas as turbinas do shapefile com pelo menos
 ## uma unidade IDF a cobri-las)
-turbines_of_interest <- NULL   # ex: c("T23", "T35", "T94")
+turbines_of_interest <- c("T13")
 
 ##
 ## 4. Relacao turbina <-> unidade IDF primaria/secundaria ----
