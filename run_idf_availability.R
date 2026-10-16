@@ -218,7 +218,9 @@ if (!is.null(track_dt)) {
     out[is.na(n_species), n_species := 0L]; out[is.na(n_all), n_all := 0L]
     out[rel_tb, on = "unit", `:=`(role = i.role, rank = i.rank, pct_coverage = i.pct_coverage)]
     # unidade fora da relacao: cobertura geometrica da turbina, se houver
-    out[is.na(pct_coverage) & unit != "Unattributed", pct_coverage := cov_full_dt[turbine == tb][match(unit, unit), pct_coverage]]
+    cov_tb <- cov_full_dt[turbine == tb]
+    cov_lookup <- setNames(cov_tb$pct_coverage, cov_tb$unit)   # (fora de [ ]: "unit" dentro do j seria a coluna de out, nao a de cov_tb)
+    out[is.na(pct_coverage) & unit != "Unattributed", pct_coverage := unname(cov_lookup[unit])]
     out[, turbine := tb]
     setcolorder(out, c("turbine", "unit", "role", "rank", "pct_coverage", "n_species", "pct_species", "n_all", "pct_all"))
     out[]
