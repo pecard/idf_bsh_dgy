@@ -606,31 +606,47 @@ if (exists("id_transition_late_time_sec") && exists("shorttrack_min_points") && 
     out_file("id_transitions_incident_window", "xlsx")
   )
 
-  short_track_window_dt <- classify_short_track_curtailments(
-    track_dt_window, curtl_dt_window, min_points = shorttrack_min_points, eval_range_m = shorttrack_eval_range
-  )
-  short_track_window_summary_dt <- summarise_short_track_curtailments(
-    track_dt_window, short_track_window_dt, shorttrack_min_points
-  )
-  ## summarise_short_track_curtailments() rotula a 1a linha "farm-wide" --
-  ## verdade no relatorio mensal (a funcao e' partilhada), nao aqui (so'
-  ## turbina(s)+janela do incidente) -- corrigido no proprio objeto em vez
-  ## de reescrever a funcao so' por causa de 1 string, ja' que o resto da
-  ## logica e' identica.
-  short_track_window_summary_dt[
-    metric == "Total short tracks (farm-wide, < min_points)",
-    metric := "Total short tracks (incident turbine/window, < min_points)"
-  ]
-  short_track_window_by_species_dt <- summarise_short_track_by_species(short_track_window_dt, prioritysp)
+  ## Estado da analise de short-tracks, mostrado no relatorio (secção
+  ## "Short-Track Curtailments"): "ok" | "failed" (erro a meio -- NAO quer
+  ## dizer que nao houve short-tracks) -- ver short_track_message.
+  short_track_status  <- "ok"
+  short_track_message <- NA_character_
+  short_track_window_summary_dt <- NULL
+  short_track_window_by_species_dt <- NULL
 
-  write_xlsx_local(
-    list(
-      Short_track_curtailments = short_track_window_dt,
-      Summary                  = short_track_window_summary_dt,
-      By_species               = short_track_window_by_species_dt
-    ),
-    out_file("short_track_curtailments_incident_window", "xlsx")
-  )
+  tryCatch({
+    short_track_window_dt <- classify_short_track_curtailments(
+      track_dt_window, curtl_dt_window, min_points = shorttrack_min_points, eval_range_m = shorttrack_eval_range
+    )
+    short_track_window_summary_dt <- summarise_short_track_curtailments(
+      track_dt_window, short_track_window_dt, shorttrack_min_points
+    )
+    ## summarise_short_track_curtailments() rotula a 1a linha "farm-wide" --
+    ## verdade no relatorio mensal (a funcao e' partilhada), nao aqui (so'
+    ## turbina(s)+janela do incidente) -- corrigido no proprio objeto em vez
+    ## de reescrever a funcao so' por causa de 1 string, ja' que o resto da
+    ## logica e' identica.
+    short_track_window_summary_dt[
+      metric == "Total short tracks (farm-wide, < min_points)",
+      metric := "Total short tracks (incident turbine/window, < min_points)"
+    ]
+    short_track_window_by_species_dt <- summarise_short_track_by_species(short_track_window_dt, prioritysp)
+
+    write_xlsx_local(
+      list(
+        Short_track_curtailments = short_track_window_dt,
+        Summary                  = short_track_window_summary_dt,
+        By_species               = short_track_window_by_species_dt
+      ),
+      out_file("short_track_curtailments_incident_window", "xlsx")
+    )
+  }, error = function(e) {
+    short_track_status  <<- "failed"
+    short_track_message <<- conditionMessage(e)
+    short_track_window_summary_dt    <<- NULL
+    short_track_window_by_species_dt <<- NULL
+    message("AVISO: analise de short-tracks falhou (", conditionMessage(e), ") -- secção marcada como falhada no relatorio.")
+  })
 
 } else {
   message(
@@ -640,6 +656,8 @@ if (exists("id_transition_late_time_sec") && exists("shorttrack_min_points") && 
   id_risk_window_summary <- NULL
   short_track_window_summary_dt <- NULL
   short_track_window_by_species_dt <- NULL
+  short_track_status  <- "not_run"
+  short_track_message <- "shorttrack_min_points / shorttrack_eval_range (and id_transition_late_time_sec) are not defined in the settings file for this report"
 }
 
 source("R/availability_daylight.R")
@@ -1034,6 +1052,8 @@ report_params <- list(
   id_risk_by_direction           = if (!is.null(id_risk_window_summary)) id_risk_window_summary$by_direction else NULL,
   short_track_summary            = short_track_window_summary_dt,
   short_track_by_species         = short_track_window_by_species_dt,
+  short_track_status             = short_track_status,
+  short_track_message            = short_track_message,
 
   latency_by_turbine    = summary_latency_by_turbine,
   latency_bands         = summary_latency_bands,

@@ -47,6 +47,8 @@ params:
   id_risk_by_direction: !r NULL
   short_track_summary: !r NULL
   short_track_by_species: !r NULL
+  short_track_status: !r NULL
+  short_track_message: !r NULL
 
   latency_by_turbine: !r NULL
   latency_bands: !r NULL
@@ -347,7 +349,11 @@ if (!is.null(syn_cand) && nrow(syn_cand) > 10L) {
 
 # tracks curtos
 st <- params$short_track_summary
-if (!is.null(st) && nrow(st) >= 3L && !is.null(params$shorttrack_min_points)) {
+if (identical(params$short_track_status, "failed")) {
+  cat("\n\n&nbsp;\n\nShort tracks: the analysis could not be completed for this report (see the Short-Track Curtailments section); this does not mean that no short tracks were found.\n")
+} else if (identical(params$short_track_status, "not_run")) {
+  cat("\n\n&nbsp;\n\nShort tracks: not evaluated in this report (parameters not defined in the settings file).\n")
+} else if (!is.null(st) && nrow(st) >= 3L && !is.null(params$shorttrack_min_points)) {
   v <- function(i) st$value[i]
   cat(sprintf(
     "\n\n&nbsp;\n\nShort tracks: %s track(s) near the incident turbine in the investigation window had fewer than %s recorded points; %s curtailment(s) were triggered by short tracks within %s m (%s%% of the curtailments in the window).\n",
@@ -569,16 +575,37 @@ Curtailments triggered by tracks with fewer than `r params$shorttrack_min_points
 &nbsp;
 
 <!-- Source: summarise_short_track_curtailments(), R/curtailment_short_track.R (built on classify_short_track_curtailments()) -->
-```{r short-track-table}
-if (!is.null(params$short_track_summary)) report_table(params$short_track_summary)
+```{r short-track-table, results='asis'}
+st_status <- if (is.null(params$short_track_status)) { if (is.null(params$short_track_summary)) "not_run" else "ok" } else params$short_track_status
+st <- params$short_track_summary
+if (identical(st_status, "failed")) {
+  cat(sprintf("The short-track analysis could not be completed for this report (error: %s). This does not mean that no short tracks were found -- see the console log of the run.\n\n",
+              if (is.null(params$short_track_message) || is.na(params$short_track_message)) "not available" else params$short_track_message))
+} else if (identical(st_status, "not_run") || is.null(st)) {
+  cat(sprintf("The short-track analysis was not run for this report: %s.\n\n",
+              if (is.null(params$short_track_message) || is.na(params$short_track_message)) "the short-track parameters are not defined in the settings file" else params$short_track_message))
+} else {
+  cat(knitr::knit_print(report_table(st)))
+}
 ```
 ```{r short-track-annex, results='asis'}
-annex_note(params$xlsx_short_track)
+annex_note(if (identical(params$short_track_status, "failed") || identical(params$short_track_status, "not_run")) NULL else params$xlsx_short_track)
 ```
 
 ```{r short-track-species-heading, results='asis'}
-if (!is.null(params$short_track_by_species) && nrow(params$short_track_by_species) > 0) {
+st <- params$short_track_summary
+ok <- !identical(params$short_track_status, "failed") && !identical(params$short_track_status, "not_run") && !is.null(st)
+if (ok && !is.null(params$short_track_by_species) && nrow(params$short_track_by_species) > 0) {
   cat("Of the close-range short-track curtailments above, the breakdown by priority species:\n\n&nbsp;\n\n")
+} else if (ok) {
+  n_short <- suppressWarnings(as.numeric(st$value[1])); n_close <- suppressWarnings(as.numeric(st$value[2]))
+  if (isTRUE(n_short == 0)) {
+    cat(sprintf("No tracks with fewer than %s recorded points were found near the incident turbine in the investigation window.\n\n", params$shorttrack_min_points))
+  } else if (isTRUE(n_close == 0)) {
+    cat(sprintf("%s short track(s) were found, but none triggered a curtailment within %s m of the incident turbine in the investigation window; there is no priority-species breakdown to show.\n\n", n_short, params$shorttrack_eval_range))
+  } else {
+    cat("No close-range short-track curtailment involved a priority species; there is no breakdown to show.\n\n")
+  }
 }
 ```
 <!-- Source: summarise_short_track_by_species(), R/curtailment_short_track.R -->
