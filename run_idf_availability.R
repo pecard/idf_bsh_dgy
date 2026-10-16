@@ -230,6 +230,13 @@ if (!is.null(track_dt)) {
   ## nos TrackReport): quantos, quando, e que periodo cobrem os TrackReport
   cu_chk <- attribute_curtailment_unit(curtl_dt[turbine %in% turbines_analysed], track_dt)
   unattr_dt <- cu_chk[is.na(curtl_unit)]
+  ## diagnostico extra: onde estao os curtailments sem track (por especie e por data) e que colunas
+## tem a tabela de curtailments (pode haver uma coluna com a unidade IDF)
+  message("Colunas de curtl_dt: ", paste(names(curtl_dt), collapse = ", "))
+  message("Curtailments com/sem track, por especie (turbinas analisadas):")
+  print(cu_chk[, .(n = .N, sem_unidade = sum(is.na(curtl_unit)), pct_sem_unidade = round(100 * mean(is.na(curtl_unit)), 1)), by = species][order(-n)])
+  message("Curtailments sem track, por semana:")
+  print(cu_chk[, .(n = .N, pct_sem_unidade = round(100 * mean(is.na(curtl_unit)), 1)), by = .(semana = format(as.Date(start, tz = proj_timezone), "%Y-%m-%d") |> as.Date() |> cut("week"))][order(semana)])
   if (nrow(unattr_dt) > 0L) {
     trk_rng <- attr(track_dt, "all_range")
     share <- round(100 * nrow(unattr_dt) / nrow(cu_chk), 1)
