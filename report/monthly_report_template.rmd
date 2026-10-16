@@ -478,7 +478,7 @@ annex_note(params$xlsx_availability)
 
 ## Availability Calendar
 
-Every daylight time slot this month, laid out as a calendar (date on the horizontal axis, time of day on the vertical axis) -- restricted to the top `r params$availability_cal_body_top_n` units by offline time, so that each panel's time-of-day axis stays legible. The table in 2.1 above has every IDF unit. A slot without a heartbeat is classified by the evidence available for that period, rather than shown only as a percentage: whether a curtailment was triggered by the turbine(s) associated with that IDF unit during the gap, whether SCADA still recorded RPM readings from those turbines, both, or neither. Night-time slots are shown separately, since bird protection is only evaluated during daylight hours.
+Every daylight time slot this month, laid out as a calendar (date on the horizontal axis, time of day on the vertical axis) -- restricted to the top `r params$availability_cal_body_top_n` units by offline time, so that each panel's time-of-day axis stays legible. The table in 2.1 above has every IDF unit. A slot without a heartbeat is classified by the evidence available for that period, rather than shown only as a percentage: whether a curtailment was triggered during the gap by a bird track recorded by that same IDF unit at its associated turbine(s), whether SCADA still recorded RPM readings from those turbines, both, or neither. Night-time slots are shown separately, since bird protection is only evaluated during daylight hours.
 
 Each slot is colored by one of six statuses:
 
