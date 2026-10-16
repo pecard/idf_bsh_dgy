@@ -688,7 +688,8 @@ fatality_windows <- summarise_fatality_windows(
   track_dt = track_dt, post_days = fatality_post_incident_days,
   min_indiv_bin_min = min_individuals_bin_min, min_indiv_merge_dist_m = min_individuals_merge_dist_m,
   global_avail_from = ini, global_avail_to = end,
-  global_response_from = scada_ini, global_response_to = scada_end
+  global_response_from = scada_ini, global_response_to = scada_end,
+  heartb_data_range = range(heartb_dt_unfilt$timestamp) # cobertura dos dados de heartbeat de TODAS as unidades
 )
 
 fatality_window_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {

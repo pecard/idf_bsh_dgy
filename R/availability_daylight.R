@@ -46,9 +46,44 @@ build_daylight_calendar <- function(start_date, end_date, lat, lon, tz) {
 
 ## 2. Intervalos "offline" por unidade IDF, a partir dos heartbeats ----
 
-compute_offline_intervals <- function(heartb_dt, offline_gap_min = 60, online_grace_min = 30) {
+## Periodo [de, ate] coberto por um calendario de luz do dia (dias inteiros,
+## hora local) -- para compute_offline_intervals(period = )
+calendar_period <- function(daylight_cal, tz) {
+  c(as.POSIXct(paste(min(daylight_cal$date), "00:00:00"), tz = tz),
+    as.POSIXct(paste(max(daylight_cal$date) + 1, "00:00:00"), tz = tz))
+}
+
+## period = c(de, ate) (POSIXct): ATIVA o tratamento das extremidades do
+## periodo -- sem ele (omissao, comportamento antigo) so' se medem gaps ENTRE
+## heartbeats consecutivos, e o tempo ANTES do 1.o e DEPOIS do ultimo
+## heartbeat de cada unidade conta como online (0% offline): uma unidade sem
+## nenhum heartbeat durante um mes inteiro antes de reaparecer parecia sempre
+## online (caso real, ZRF GW13-8, 2026-10). Com period, o tempo entre o
+## inicio do periodo e o 1.o heartbeat, e entre o ultimo heartbeat e o fim
+## do periodo, e' offline se atingir offline_gap_min -- mesmo criterio dos
+## gaps internos. data_range = c(min, max) dos heartbeats de TODAS as
+## unidades (omissao: o intervalo de heartbeat_dt): limita o periodo ao que
+## os dados cobrem (ex: ficheiros so' ate' certa data, mes em curso), para
+## nao contar como offline tempo sem dados descarregados.
+compute_offline_intervals <- function(heartb_dt, offline_gap_min = 60, online_grace_min = 30,
+                                      period = NULL, data_range = NULL) {
 
   hb <- copy(heartb_dt)
+
+  eff <- NULL
+  if (!is.null(period) && nrow(hb) > 0L) {
+    if (is.null(data_range)) data_range <- range(hb$timestamp)
+    eff <- c(max(period[1], data_range[1]), min(period[2], data_range[2]))
+    units <- hb[, .(first_ts = min(timestamp), last_ts = max(timestamp)), by = idf]
+    lead <- units[first_ts > eff[1], .(idf, timestamp = eff[1] - minutes(online_grace_min))]
+    trail <- units[last_ts < eff[2], .(idf, timestamp = eff[2])]
+    extra <- rbind(lead, trail)
+    if (nrow(extra) > 0L) {
+      keep_cols <- intersect(names(hb), c("idf", "timestamp"))
+      hb <- rbind(hb[, ..keep_cols], extra[, ..keep_cols], fill = TRUE)
+    }
+  }
+
   setkeyv(hb, c("idf", "timestamp"))
 
   hb[, ts_prev := data.table::shift(timestamp, type = "lag"), by = idf]
@@ -60,11 +95,19 @@ compute_offline_intervals <- function(heartb_dt, offline_gap_min = 60, online_gr
 
   hb <- unique(hb, by = key(hb))
 
-  hb[gap_mins >= offline_gap_min, .(
+  out <- hb[gap_mins >= offline_gap_min, .(
     idf,
     off_start = ts_prev + minutes(online_grace_min),
     off_end   = timestamp
   )]
+
+  # recorta ao periodo efetivo (um gap que comeca antes do inicio, ou
+  # termina depois do fim, conta so' a parte dentro do periodo)
+  if (!is.null(eff) && nrow(out) > 0L) {
+    out[, `:=`(off_start = pmax(off_start, eff[1]), off_end = pmin(off_end, eff[2]))]
+    out <- out[off_end > off_start]
+  }
+  out
 }
 
 
@@ -159,9 +202,14 @@ clip_offline_intervals_to_daylight <- function(offline_intervals, daylight_cal, 
 ## 4. Grelha completa IDF x dia (dias sem registo offline = 0%) ----
 
 daylight_availability <- function(heartb_dt, daylight_cal, tz,
-                                  offline_gap_min = 60, online_grace_min = 30) {
+                                  offline_gap_min = 60, online_grace_min = 30, data_range = NULL) {
 
-  offline_intervals <- compute_offline_intervals(heartb_dt, offline_gap_min, online_grace_min)
+  # periodo = dias inteiros do calendario: inclui o tempo antes do 1.o e
+  # depois do ultimo heartbeat de cada unidade (ver compute_offline_intervals())
+  offline_intervals <- compute_offline_intervals(
+    heartb_dt, offline_gap_min, online_grace_min,
+    period = calendar_period(daylight_cal, tz), data_range = data_range
+  )
   daily_offline <- compute_daylight_offline(offline_intervals, daylight_cal, tz)
 
   all_idf <- sort(unique(heartb_dt$idf))

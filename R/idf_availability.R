@@ -114,19 +114,19 @@ idf_relation_add_unit <- function(relation_dt, idf_display_map) {
 ## que o disparou (R/offline_curtailment_check.R).
 idf_availability_analysis <- function(relation_dt, heartb_dt, curtl_dt, scada_dt, track_dt,
                                       period_from, period_to, lat, lon, tz,
-                                      offline_gap_min = 60, online_grace_min = 30) {
+                                      offline_gap_min = 60, online_grace_min = 30, data_range = NULL) {
   units <- unique(relation_dt$unit)
   idf_turbines_dt <- unique(relation_dt[, .(idf = unit, turbine)])
 
   avail <- summarise_availability_window(
     heartb_dt, units, period_from, period_to, lat, lon, tz,
-    offline_gap_min = offline_gap_min, online_grace_min = online_grace_min
+    offline_gap_min = offline_gap_min, online_grace_min = online_grace_min, data_range = data_range
   )
   evidence <- summarise_offline_evidence_window(
     heartb_dt, units, NA_character_, period_from, period_to,
     curtl_dt, scada_dt, lat, lon, tz,
     offline_gap_min = offline_gap_min, online_grace_min = online_grace_min,
-    track_dt = track_dt, idf_turbines_dt = idf_turbines_dt
+    track_dt = track_dt, idf_turbines_dt = idf_turbines_dt, data_range = data_range
   )
 
   by_idf <- avail$by_idf

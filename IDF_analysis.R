@@ -747,8 +747,11 @@ if (exists("heartb_dt")) {
     turbine_idf_coverage_dt = turbine_idf_coverage_dt
   )
 
+  # period: tempo antes do 1.o / depois do ultimo heartbeat de cada unidade tambem conta (ver R/availability_daylight.R)
   offline_dt <- compute_offline_intervals(
-    heartb_dt, offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min
+    heartb_dt, offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min,
+    period = c(as.POSIXct(paste(as.Date(ini, tz = proj_timezone), "00:00:00"), tz = proj_timezone),
+               as.POSIXct(paste(as.Date(end, tz = proj_timezone) + 1, "00:00:00"), tz = proj_timezone))
   )
   # so' a porcao DIURNA de cada gap -- clip_offline_intervals_to_daylight(),
   # R/availability_daylight.R -- para o total classificado (curtailment/
