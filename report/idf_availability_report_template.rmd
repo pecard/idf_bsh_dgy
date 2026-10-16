@@ -178,7 +178,14 @@ if (!is.null(x) && nrow(x) > 0L) {
 
 # Offline evidence calendars
 
-Every daylight time slot of the period for each IDF unit, coloured by status: Online, the three evidence categories above, Night (outside daylight hours, not evaluated) and No data (unit without heartbeat records or without calendar data).
+Every daylight time slot of the period for each IDF unit, laid out as a calendar (date on the horizontal axis, time of day on the vertical axis); units are grouped in figures and shown in the order of the relation table above. Each slot is coloured by one of six statuses:
+
+- **Online**: a heartbeat was received for this slot.
+- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered during the gap by a bird track recorded by this same IDF unit at one of the turbines it protects -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.
+- **Turbine operational, no detection**: no heartbeat and no such curtailment, but SCADA still recorded RPM readings from a turbine the unit protects -- mechanically operational, simply with no bird triggering a response.
+- **No evidence (heartbeat and SCADA both missing)**: neither signal is available for this slot; requires manual review, since it can reflect a genuine gap in bird-protection coverage or a data gap affecting heartbeat and SCADA at the same time.
+- **Night**: outside daylight hours, when bird protection is not evaluated.
+- **No data**: no underlying data available for this slot, independent of the evidence check above (in this report, a unit that does not appear in the heartbeat records at all, so it cannot be evaluated).
 
 ```{r calendars, results='asis'}
 figs <- params$calendar_figures

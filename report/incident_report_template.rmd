@@ -427,7 +427,7 @@ Efficacy is evaluated as the degree to which the IDF system contributes to achie
 
 ## IDF Unit Coverage
 
-Geometric overlap between the incident turbine's detection buffer and each IDF unit's detection buffer, for turbine `r params$incident_turbine` -- one row per IDF unit whose buffer overlaps this turbine's buffer, with the % of the turbine's buffer area covered by that unit. No manually curated Primary/Secondary/Other Level IDF matrix was available for the analysis, so the table below is the geometric computation directly; the full matrix (all turbines if evaluated) is in the accompanying workbook.
+Geometric overlap between the incident turbine's detection buffer and each IDF unit's detection buffer, for turbine `r params$incident_turbine` -- one row per IDF unit whose buffer overlaps this turbine's buffer, with the % of the turbine's buffer area covered. Units are listed by decreasing coverage: the unit with the largest coverage is the primary unit of the turbine, the next ones are its secondary, tertiary, 4th, 5th (and so on) units by that unit. No manually curated Primary/Secondary/Other Level IDF matrix was available for the analysis, so the table below is the geometric computation directly; the full matrix (all turbines if evaluated) is in the accompanying workbook.
 
 &nbsp;
 
@@ -697,6 +697,8 @@ annex_note(params$xlsx_fatality)
 ### Curtailments per IDF Unit
 
 Curtailments recorded at turbine `r params$incident_turbine`, by the IDF unit that triggered them, in the investigation window and over the full data coverage period (`r params$report_start` to `r params$report_end`). Each curtailment is attributed to the IDF unit that recorded the bird track that triggered it (the unit of the track point closest in time to the start of the curtailment); curtailments whose track is not in the track data are shown as "Unattributed" and those from IDF units outside the units of interest as "Other IDF units". "%" is the share of all curtailments of this turbine in the same period. Units are ordered by coverage of the incident turbine (primary, secondary, tertiary, ...), to show the relative contribution of each unit to triggering curtailments.
+
+**Coverage Rank** is the position of the unit when the IDF units are ordered by decreasing "Coverage (%)" of the incident turbine (the share of the turbine detection-buffer area covered by the detection buffer of the unit, see IDF Unit Coverage above): the unit with the largest coverage is **Primary**, followed by **Secondary**, **Tertiary**, 4th, 5th and so on. The rank is shown as "-" where no coverage applies ("Other IDF units" and "Unattributed").
 
 &nbsp;
 
