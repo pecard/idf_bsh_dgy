@@ -86,3 +86,21 @@ stopifnot(identical(sort(unique(tu_test$track_id)), c("1", "3")), nrow(tu_test) 
 stopifnot(inherits(tu_test$timestamp, "POSIXct"), attr(tu_test$timestamp, "tzone") == "Asia/Samarkand")
 stopifnot(nrow(read_track_units(d_test, "TrackReport_Default_TST", "Asia/Samarkand", NULL)) == 4L)
 cat("test read_track_units OK\n")
+
+## unidade CONHECIDA mas sem heartbeats no periodo -> 100% offline (nao "Not evaluated")
+an2_test <- idf_availability_analysis(relation_test, heartb_dt_test, curtl_dt_test, scada_dt_test, track_dt_test,
+                                      t0_test, t0_test + 4 * 86400 - 1, 41.5, 64.4, tz_test, 60, 30,
+                                      data_range = range(heartb_dt_test$timestamp), known_units = c("GW10-01", "GW11-02", "IDF03"))
+u2_test <- idf_unit_summary(relation_test, an2_test)
+stopifnot(u2_test[unit == "IDF03", offline_pct] == 100, u2_test[unit == "IDF03", availability_cat] == "<60%", u2_test[unit == "IDF03", n_heartbeats] == 0L)
+stopifnot(u2_test[unit == "GW10-01", n_heartbeats] > 0L)
+al2_test <- idf_alert_table(u2_test, 50, "raw")
+stopifnot(al2_test[unit == "IDF03", status] == "Persistent failure: no heartbeat received in the period")
+# o intervalo de 100% entra na evidencia (T2 protegida por IDF03 tem SCADA -> "Turbine operational")
+stopifnot("IDF03" %in% an2_test$evidence$combined$idf)
+# janela fora da cobertura dos dados -> nao conta (Not evaluated)
+an3_test <- idf_availability_analysis(relation_test, heartb_dt_test, curtl_dt_test, scada_dt_test, track_dt_test,
+                                      t0_test + 30 * 86400, t0_test + 34 * 86400, 41.5, 64.4, tz_test, 60, 30,
+                                      data_range = range(heartb_dt_test$timestamp), known_units = c("GW10-01", "GW11-02", "IDF03"))
+stopifnot(all(idf_unit_summary(relation_test, an3_test)$availability_cat == "Not evaluated"))
+cat("test_idf_availability (known units absent = 100% offline) OK\n")

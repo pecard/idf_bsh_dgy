@@ -180,7 +180,8 @@ analysis <- idf_availability_analysis(
   relation_dt, heartb_dt, curtl_dt, scada_dt, track_dt, ini, end,
   proj_lat, proj_lon, proj_timezone,
   offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min,
-  data_range = range(heartb_dt_unfilt$timestamp) # cobertura dos dados de heartbeat de TODAS as unidades
+  data_range = range(heartb_dt_unfilt$timestamp), # cobertura dos dados de heartbeat de TODAS as unidades
+  known_units = unique(heartb_dt_unfilt$idf)      # unidades que existem nos dados: sem heartbeats no periodo = 100% offline
 )
 unit_dt <- idf_unit_summary(relation_dt, analysis)
 alert_dt <- idf_alert_table(unit_dt, persistent_failure_threshold_pct, persistent_failure_basis)

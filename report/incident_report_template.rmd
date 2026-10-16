@@ -574,6 +574,10 @@ if (!is.null(params$fatality_window_availability) && nrow(params$fatality_window
 
 &nbsp;
 
+*Time before the first and after the last heartbeat of a unit within the period counts as offline. A unit that received no heartbeat at all in the period, although it appears in the heartbeat records of other periods and other units did report, is shown as 100% offline; "Not available" / "Not evaluated" is used only for a unit that does not appear in the heartbeat records at all.*
+
+&nbsp;
+
 **Unavailability Summary**
 
 Three related but distinct numbers are relevant when assessing IDF unavailability in this window, since they answer different questions: **Raw offline** (any heartbeat gap of at least `r params$heartbeat_offline_gap_min` minutes, regardless of other evidence), **Net / confirmed offline** (raw offline minus minutes where a curtailment was triggered during the gap -- strong evidence the detection/decision system was still operating despite the heartbeat failure), and **No evidence, pending manual review** (minutes where neither a curtailment nor a SCADA RPM reading was recorded -- already included within net offline above, shown separately since it needs case-by-case review rather than being resolved automatically).

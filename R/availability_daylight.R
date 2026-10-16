@@ -65,22 +65,30 @@ calendar_period <- function(daylight_cal, tz) {
 ## unidades (omissao: o intervalo de heartbeat_dt): limita o periodo ao que
 ## os dados cobrem (ex: ficheiros so' ate' certa data, mes em curso), para
 ## nao contar como offline tempo sem dados descarregados.
+## units: unidades que DEVEM ser avaliadas mesmo sem nenhum heartbeat em hb
+## (so' com period): ficam offline durante TODO o periodo efetivo -- usado
+## para unidades conhecidas (existem nos dados) que nao reportaram nada no
+## periodo, enquanto ha' dados de outras unidades (caso real ZRF GW53-34).
 compute_offline_intervals <- function(heartb_dt, offline_gap_min = 60, online_grace_min = 30,
-                                      period = NULL, data_range = NULL) {
+                                      period = NULL, data_range = NULL, units = NULL) {
 
   hb <- copy(heartb_dt)
 
   eff <- NULL
-  if (!is.null(period) && nrow(hb) > 0L) {
-    if (is.null(data_range)) data_range <- range(hb$timestamp)
-    eff <- c(max(period[1], data_range[1]), min(period[2], data_range[2]))
-    units <- hb[, .(first_ts = min(timestamp), last_ts = max(timestamp)), by = idf]
-    lead <- units[first_ts > eff[1], .(idf, timestamp = eff[1] - minutes(online_grace_min))]
-    trail <- units[last_ts < eff[2], .(idf, timestamp = eff[2])]
+  if (!is.null(period) && (nrow(hb) > 0L || length(units) > 0L)) {
+    if (is.null(data_range) && nrow(hb) > 0L) data_range <- range(hb$timestamp)
+    eff <- if (is.null(data_range)) period else c(max(period[1], data_range[1]), min(period[2], data_range[2]))
+    if (eff[2] <= eff[1]) return(hb[0, .(idf, off_start = timestamp, off_end = timestamp)])
+    ut <- data.table(idf = unique(c(unique(hb$idf), units)))
+    rng <- if (nrow(hb) > 0L) hb[, .(first_ts = min(timestamp), last_ts = max(timestamp)), by = idf] else data.table(idf = character(), first_ts = as.POSIXct(character()), last_ts = as.POSIXct(character()))
+    ut <- merge(ut, rng, by = "idf", all.x = TRUE)   # unidade sem heartbeats: first_ts/last_ts = NA
+    lead <- ut[is.na(first_ts) | first_ts > eff[1], .(idf, timestamp = eff[1] - minutes(online_grace_min))]
+    trail <- ut[is.na(last_ts) | last_ts < eff[2], .(idf, timestamp = eff[2])]
     extra <- rbind(lead, trail)
     if (nrow(extra) > 0L) {
       keep_cols <- intersect(names(hb), c("idf", "timestamp"))
-      hb <- rbind(hb[, ..keep_cols], extra[, ..keep_cols], fill = TRUE)
+      if (length(keep_cols) < 2L) keep_cols <- c("idf", "timestamp")
+      hb <- rbind(if (nrow(hb) > 0L) hb[, ..keep_cols] else extra[0], extra[, ..keep_cols], fill = TRUE)
     }
   }
 
@@ -202,17 +210,17 @@ clip_offline_intervals_to_daylight <- function(offline_intervals, daylight_cal, 
 ## 4. Grelha completa IDF x dia (dias sem registo offline = 0%) ----
 
 daylight_availability <- function(heartb_dt, daylight_cal, tz,
-                                  offline_gap_min = 60, online_grace_min = 30, data_range = NULL) {
+                                  offline_gap_min = 60, online_grace_min = 30, data_range = NULL, units = NULL) {
 
   # periodo = dias inteiros do calendario: inclui o tempo antes do 1.o e
   # depois do ultimo heartbeat de cada unidade (ver compute_offline_intervals())
   offline_intervals <- compute_offline_intervals(
     heartb_dt, offline_gap_min, online_grace_min,
-    period = calendar_period(daylight_cal, tz), data_range = data_range
+    period = calendar_period(daylight_cal, tz), data_range = data_range, units = units
   )
   daily_offline <- compute_daylight_offline(offline_intervals, daylight_cal, tz)
 
-  all_idf <- sort(unique(heartb_dt$idf))
+  all_idf <- sort(unique(c(heartb_dt$idf, units))) # units: sem heartbeats mas avaliadas (offline o periodo todo)
   grid <- CJ(idf = all_idf, date = daylight_cal$date)
 
   res_full <- daily_offline[grid, on = .(idf, date)]

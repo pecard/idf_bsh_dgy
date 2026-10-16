@@ -127,7 +127,7 @@ if (isFALSE(params$attribution_by_unit)) {
 - **Turbine operational, no detection**: no heartbeat and no such curtailment, but SCADA still recorded RPM readings from a turbine the unit protects.
 - **No evidence (heartbeat and SCADA both missing)**: neither signal is available; requires manual review.
 
-**Raw offline** is the share of daylight time without heartbeat; **net / confirmed offline** is raw offline minus the minutes classified as communication failure; **no evidence** is already included in the net figure and shown separately because it needs manual review. A unit without any heartbeat record in the period is shown as "Not available" / "Not evaluated" (never as 0%).
+**Raw offline** is the share of daylight time without heartbeat; **net / confirmed offline** is raw offline minus the minutes classified as communication failure; **no evidence** is already included in the net figure and shown separately because it needs manual review. Time before the first and after the last heartbeat of a unit within the period counts as offline, like any other gap. A unit that received no heartbeat at all during the period, but appears in the heartbeat records of other periods while other units did report, is therefore **100% offline** ("Heartbeats (n)" = 0): the missing signal is the finding. Only a unit that does not appear in the heartbeat records at all (for example because its code does not match) is shown as "Not available" / "Not evaluated", since no assessment is possible for it.
 
 # Turbine and IDF unit relation
 
@@ -152,6 +152,7 @@ x <- params$unit_table
 if (!is.null(x) && nrow(x) > 0L) {
   d <- data.frame(
     `IDF Unit` = x$unit, `Primary for` = fmt_txt(x$primary_for), `Secondary for` = fmt_txt(x$secondary_for),
+    `Heartbeats (n)` = ifelse(is.na(x$n_heartbeats), "-", format(x$n_heartbeats, big.mark = ",")),
     `Offline (%)` = fmt_pct(x$offline_pct), `Net offline (%)` = fmt_pct(x$net_offline_pct),
     `No evidence (%)` = fmt_pct(x$no_evidence_pct), Category = fmt_txt(x$availability_cat),
     check.names = FALSE
@@ -195,7 +196,7 @@ if (is.null(figs) || length(figs) == 0L) {
 
 ## Persistent failure
 
-IDF units offline for more than `r params$persistent_failure_threshold_pct`% of the daylight time of the analysed period (`r if (identical(params$persistent_failure_basis, "net")) "net / confirmed offline time" else "raw offline time"`), and units with no heartbeat record in the period.
+IDF units offline for more than `r params$persistent_failure_threshold_pct`% of the daylight time of the analysed period (`r if (identical(params$persistent_failure_basis, "net")) "net / confirmed offline time" else "raw offline time"`), including units that received no heartbeat at all in the period, and units that cannot be evaluated because they do not appear in the heartbeat records.
 
 ```{r alert-table, results='asis'}
 x <- params$alert_table
@@ -203,6 +204,7 @@ gap()
 if (!is.null(x) && nrow(x) > 0L) {
   d <- data.frame(
     `IDF Unit` = x$unit, `Primary for` = fmt_txt(x$primary_for), `Secondary for` = fmt_txt(x$secondary_for),
+    `Heartbeats (n)` = ifelse(is.na(x$n_heartbeats), "-", format(x$n_heartbeats, big.mark = ",")),
     `Offline (%)` = fmt_pct(x$offline_pct), `Net offline (%)` = fmt_pct(x$net_offline_pct),
     `No evidence (%)` = fmt_pct(x$no_evidence_pct), Status = x$status,
     check.names = FALSE

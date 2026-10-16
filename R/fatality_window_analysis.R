@@ -97,9 +97,18 @@ resolve_incident_idf_units <- function(turbine_id, manual_matrix_dt) {
 
 ## 2. Disponibilidade do sistema, restrita a uma janela + unidades IDF ----
 
+## Unidades de idf_units SEM heartbeats em hb que devem contar como offline a
+## janela toda: conhecidas (known_units) e com a janela dentro da cobertura
+## dos dados (data_range sobrepoe-se a [window_from, window_to]).
+absent_known_units <- function(hb, idf_units, known_units, window_from, window_to, data_range = NULL) {
+  if (is.null(known_units)) return(character())
+  if (!is.null(data_range) && (data_range[2] <= window_from || data_range[1] >= window_to)) return(character())
+  intersect(setdiff(idf_units, unique(hb$idf)), known_units)
+}
+
 summarise_availability_window <- function(heartb_dt, idf_units, window_from, window_to,
                                           lat, lon, tz, offline_gap_min = 60, online_grace_min = 30,
-                                          data_range = NULL) {
+                                          data_range = NULL, known_units = NULL) {
 
   # as.Date() sem tz= usa UTC por omissao -- window_from as 00:00:00 local
   # (Asia/Samarkand, UTC+5) cai as 19:00 do dia ANTERIOR em UTC, empurrando
@@ -107,14 +116,19 @@ summarise_availability_window <- function(heartb_dt, idf_units, window_from, win
   # familia dos bugs de tz ja corrigidos no resto do projeto
   daylight_cal <- build_daylight_calendar(as.Date(window_from, tz = tz), as.Date(window_to, tz = tz), lat, lon, tz)
 
-  # Unidade SEM nenhum heartbeat na janela -> nao avaliada (NA / "Not
-  # evaluated"), NUNCA 0% offline: 0% significaria "avaliada e sempre online",
-  # o que e' o oposto de "nao ha' dados para avaliar".
+  # Unidade SEM nenhum heartbeat na janela:
+  #  - CONHECIDA (known_units: existe noutro periodo nos dados de heartbeat) e a
+  #    janela esta' coberta pelos dados (data_range) -> 100% offline durante a
+  #    janela (nao reportou nada enquanto o sistema/dados existiam);
+  #  - desconhecida (nunca aparece nos dados: codigo errado? sem dados?) ->
+  #    nao avaliada (NA / "Not evaluated"), NUNCA 0% offline: 0% significaria
+  #    "avaliada e sempre online".
   not_evaluated_rows <- function(units) {
     data.table::data.table(
       idf = units,
       offline_mins_total = NA_real_, daylight_mins_total = NA_real_, days_covered = 0L,
       monitoring_period_pct = NA_real_, availability_pct = NA_real_,
+      n_heartbeats = 0L,
       availability_cat = factor("Not evaluated", levels = c("<60%", "60-80%", "80-90%", "90-96%", ">96%", "Not evaluated"))
     )
   }
@@ -128,14 +142,18 @@ summarise_availability_window <- function(heartb_dt, idf_units, window_from, win
   if (length(idf_units) == 0L) return(empty)
 
   hb <- heartb_dt[idf %in% idf_units & timestamp >= window_from & timestamp <= window_to]
-  if (nrow(hb) == 0L) {
+  absent <- absent_known_units(hb, idf_units, known_units, window_from, window_to, data_range)
+  if (nrow(hb) == 0L && length(absent) == 0L) {
     empty$by_idf <- not_evaluated_rows(idf_units)
     return(empty)
   }
 
-  daily_dt <- daylight_availability(hb, daylight_cal, tz, offline_gap_min, online_grace_min, data_range = data_range)
+  daily_dt <- daylight_availability(hb, daylight_cal, tz, offline_gap_min, online_grace_min, data_range = data_range, units = absent)
   by_idf   <- summarise_availability(daily_dt)$by_idf
   by_idf[, availability_cat := factor(availability_cat, levels = c(levels(availability_cat), "Not evaluated"))]
+  counts <- hb[, .(n_heartbeats = .N), by = idf]
+  by_idf[counts, on = "idf", n_heartbeats := i.n_heartbeats]
+  by_idf[is.na(n_heartbeats), n_heartbeats := 0L]
 
   missing_units <- setdiff(idf_units, by_idf$idf)
   if (length(missing_units) > 0L) by_idf <- data.table::rbindlist(list(by_idf, not_evaluated_rows(missing_units)), use.names = TRUE)
@@ -172,7 +190,7 @@ summarise_availability_window <- function(heartb_dt, idf_units, window_from, win
 summarise_offline_evidence_window <- function(heartb_dt, idf_units, turbine_id, window_from, window_to,
                                               curtl_dt, scada_dt, lat, lon, tz,
                                               offline_gap_min = 60, online_grace_min = 30,
-                                              track_dt = NULL, idf_turbines_dt = NULL, data_range = NULL) {
+                                              track_dt = NULL, idf_turbines_dt = NULL, data_range = NULL, known_units = NULL) {
 
   empty <- list(
     combined = data.table::data.table(
@@ -193,10 +211,11 @@ summarise_offline_evidence_window <- function(heartb_dt, idf_units, turbine_id, 
   daylight_cal <- build_daylight_calendar(as.Date(window_from, tz = tz), as.Date(window_to, tz = tz), lat, lon, tz)
 
   hb <- heartb_dt[idf %in% idf_units & timestamp >= window_from & timestamp <= window_to]
-  if (nrow(hb) == 0L) return(empty)
+  absent <- absent_known_units(hb, idf_units, known_units, window_from, window_to, data_range)
+  if (nrow(hb) == 0L && length(absent) == 0L) return(empty)
 
   offline_dt <- compute_offline_intervals(hb, offline_gap_min, online_grace_min,
-                                          period = calendar_period(daylight_cal, tz), data_range = data_range)
+                                          period = calendar_period(daylight_cal, tz), data_range = data_range, units = absent)
   if (nrow(offline_dt) == 0L) return(empty)
 
   # so' a porcao DIURNA de cada gap -- OBRIGATORIO antes de classificar,
@@ -277,7 +296,7 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
                                        min_indiv_bin_min = 2, min_indiv_merge_dist_m = 200,
                                        global_avail_from = NULL, global_avail_to = NULL,
                                        global_response_from = NULL, global_response_to = NULL,
-                                       heartb_data_range = NULL) {
+                                       heartb_data_range = NULL, heartb_known_units = NULL) {
 
   # baseline "global" (todo o periodo monitorizado, INCLUINDO a propria
   # janela do incidente -- decisao deliberada, ver R/fatality_window_analysis.R)
@@ -313,14 +332,14 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
     avail <- summarise_availability_window(
       heartb_dt, idf_units, window_from, window_to, lat, lon, tz,
       offline_gap_min = offline_gap_min, online_grace_min = online_grace_min,
-      data_range = heartb_data_range
+      data_range = heartb_data_range, known_units = heartb_known_units
     )
 
     offline_evidence <- summarise_offline_evidence_window(
       heartb_dt, idf_units, inc$turbine, window_from, window_to,
       curtl_dt, scada_dt, lat, lon, tz,
       offline_gap_min = offline_gap_min, online_grace_min = online_grace_min,
-      track_dt = track_dt, data_range = heartb_data_range
+      track_dt = track_dt, data_range = heartb_data_range, known_units = heartb_known_units
     )
 
     response <- summarise_curtailment_response_window(
@@ -335,13 +354,13 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
       avail_global <- summarise_availability_window(
         heartb_dt, idf_units, global_avail_from, global_avail_to, lat, lon, tz,
         offline_gap_min = offline_gap_min, online_grace_min = online_grace_min,
-        data_range = heartb_data_range
+        data_range = heartb_data_range, known_units = heartb_known_units
       )
       offline_evidence_global <- summarise_offline_evidence_window(
         heartb_dt, idf_units, inc$turbine, global_avail_from, global_avail_to,
         curtl_dt, scada_dt, lat, lon, tz,
         offline_gap_min = offline_gap_min, online_grace_min = online_grace_min,
-        track_dt = track_dt, data_range = heartb_data_range
+        track_dt = track_dt, data_range = heartb_data_range, known_units = heartb_known_units
       )
     }
 

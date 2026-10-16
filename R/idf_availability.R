@@ -114,19 +114,19 @@ idf_relation_add_unit <- function(relation_dt, idf_display_map) {
 ## que o disparou (R/offline_curtailment_check.R).
 idf_availability_analysis <- function(relation_dt, heartb_dt, curtl_dt, scada_dt, track_dt,
                                       period_from, period_to, lat, lon, tz,
-                                      offline_gap_min = 60, online_grace_min = 30, data_range = NULL) {
+                                      offline_gap_min = 60, online_grace_min = 30, data_range = NULL, known_units = NULL) {
   units <- unique(relation_dt$unit)
   idf_turbines_dt <- unique(relation_dt[, .(idf = unit, turbine)])
 
   avail <- summarise_availability_window(
     heartb_dt, units, period_from, period_to, lat, lon, tz,
-    offline_gap_min = offline_gap_min, online_grace_min = online_grace_min, data_range = data_range
+    offline_gap_min = offline_gap_min, online_grace_min = online_grace_min, data_range = data_range, known_units = known_units
   )
   evidence <- summarise_offline_evidence_window(
     heartb_dt, units, NA_character_, period_from, period_to,
     curtl_dt, scada_dt, lat, lon, tz,
     offline_gap_min = offline_gap_min, online_grace_min = online_grace_min,
-    track_dt = track_dt, idf_turbines_dt = idf_turbines_dt, data_range = data_range
+    track_dt = track_dt, idf_turbines_dt = idf_turbines_dt, data_range = data_range, known_units = known_units
   )
 
   by_idf <- avail$by_idf
@@ -156,8 +156,9 @@ idf_unit_summary <- function(relation_dt, analysis) {
 
   noev <- ev_by_idf[classification == "No evidence (heartbeat and SCADA both missing)", .(idf, no_evidence_mins = total_mins)]
 
+  if (!"n_heartbeats" %in% names(by_idf)) by_idf[, n_heartbeats := NA_integer_]
   out <- by_idf[, .(unit = idf, daylight_mins_total, offline_mins_total, offline_pct = monitoring_period_pct,
-                    availability_cat = as.character(availability_cat))]
+                    availability_cat = as.character(availability_cat), n_heartbeats)]
   if (!is.null(net)) out <- merge(out, net[, .(unit = idf, comm_failure_mins, net_offline_mins)], by = "unit", all.x = TRUE)
   else out[, `:=`(comm_failure_mins = NA_real_, net_offline_mins = NA_real_)]
   out <- merge(out, noev[, .(unit = idf, no_evidence_mins)], by = "unit", all.x = TRUE)
@@ -189,10 +190,11 @@ idf_alert_table <- function(unit_dt, threshold_pct = 50, basis = c("raw", "net")
   dt <- data.table::copy(unit_dt)
   dt[, status := data.table::fcase(
     availability_cat == "Not evaluated", "No heartbeat records in the period",
+    !is.na(get(col)) & get(col) > threshold_pct & !is.na(n_heartbeats) & n_heartbeats == 0L, "Persistent failure: no heartbeat received in the period",
     !is.na(get(col)) & get(col) > threshold_pct, sprintf("Persistent failure (> %s%% of daylight time)", format(threshold_pct)),
     default = NA_character_
   )]
-  out <- dt[!is.na(status), .(unit, primary_for, secondary_for, offline_pct, net_offline_pct, no_evidence_pct, status)]
+  out <- dt[!is.na(status), .(unit, primary_for, secondary_for, n_heartbeats, offline_pct, net_offline_pct, no_evidence_pct, status)]
   data.table::setorder(out, status, -offline_pct, na.last = TRUE)
   out[]
 }

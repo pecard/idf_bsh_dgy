@@ -689,7 +689,8 @@ fatality_windows <- summarise_fatality_windows(
   min_indiv_bin_min = min_individuals_bin_min, min_indiv_merge_dist_m = min_individuals_merge_dist_m,
   global_avail_from = ini, global_avail_to = end,
   global_response_from = scada_ini, global_response_to = scada_end,
-  heartb_data_range = range(heartb_dt_unfilt$timestamp) # cobertura dos dados de heartbeat de TODAS as unidades
+  heartb_data_range = range(heartb_dt_unfilt$timestamp), # cobertura dos dados de heartbeat de TODAS as unidades
+  heartb_known_units = unique(heartb_dt_unfilt$idf)      # unidades que existem nos dados (sem heartbeats na janela = 100% offline)
 )
 
 fatality_window_availability_dt <- data.table::rbindlist(lapply(names(fatality_windows), function(id) {
