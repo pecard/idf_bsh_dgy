@@ -48,3 +48,9 @@ res_sp_test <- summarise_curtailments_by_unit(cu_sp_test, tk_test, "T23", t0_tes
 stopifnot(res_sp_test[unit == "GW19-13", n] == 2L, res_sp_test[unit == "GW23-15", n] == 0L, sum(res_sp_test$n) == 4L)  # o do GW23-15 era Steppe-Eagle
 stopifnot(res_sp_test[unit == "GW19-13", pct] == 50)
 cat("test especie OK\n")
+
+## unidades fora da relacao em linhas proprias (other_as_rows)
+res_oar_test <- summarise_curtailments_by_unit(cu_test, tk_test, "T23", t0_test, t0_test + 3600, c("GW19-13"), map_test, other_as_rows = TRUE)
+stopifnot(identical(res_oar_test$unit, c("GW19-13", "GW23-15", "IDF99", "Unattributed")))   # GW23-15 e IDF99 (sem codigo) listadas individualmente
+stopifnot(identical(res_oar_test$n, c(2L, 1L, 1L, 1L)))
+cat("test other_as_rows OK\n")

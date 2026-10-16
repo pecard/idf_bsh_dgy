@@ -270,16 +270,24 @@ read_track_units <- function(databases_dirs, pattern, tz, farm_pattern = NULL, t
   if (length(files) == 0L) return(data.table::data.table(track_id = character(), timestamp = as.POSIXct(character()), idf = integer()))
   if (!is.null(track_ids)) track_ids <- unique(as.character(track_ids))
 
+  ranges <- list()
   dt <- data.table::rbindlist(lapply(files, function(f) {
     x <- data.table::fread(f, select = c("TrackId", "DateTimeStamp", "TowerNumber"), na.strings = "NULL", header = TRUE)
     data.table::setnames(x, c("track_id", "timestamp", "idf"))
     x[, track_id := as.character(track_id)]
+    ranges[[length(ranges) + 1L]] <<- range(x$timestamp)
     if (!is.null(track_ids)) x <- x[track_id %in% track_ids]
     x
   }))
   # fonte ja' em hora LOCAL: force_tz (mesmo criterio de R/read_tracks.R)
   dt[, timestamp := lubridate::force_tz(timestamp, tz)]
-  unique(dt)
+  # cobertura temporal de TODOS os TrackReport lidos (antes do filtro por track_id),
+  # para diagnosticar curtailments sem track (attr "all_range")
+  all_r <- do.call(c, ranges)
+  attr(dt, "all_range") <- lubridate::force_tz(range(all_r), tz)
+  out <- unique(dt)
+  attr(out, "all_range") <- attr(dt, "all_range")
+  out
 }
 
 

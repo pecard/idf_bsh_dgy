@@ -456,7 +456,7 @@ summarise_individuals_pre_post <- function(track_dt, species, incident_date, day
 ## os curtailments da turbina nesse periodo.
 ##
 ## idf_display_map: R/idf_labels.R (rotulo interno "IDF<NN>" -> nome completo).
-summarise_curtailments_by_unit <- function(curtl_dt, track_dt, turbine_id, period_from, period_to, units, idf_display_map, species = NULL) {
+summarise_curtailments_by_unit <- function(curtl_dt, track_dt, turbine_id, period_from, period_to, units, idf_display_map, species = NULL, other_as_rows = FALSE) {
 
   cu <- data.table::as.data.table(curtl_dt)[turbine == turbine_id & start >= period_from & start <= period_to]
   # species: so' os curtailments disparados por tracks classificados como essa(s) especie(s) (NULL = todas)
@@ -467,12 +467,20 @@ summarise_curtailments_by_unit <- function(curtl_dt, track_dt, turbine_id, perio
     cu <- attribute_curtailment_unit(cu, track_dt)
     internal <- ifelse(is.na(cu$curtl_unit), NA_character_, sprintf("IDF%02d", cu$curtl_unit))
     full <- ifelse(is.na(internal), NA_character_, relabel_idf(internal, idf_display_map))
-    group <- data.table::fcase(
-      is.na(full), "Unattributed",
-      full %in% units, full,
-      default = "Other IDF units"
-    )
-    counts <- table(factor(group, levels = unique(c(units, "Other IDF units", "Unattributed"))))
+    if (other_as_rows) {
+      # cada unidade FORA de `units` que disparou curtailments ganha a sua linha
+      # (ordenada por n.o de curtailments), em vez de "Other IDF units"
+      group <- ifelse(is.na(full), "Unattributed", full)
+      others <- names(sort(table(group[group != "Unattributed" & !group %in% units]), decreasing = TRUE))
+      counts <- table(factor(group, levels = unique(c(units, others, "Unattributed"))))
+    } else {
+      group <- data.table::fcase(
+        is.na(full), "Unattributed",
+        full %in% units, full,
+        default = "Other IDF units"
+      )
+      counts <- table(factor(group, levels = unique(c(units, "Other IDF units", "Unattributed"))))
+    }
   } else {
     counts <- table(factor(character(), levels = unique(c(units, "Other IDF units", "Unattributed"))))
   }

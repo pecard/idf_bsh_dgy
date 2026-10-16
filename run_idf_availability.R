@@ -202,21 +202,52 @@ remaining_cov_dt <- idf_remaining_coverage(relation_dt, wtg, idf, unit_buffer_m 
 ## (attribute_curtailments_by_unit = TRUE).
 if (!exists("species_of_interest")) species_of_interest <- NULL
 curtl_by_unit_dt <- NULL
+curtl_unattributed_note <- ""
 if (!is.null(track_dt)) {
+  # cobertura geometrica (todas as sobreposicoes) com o nome completo, para as
+  # unidades FORA da relacao que mesmo assim dispararam curtailments
+  cov_full_dt <- copy(coverage_dt)[, unit := relabel_idf(idf, idf_display_map)]
   curtl_by_unit_dt <- rbindlist(lapply(turbines_analysed, function(tb) {
     rel_tb <- relation_dt[turbine == tb][order(rank)]
-    f <- function(sp) summarise_curtailments_by_unit(curtl_dt, track_dt, tb, ini, end, rel_tb$unit, idf_display_map, species = sp)
+    f <- function(sp) summarise_curtailments_by_unit(curtl_dt, track_dt, tb, ini, end, rel_tb$unit, idf_display_map, species = sp, other_as_rows = TRUE)
     all_sp <- f(NULL)
     sp_sel <- if (is.null(species_of_interest)) all_sp else f(species_of_interest)
     out <- merge(sp_sel[, .(unit, n_species = n, pct_species = pct)], all_sp[, .(unit, n_all = n, pct_all = pct)], by = "unit", all = TRUE, sort = FALSE)
-    out[, ord := match(unit, c(rel_tb$unit, "Other IDF units", "Unattributed"))]
+    out[, ord := match(unit, c(rel_tb$unit, setdiff(all_sp$unit, c(rel_tb$unit, "Unattributed")), "Unattributed"))]
     setorder(out, ord); out[, ord := NULL]
     out[is.na(n_species), n_species := 0L]; out[is.na(n_all), n_all := 0L]
     out[rel_tb, on = "unit", `:=`(role = i.role, rank = i.rank, pct_coverage = i.pct_coverage)]
+    # unidade fora da relacao: cobertura geometrica da turbina, se houver
+    out[is.na(pct_coverage) & unit != "Unattributed", pct_coverage := cov_full_dt[turbine == tb][match(unit, unit), pct_coverage]]
     out[, turbine := tb]
     setcolorder(out, c("turbine", "unit", "role", "rank", "pct_coverage", "n_species", "pct_species", "n_all", "pct_all"))
     out[]
   }), fill = TRUE)
+
+  ## Diagnostico dos curtailments SEM unidade atribuida (track nao encontrado
+  ## nos TrackReport): quantos, quando, e que periodo cobrem os TrackReport
+  cu_chk <- attribute_curtailment_unit(curtl_dt[turbine %in% turbines_analysed], track_dt)
+  unattr_dt <- cu_chk[is.na(curtl_unit)]
+  if (nrow(unattr_dt) > 0L) {
+    trk_rng <- attr(track_dt, "all_range")
+    share <- round(100 * nrow(unattr_dt) / nrow(cu_chk), 1)
+    outside <- if (is.null(trk_rng)) NA_integer_ else unattr_dt[start < trk_rng[1] | start > trk_rng[2], .N]
+    message(sprintf(
+      "Curtailments sem unidade atribuida: %d de %d (%s%%); datas %s a %s; %s fora do periodo coberto pelos TrackReport (%s a %s). Exemplos de track_id: %s",
+      nrow(unattr_dt), nrow(cu_chk), share, format(min(unattr_dt$start), "%Y-%m-%d"), format(max(unattr_dt$start), "%Y-%m-%d"),
+      if (is.na(outside)) "?" else outside,
+      if (is.null(trk_rng)) "?" else format(trk_rng[1], "%Y-%m-%d"), if (is.null(trk_rng)) "?" else format(trk_rng[2], "%Y-%m-%d"),
+      paste(head(unique(unattr_dt$track_id), 5), collapse = ", ")
+    ))
+    if (share >= 10) {
+      curtl_unattributed_note <- sprintf(
+        "%d of %d curtailments (%s%%) could not be attributed to an IDF unit because the track that triggered them is not in the TrackReport files read (%d of them occurred outside the period covered by those files, %s to %s).",
+        nrow(unattr_dt), nrow(cu_chk), share, if (is.na(outside)) 0L else outside,
+        if (is.null(trk_rng)) "?" else format(trk_rng[1], "%Y-%m-%d"), if (is.null(trk_rng)) "?" else format(trk_rng[2], "%Y-%m-%d")
+      )
+    }
+  }
+  unattributed_curtl_dt <- unattr_dt[, .(turbine, track_id, species, start, end)]
 }
 
 ## Calendarios (varias figuras, N unidades por figura)
@@ -236,6 +267,7 @@ write_xlsx_tagged(
     Turbine_IDF_relation        = relation_table_dt,
     IDF_unit_offline            = unit_dt,
     Remaining_coverage_without_primary = remaining_cov_dt,
+    Unattributed_curtailments   = if (is.null(curtl_by_unit_dt)) data.table(Note = "n/a") else unattributed_curtl_dt,
     Curtailments_by_IDF_unit    = if (is.null(curtl_by_unit_dt)) data.table(Note = "Curtailment attribution by unit is off (attribute_curtailments_by_unit = FALSE) or there are no curtailments.") else curtl_by_unit_dt,
     Persistent_failure_alerts   = alert_dt,
     Turbines_without_working_unit = turbine_alert_dt,
@@ -268,7 +300,7 @@ report_params <- list(
   persistent_failure_threshold_pct = persistent_failure_threshold_pct, persistent_failure_basis = persistent_failure_basis,
   relation_table = as.data.frame(relation_table_dt), unit_table = as.data.frame(unit_dt),
   remaining_table = as.data.frame(remaining_cov_dt), turbine_area_radius_m = turbine_area_radius_m,
-  curtl_by_unit_table = if (is.null(curtl_by_unit_dt)) NULL else as.data.frame(curtl_by_unit_dt), species_of_interest = if (is.null(species_of_interest)) "" else paste(species_of_interest, collapse = ", "),
+  curtl_by_unit_table = if (is.null(curtl_by_unit_dt)) NULL else as.data.frame(curtl_by_unit_dt), species_of_interest = if (is.null(species_of_interest)) "" else paste(species_of_interest, collapse = ", "), curtl_unattributed_note = curtl_unattributed_note,
   alert_table = as.data.frame(alert_dt), turbine_alert_table = as.data.frame(turbine_alert_dt),
   net_overall = if (is.null(analysis$net_overall)) NULL else as.data.frame(analysis$net_overall),
   calendar_figures = calendar_figures,

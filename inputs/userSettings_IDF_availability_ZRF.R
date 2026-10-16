@@ -68,14 +68,16 @@ turbines_of_interest <- c("T13")
 ## `Secondary IDF(s)`, varias secundarias separadas por virgula), e' esse que
 ## manda; turbinas que nao estejam nele, e todas as turbinas se o ficheiro
 ## nao existir, usam a relacao GEOMETRICA: unidades cujo buffer cobre >=
-## relation_min_pct_coverage % do buffer da turbina; a de maior % e' a
-## primaria, as restantes (ate relation_max_secondary) as secundarias.
+## relation_min_pct_coverage % do buffer da turbina (0 = qualquer sobreposicao);
+## a de maior % e' a primaria, as restantes (ate relation_max_secondary) as
+## secundarias, terciarias, ... Um limite baixo/sem limite mostra TODAS as unidades
+## que podem detetar aves junto da turbina (e disparar curtailments).
 ##
 
 turbine_idf_matrix_filename <- "IDF_Coverage_Matrix_ZRF.xlsx"   # pode nao existir
 idf_op_detection_range      <- 1000   # m; raio de deteccao do IDF (buffer da turbina e da unidade)
-relation_min_pct_coverage   <- 20     # %
-relation_max_secondary      <- 3      # n.o maximo de unidades secundarias por turbina
+relation_min_pct_coverage   <- 0      # %; 0 = todas as unidades cujo buffer se sobrepoe ao da turbina
+relation_max_secondary      <- Inf    # n.o maximo de unidades secundarias por turbina (Inf = sem limite)
 
 ## Area em redor da turbina (raio, m) usada na "protecao remanescente": %
 ## dessa area coberta pelas unidades que NAO sao a primaria
