@@ -11,6 +11,8 @@ params:
   username: ""
   code_version: ""
   attribution_by_unit: !r NULL
+  turbines_text: ""
+  avail_tag: ""
   n_turbines: !r NULL
   n_units: !r NULL
   n_primary: !r NULL
@@ -76,7 +78,7 @@ show_plot <- function(fig) {
 }
 ```
 
-**`r params$project_ref`** -- IDF Availability Report
+**`r params$project_ref`** -- IDF Availability Report -- Turbine(s): **`r params$turbines_text`**
 
 Analysis period: **`r params$period_start`** to **`r params$period_end`**
 
@@ -88,8 +90,8 @@ This report is descriptive and fully automated, generated end-to-end by an R cod
 
 ```{r summary-text, results='asis'}
 cat(sprintf(
-  "%d turbines and %d IDF units (%d primary, %d secondary) were analysed from %s to %s; the turbine-IDF relation comes from: %s.\n\n",
-  params$n_turbines, params$n_units, params$n_primary, params$n_secondary,
+  "%d turbine(s) (%s) and %d IDF units (%d primary, %d secondary) were analysed from %s to %s; the turbine-IDF relation comes from: %s.\n\n",
+  params$n_turbines, params$turbines_text, params$n_units, params$n_primary, params$n_secondary,
   params$period_start, params$period_end, params$relation_sources
 ))
 x <- params$net_overall

@@ -229,10 +229,14 @@ split_units <- function(units, per_figure = 6L) {
 }
 
 ## Devolve uma lista de list(p = ggplot, h = altura em polegadas)
-idf_calendar_figures <- function(slot_grid_fun, unit_chunks, slot_mins = 30, date_breaks = "7 days") {
+idf_calendar_figures <- function(slot_grid_fun, unit_chunks, slot_mins = 30, date_breaks = "7 days", turbine_label = NULL) {
   lapply(unit_chunks, function(u) {
     grid <- slot_grid_fun(u)
-    list(p = plot_offline_evidence_slots(grid, slot_mins = slot_mins, date_breaks = date_breaks),
+    # titulo com o(s) codigo(s) da(s) turbina(s) analisada(s)
+    title <- sprintf("IdentiFlight offline evidence%s (%s to %s)",
+                     if (is.null(turbine_label) || !nzchar(turbine_label)) "" else paste0(" - ", turbine_label),
+                     format(min(grid$date), "%d %b %Y"), format(max(grid$date), "%d %b %Y"))
+    list(p = plot_offline_evidence_slots(grid, slot_mins = slot_mins, date_breaks = date_breaks, title = title),
          h = min(9, 1.9 + 1.25 * length(u)))
   })
 }

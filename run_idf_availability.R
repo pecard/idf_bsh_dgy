@@ -54,16 +54,12 @@ get_code_version <- function() {
 }
 code_version <- get_code_version()
 
-## Pasta/ficheiros desta corrida: outputs/<AAAAMMDD_HHMM>_<tag>/ (R/output_paths.R)
+## Pasta/ficheiros desta corrida: criados mais abaixo, depois de saber que
+## turbinas entram na analise (o codigo da turbina faz parte do nome)
 source("R/output_paths.R")
 period_from_date <- as.Date(ini, tz = proj_timezone)
 period_to_date   <- as.Date(end, tz = proj_timezone)
-avail_tag     <- paste(farm_code, "IDF_AVAILABILITY", format(period_from_date, "%Y%m%d"), format(period_to_date, "%Y%m%d"), sep = "_")
-run_date      <- make_run_stamp()
-folder_output <- incident_output_folder("outputs", run_date, avail_tag)
-out_file <- function(base, ext) file.path(folder_output, out_name(base, ext, avail_tag, run_date))
-dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
-write_run_info(folder_output, avail_tag, run_date, project_settings_file, file.path(folder_input, project_settings_file))
+run_date         <- make_run_stamp()
 
 
 ##
@@ -153,6 +149,25 @@ idf_display_map <- build_idf_label_map(heartb_dt_unfilt$idf)
 relation_dt <- idf_relation_add_unit(relation_ids_dt, idf_display_map)
 no_code_units <- setdiff(unique(relation_dt$idf), names(idf_display_map))
 if (length(no_code_units) > 0L) message("AVISO: unidades IDF sem codigo em heartb_dt_unfilt (ficam 'Not evaluated'): ", paste(no_code_units, collapse = ", "))
+## Codigo(s) da(s) turbina(s) em TUDO o que sai: pasta, ficheiros (xlsx/docx),
+## titulo e cabecalho do relatorio, titulo dos calendarios e folha "Run_info"
+## de cada xlsx. Ate 3 turbinas, os codigos ("T13", "T13-T23"); mais, "<n>WTG".
+turbines_analysed <- sort(unique(relation_dt$turbine))
+turbine_tag <- if (length(turbines_analysed) <= 3L) paste(turbines_analysed, collapse = "-") else paste0(length(turbines_analysed), "WTG")
+turbines_text <- paste(turbines_analysed, collapse = ", ")
+avail_tag     <- paste(farm_code, turbine_tag, "IDF_AVAILABILITY", format(period_from_date, "%Y%m%d"), format(period_to_date, "%Y%m%d"), sep = "_")
+folder_output <- incident_output_folder("outputs", run_date, avail_tag)
+out_file <- function(base, ext) file.path(folder_output, out_name(base, ext, avail_tag, run_date))
+dir.create(folder_output, showWarnings = FALSE, recursive = TRUE)
+write_run_info(folder_output, avail_tag, run_date, project_settings_file, file.path(folder_input, project_settings_file))
+
+## folha "Run_info" no inicio de cada xlsx: identifica projeto, turbina(s), periodo e corrida
+run_info_dt <- data.table(
+  Item  = c("Project", "Farm code", "Turbines", "Period start", "Period end", "Run stamp", "Settings file"),
+  Value = c(project_ref, farm_code, turbines_text, as.character(period_from_date), as.character(period_to_date), run_date, project_settings_file)
+)
+write_xlsx_tagged <- function(x, path, ...) write_xlsx_local(c(list(Run_info = run_info_dt), x), path, ...)
+
 message(sprintf("Relacao turbina<->IDF: %d turbinas, %d unidades (%d primarias, %d secundarias).",
                 uniqueN(relation_dt$turbine), uniqueN(relation_dt$unit), relation_dt[role == "Primary", uniqueN(unit)], relation_dt[role == "Secondary", uniqueN(unit)]))
 
@@ -182,10 +197,11 @@ calendar_figures <- idf_calendar_figures(
   function(u) offline_evidence_slot_grid(daylight_cal, proj_timezone, period_from_date, period_to_date,
                                          analysis$evidence$combined, idf_sel = u, slot_mins = heartbeat_interval_min,
                                          no_data_idf = intersect(u, not_evaluated_units)),
-  split_units(unit_order, calendar_units_per_figure), slot_mins = heartbeat_interval_min, date_breaks = calendar_date_breaks
+  split_units(unit_order, calendar_units_per_figure), slot_mins = heartbeat_interval_min, date_breaks = calendar_date_breaks,
+  turbine_label = turbines_text
 )
 
-write_xlsx_local(
+write_xlsx_tagged(
   list(
     Turbine_IDF_relation        = relation_table_dt,
     IDF_unit_offline            = unit_dt,
@@ -205,10 +221,11 @@ write_xlsx_local(
 ##
 
 report_params <- list(
-  title = paste("IDF Availability Report -", project_ref),
+  title = paste("IDF Availability Report -", project_ref, "-", turbines_text),
   project_ref = project_ref, farm_code = farm_code,
   period_start = as.character(period_from_date), period_end = as.character(period_to_date),
   analysis_date = as.character(Sys.Date()), username = report_team, code_version = code_version,
+  turbines_text = turbines_text, avail_tag = avail_tag,
   attribution_by_unit = !is.null(track_dt),
   n_turbines = uniqueN(relation_dt$turbine), n_units = uniqueN(relation_dt$unit),
   n_primary = relation_dt[role == "Primary", uniqueN(unit)], n_secondary = relation_dt[role == "Secondary", uniqueN(unit)],
