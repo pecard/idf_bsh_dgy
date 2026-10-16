@@ -248,6 +248,14 @@ if (!all(heartbeat_idf_units %in% heartb_dt_unfilt$idf)) {
           ") foram encontradas em heartb_dt_unfilt$idf -- confirmar o codigo bruto exato no ficheiro (ver o settings do parque/incidente).")
 }
 
+## Rotulos das unidades IDF nos relatorios: o nome completo do heartbeat
+## ("GW32-22", "BSH55-09", "DZH01-01"), a pedido dos clientes -- ver
+## R/idf_labels.R. idf_display_map: "IDF<NN>" (rotulo interno do shapefile)
+## -> codigo completo; os settings (heartbeat_idf_units) tem precedencia.
+source("R/idf_labels.R")
+if (is.null(names(heartbeat_idf_units))) names(heartbeat_idf_units) <- idf_internal_label(heartbeat_idf_units)
+idf_display_map <- build_idf_label_map(heartb_dt_unfilt$idf, heartbeat_idf_units)
+
 filter_ini <- ini
 filter_end <- end
 
@@ -270,7 +278,9 @@ scada_dt <- scada_dt_unfilt # NAO FILTRAR -- mesma convencao de IDF_analysis.R
 heartb_dt <- as.data.table(heartb_dt_unfilt)[
   idf %in% heartbeat_idf_units & timestamp >= filter_ini & timestamp <= filter_end
 ]
-heartb_dt[, idf := names(heartbeat_idf_units)[match(idf, heartbeat_idf_units)]]
+## heartb_dt$idf FICA com o codigo completo ("GW32-22") -- e' o nome usado
+## nos relatorios (antes era relabeled para "IDF<NN>"); o numero da unidade
+## (ultimos digitos) continua a ligar as restantes fontes.
 
 
 ##
@@ -355,7 +365,9 @@ if (!all(idf_unit_numbers %in% suppressWarnings(as.integer(track_dt_unfilt$idf))
 
 source("R/turbine_idf_coverage.R")
 
-turbine_idf_coverage_dt      <- compute_turbine_idf_coverage(wtg, idf, buffer_m = idf_op_detection_range, wtg_id_col = "InternalNa", idf_id_col = "imaging_he")
+turbine_idf_coverage_ids_dt  <- compute_turbine_idf_coverage(wtg, idf, buffer_m = idf_op_detection_range, wtg_id_col = "InternalNa", idf_id_col = "imaging_he") # rotulos "IDF<NN>" (para comparar com a matriz manual)
+## tabelas de saida (xlsx/relatorio) com o nome completo da unidade
+turbine_idf_coverage_dt      <- relabel_idf_cols(turbine_idf_coverage_ids_dt, idf_display_map, "idf")
 turbine_idf_coverage_wide_dt <- pivot_turbine_idf_coverage_wide(turbine_idf_coverage_dt)
 
 ## Nao ha matriz manual ainda para este parque -- este bloco escreve so a
@@ -366,7 +378,7 @@ turbine_idf_coverage_wide_dt <- pivot_turbine_idf_coverage_wide(turbine_idf_cove
 turbine_idf_matrix_file <- file.path(folder_input, turbine_idf_matrix_filename)
 if (file.exists(turbine_idf_matrix_file)) {
   turbine_idf_manual_dt <- readxl::read_xlsx(turbine_idf_matrix_file)
-  turbine_idf_comparison_dt <- compare_turbine_idf_matrix(turbine_idf_manual_dt, turbine_idf_coverage_dt)
+  turbine_idf_comparison_dt <- compare_turbine_idf_matrix(turbine_idf_manual_dt, turbine_idf_coverage_ids_dt)
   write_xlsx_local(
     list(Geometric_long = turbine_idf_coverage_dt, Geometric_wide = turbine_idf_coverage_wide_dt,
          Manual_matrix = turbine_idf_manual_dt, Comparison = turbine_idf_comparison_dt),
@@ -460,7 +472,7 @@ if (file.exists(dem_file)) {
     file_suffix = paste0("_", incident_tag, "_", run_date),
     radius = coverage_cylinder_wider_radius, cyl_height = coverage_cylinder_height,
     screenshot = TRUE,
-    idf_sf = idf, idf_max_dist_m = idf_op_detection_range, idf_id_col = "imaging_he"
+    idf_sf = { idf_3d <- idf; idf_3d$imaging_he <- relabel_idf(idf_3d$imaging_he, idf_display_map); idf_3d }, idf_max_dist_m = idf_op_detection_range, idf_id_col = "imaging_he"
   )
 
   coverage3d_covered_png     <- coverage3d_png_paths[[fatality_incidents$turbine]]$covered
@@ -654,7 +666,7 @@ fatality_windows <- summarise_fatality_windows(
   offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min,
   start_end_gap_sec = curtailment_start_end_gap_sec, decline_pct_threshold = curtailment_latency_decline_pct,
   buffer_after_end_sec = shutdown_time_buffer_sec, cutin_rpm = curtailment_cutin_rpm,
-  fallback_idf_units = names(heartbeat_idf_units), # heartb_dt$idf ja' vem relabeled para "IDF<NN>" (ver acima)
+  fallback_idf_units = unname(heartbeat_idf_units), # heartb_dt$idf tem o codigo completo (ver acima)
   track_dt = track_dt, post_days = fatality_post_incident_days,
   min_indiv_bin_min = min_individuals_bin_min, min_indiv_merge_dist_m = min_individuals_merge_dist_m,
   global_avail_from = ini, global_avail_to = end,
@@ -775,7 +787,7 @@ hb_window_diag_dt <- heartb_dt[
   timestamp >= fatality_windows[[1]]$window_from & timestamp <= fatality_windows[[1]]$window_to,
   .(n_heartbeats = .N, first_hb = min(timestamp), last_hb = max(timestamp)), by = idf
 ]
-hb_window_diag_dt <- hb_window_diag_dt[data.table::data.table(idf = names(heartbeat_idf_units)), on = "idf"]
+hb_window_diag_dt <- hb_window_diag_dt[data.table::data.table(idf = unname(heartbeat_idf_units)), on = "idf"]
 hb_window_diag_dt[is.na(n_heartbeats), n_heartbeats := 0L]
 message("Heartbeats na janela de investigacao, por unidade IDF:")
 print(hb_window_diag_dt)
@@ -801,7 +813,7 @@ p_fatality_offline_evidence_calendar <- if (any(hb_window_diag_dt$n_heartbeats >
     as.Date(fatality_windows[[1]]$window_from, tz = proj_timezone),
     as.Date(fatality_windows[[1]]$window_to, tz = proj_timezone),
     fatality_window_offline_evidence_combined_dt,
-    idf_sel = names(heartbeat_idf_units), slot_mins = heartbeat_interval_min,
+    idf_sel = unname(heartbeat_idf_units), slot_mins = heartbeat_interval_min,
     no_data_idf = fatality_units_without_hb
   )
   plot_offline_evidence_slots(
@@ -969,7 +981,7 @@ report_params <- list(
   incident_days_before = fatality_incidents$days_before,
   incident_window_start = as.character(as.Date(incident_window_start, tz = proj_timezone)),
   incident_window_end   = as.character(as.Date(incident_window_end, tz = proj_timezone)),
-  idf_units_of_interest = paste(names(heartbeat_idf_units), collapse = ", "), # rotulo "IDF<NN>", nao o codigo bruto do heartbeat
+  idf_units_of_interest = paste(unname(heartbeat_idf_units), collapse = ", "), # nome completo da unidade (ex: GW32-22)
   investigated_turbines = paste(turbinas_scada, collapse = ", "),
   report_start  = as.character(as.Date(ini, tz = proj_timezone)),
   report_end    = as.character(as.Date(end, tz = proj_timezone)),
