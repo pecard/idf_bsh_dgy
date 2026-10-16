@@ -757,7 +757,7 @@ if (exists("heartb_dt")) {
   # avaliado por inteiro, dando net_offline_pct negativo em
   # summarise_net_availability() (caso real, BSH 2026-09).
   offline_dt_daylight <- clip_offline_intervals_to_daylight(offline_dt, daylight_cal, proj_timezone)
-  offline_curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, offline_evidence_turbines_res$idf_turbines_dt)
+  offline_curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, offline_evidence_turbines_res$idf_turbines_dt, track_dt = track_dt)
   offline_scada_checked_dt <- check_offline_scada_presence(offline_dt_daylight, scada_dt, offline_evidence_turbines_res$idf_turbines_dt)
   offline_evidence_dt      <- classify_offline_evidence(offline_curtl_checked_dt, offline_scada_checked_dt)
   offline_evidence_summary <- summarise_offline_evidence(offline_evidence_dt)

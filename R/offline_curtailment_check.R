@@ -177,7 +177,37 @@ resolve_idf_turbines <- function(turbine_idf_manual_dt = NULL,
 ## sem turbina para verificar, nao ha' como confirmar operacionalidade por
 ## esta via.
 
-check_offline_curtailment_overlap <- function(offline_dt, curtl_dt, idf_turbines_dt) {
+## Numero da unidade IDF a partir de um rotulo (ultimos digitos: "IDF13",
+## "IDF-13", "GW19-13" -> 13) -- mesmo formato de track_dt$idf (TowerNumber,
+## so' o numero da unidade).
+idf_unit_number <- function(idf_label) {
+  as.integer(sub(".*?([0-9]+)$", "\\1", as.character(idf_label)))
+}
+
+## Atribui cada curtailment a UMA unidade IDF -- a que estava a registar o
+## track que o disparou, no instante do curtailment: o ponto desse track_id
+## (track_dt$idf = TowerNumber) mais proximo, no tempo, do inicio do
+## curtailment (roll = "nearest"). Os curtailments NAO trazem a unidade
+## (so' turbina e track_id), por isso a atribuicao vem do TrackReport.
+## curtl_unit = NA quando o track nao existe em track_dt.
+attribute_curtailment_unit <- function(curtl_dt, track_dt) {
+  cu <- data.table::copy(data.table::as.data.table(curtl_dt))
+  pts <- data.table::as.data.table(track_dt)[!is.na(idf), .(track_id = as.character(track_id), timestamp, curtl_unit = as.integer(idf))]
+  data.table::setkey(pts, track_id, timestamp)
+  cu[, `:=`(.row = .I, .tid = as.character(track_id))]
+  att <- pts[cu[, .(.row, track_id = .tid, timestamp = start)], on = .(track_id, timestamp), roll = "nearest", .(.row = i..row, curtl_unit = x.curtl_unit)]
+  cu[att, on = ".row", curtl_unit := i.curtl_unit]
+  cu[, c(".row", ".tid") := NULL]
+  cu[]
+}
+
+## track_dt (opcional mas RECOMENDADO): restringe a evidencia aos
+## curtailments disparados POR ESSA unidade (ver attribute_curtailment_unit()).
+## Sem track_dt (NULL, comportamento antigo) conta qualquer curtailment da
+## turbina, independentemente da unidade -- sobrestima "IDF unit
+## communication failure" quando a turbina tem varias unidades a proteger-
+## -na: um curtailment da unidade A cobria tambem o gap de heartbeat da B.
+check_offline_curtailment_overlap <- function(offline_dt, curtl_dt, idf_turbines_dt, track_dt = NULL) {
 
   off <- data.table::copy(offline_dt)
   off[, offline_id := .I]
@@ -190,6 +220,19 @@ check_offline_curtailment_overlap <- function(offline_dt, curtl_dt, idf_turbines
     return(off[])
   }
 
+  per_unit <- !is.null(track_dt)
+  if (per_unit) {
+    curtl_dt <- attribute_curtailment_unit(curtl_dt, track_dt)
+    n_na <- curtl_dt[is.na(curtl_unit), .N]
+    if (n_na > 0L) {
+      message(sprintf(
+        "Evidencia offline: %d de %d curtailment(s) sem unidade atribuivel (track_id ausente em track_dt) -- nao contam como evidencia de nenhuma unidade.",
+        n_na, nrow(curtl_dt)
+      ))
+    }
+    off_turbines[, offline_unit := idf_unit_number(idf)]
+  }
+
   # mesmo padrao de interval join ja usado em time_to_first_decline()/
   # time_to_rpm_thresholds() (R/curtailment_response_latency.R,
   # R/curtailment_shutdown_time.R) -- curtl_dt e' "x", off_turbines e' "i".
@@ -200,9 +243,13 @@ check_offline_curtailment_overlap <- function(offline_dt, curtl_dt, idf_turbines
     off_turbines,
     on = .(turbine, start >= off_start, start <= off_end),
     allow.cartesian = TRUE,
-    .(offline_id = i.offline_id, curtl_start = x.start)
+    .(offline_id = i.offline_id, curtl_start = x.start,
+      curtl_unit = if (per_unit) x.curtl_unit else NA_integer_,
+      offline_unit = if (per_unit) i.offline_unit else NA_integer_)
   ]
   hits <- hits[!is.na(curtl_start)] # sem match -- o join deixa NA em vez de remover a linha
+  # so' os curtailments disparados pela PROPRIA unidade do intervalo offline
+  if (per_unit) hits <- hits[!is.na(curtl_unit) & curtl_unit == offline_unit]
 
   curtl_counts <- hits[, .(n_curtailments_during_offline = .N), by = offline_id]
 

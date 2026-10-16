@@ -344,7 +344,7 @@ Every daylight time slot, laid out as a calendar (date on the horizontal axis, t
 Each slot is colored by one of six statuses:
 
 - **Online**: a heartbeat was received for this slot.
-- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered by the associated turbine(s) during the gap -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.
+- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered during the gap by a bird track recorded by this same IDF unit at the associated turbine(s) -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.
 - **Turbine operational, no detection**: no heartbeat and no curtailment, but SCADA still recorded RPM readings from the turbine(s) -- mechanically operational, simply with no bird triggering a response.
 - **No evidence (heartbeat and SCADA both missing)**: neither signal is available for this slot; requires manual review, since it can reflect a genuine gap in bird-protection coverage or a data gap affecting heartbeat and SCADA at the same time.
 - **Night**: outside daylight hours, when bird protection is not evaluated.

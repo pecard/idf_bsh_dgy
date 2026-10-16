@@ -170,7 +170,8 @@ summarise_availability_window <- function(heartb_dt, idf_units, window_from, win
 
 summarise_offline_evidence_window <- function(heartb_dt, idf_units, turbine_id, window_from, window_to,
                                               curtl_dt, scada_dt, lat, lon, tz,
-                                              offline_gap_min = 60, online_grace_min = 30) {
+                                              offline_gap_min = 60, online_grace_min = 30,
+                                              track_dt = NULL) {
 
   empty <- list(
     combined = data.table::data.table(
@@ -205,7 +206,7 @@ summarise_offline_evidence_window <- function(heartb_dt, idf_units, turbine_id, 
 
   idf_turbines_dt <- data.table::data.table(idf = idf_units, turbine = turbine_id)
 
-  curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, idf_turbines_dt)
+  curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, idf_turbines_dt, track_dt = track_dt)
   scada_checked_dt <- check_offline_scada_presence(offline_dt_daylight, scada_dt, idf_turbines_dt)
   combined_dt       <- classify_offline_evidence(curtl_checked_dt, scada_checked_dt)
   evidence_summary  <- summarise_offline_evidence(combined_dt)
@@ -311,7 +312,8 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
     offline_evidence <- summarise_offline_evidence_window(
       heartb_dt, idf_units, inc$turbine, window_from, window_to,
       curtl_dt, scada_dt, lat, lon, tz,
-      offline_gap_min = offline_gap_min, online_grace_min = online_grace_min
+      offline_gap_min = offline_gap_min, online_grace_min = online_grace_min,
+      track_dt = track_dt
     )
 
     response <- summarise_curtailment_response_window(
@@ -330,7 +332,8 @@ summarise_fatality_windows <- function(fatality_incidents, heartb_dt, curtl_dt, 
       offline_evidence_global <- summarise_offline_evidence_window(
         heartb_dt, idf_units, inc$turbine, global_avail_from, global_avail_to,
         curtl_dt, scada_dt, lat, lon, tz,
-        offline_gap_min = offline_gap_min, online_grace_min = online_grace_min
+        offline_gap_min = offline_gap_min, online_grace_min = online_grace_min,
+        track_dt = track_dt
       )
     }
 
