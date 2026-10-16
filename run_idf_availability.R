@@ -76,12 +76,6 @@ source("R/read_scada.R"); source("R/read_heartbeats.R"); source("R/data_cache.R"
 databases_dirs <- databases_dir
 folder_cache   <- file.path("cache", farm_code)
 
-track_dt_unfilt <- reuse_or_load_cache(
-  if (exists("track_dt_unfilt")) track_dt_unfilt else NULL,
-  "track_dt_unfilt", file.path(folder_cache, "track_dt_unfilt.fst"),
-  function() read_tracks_data(databases_dirs, trackreport_pattern, tz = proj_timezone, farm_pattern = farm_pattern),
-  force_reread = force_reread_cache, tz = proj_timezone
-)
 curtl_dt_unfilt <- reuse_or_load_cache(
   if (exists("curtl_dt_unfilt")) curtl_dt_unfilt else NULL,
   "curtl_dt_unfilt", file.path(folder_cache, "curtl_dt_unfilt.fst"),
@@ -104,10 +98,24 @@ heartb_dt_unfilt <- reuse_or_load_cache(
 ## So' o periodo analisado
 heartb_dt <- as.data.table(heartb_dt_unfilt)[timestamp >= ini & timestamp <= end]
 curtl_dt  <- as.data.table(curtl_dt_unfilt)[start >= ini & start <= end]
-track_dt  <- as.data.table(track_dt_unfilt)[timestamp >= ini & timestamp <= end]
 scada_dt  <- as.data.table(scada_dt_unfilt)[datetime >= ini & datetime <= end]
-message(sprintf("Periodo %s a %s -- heartbeats: %d | curtailments: %d | tracks: %d | SCADA: %d linhas",
-                format(ini), format(end), nrow(heartb_dt), nrow(curtl_dt), nrow(track_dt), nrow(scada_dt)))
+
+## Tracks: SO' para atribuir cada curtailment a unidade IDF que o disparou
+## (TowerNumber do track) -- leitura leve (3 colunas, so' os tracks dos
+## curtailments do periodo), sem cache de tracks. attribute_curtailments_by_unit
+## = FALSE nos settings salta isto por completo: os curtailments passam a
+## contar por turbina (qualquer unidade) -- ver nota no relatorio.
+if (!exists("attribute_curtailments_by_unit")) attribute_curtailments_by_unit <- TRUE
+track_dt <- NULL
+if (isTRUE(attribute_curtailments_by_unit) && nrow(curtl_dt) > 0L) {
+  source("R/idf_availability.R")
+  track_dt <- read_track_units(databases_dirs, trackreport_pattern, proj_timezone, farm_pattern, track_ids = curtl_dt$track_id)
+  message(sprintf("Tracks lidos so' para atribuicao de curtailments: %d pontos de %d tracks.", nrow(track_dt), uniqueN(track_dt$track_id)))
+} else {
+  message("Atribuicao de curtailments por unidade desligada (ou sem curtailments no periodo): evidencia por turbina.")
+}
+message(sprintf("Periodo %s a %s -- heartbeats: %d | curtailments: %d | SCADA: %d linhas",
+                format(ini), format(end), nrow(heartb_dt), nrow(curtl_dt), nrow(scada_dt)))
 message("Unidades IDF com heartbeats no periodo: ", paste(sort(unique(heartb_dt$idf)), collapse = ", "))
 
 
@@ -200,6 +208,7 @@ report_params <- list(
   project_ref = project_ref, farm_code = farm_code,
   period_start = as.character(period_from_date), period_end = as.character(period_to_date),
   analysis_date = as.character(Sys.Date()), username = report_team, code_version = code_version,
+  attribution_by_unit = !is.null(track_dt),
   n_turbines = uniqueN(relation_dt$turbine), n_units = uniqueN(relation_dt$unit),
   n_primary = relation_dt[role == "Primary", uniqueN(unit)], n_secondary = relation_dt[role == "Secondary", uniqueN(unit)],
   relation_sources = paste(sort(unique(relation_dt$relation_source)), collapse = " / "),

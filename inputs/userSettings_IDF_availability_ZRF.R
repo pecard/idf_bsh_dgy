@@ -25,9 +25,15 @@ heartbeats_pattern   <- "Heartbeats_ZRF.+csv"
 curtailments_pattern <- "^Curtailments_ZRF"
 scada_pattern        <- "SCADA_ZRF.+csv"
 ## TrackReport: so' para atribuir cada curtailment a unidade IDF que o
-## disparou (TowerNumber do track) -- um curtailment so' conta como
-## evidencia para a PROPRIA unidade
+## disparou (TowerNumber do track) -- lidas so' 3 colunas e so' os tracks dos
+## curtailments do periodo. Ignorado se attribute_curtailments_by_unit = FALSE.
 trackreport_pattern  <- "TrackReport_Default_ZRF"
+
+## TRUE: um curtailment so' conta como evidencia para a unidade que o
+## disparou (le os TrackReport, ver acima). FALSE: nao le tracks; um
+## curtailment da turbina conta para TODAS as unidades que a protegem
+## (sobrestima "IDF unit communication failure" quando ha' varias unidades).
+attribute_curtailments_by_unit <- TRUE
 
 ## Localizacao do projeto (calendario de luz do dia: nascer/por do sol) e fuso
 proj_lat      <- 41.58115

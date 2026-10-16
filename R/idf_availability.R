@@ -250,3 +250,28 @@ normalise_turbine_ids <- function(raw_id) {
     paste0(g[2], sprintf("%02d", as.integer(g[3])))
   }, character(1))
 }
+
+
+## 6. Leitura LEVE dos tracks, so' para atribuir curtailments a unidades ----
+##
+## A atribuicao curtailment -> unidade (attribute_curtailment_unit(),
+## R/offline_curtailment_check.R) so' precisa de 3 colunas dos TrackReport
+## (TrackId, DateTimeStamp, TowerNumber) e so' dos tracks que dispararam
+## curtailments -- em vez de ler as 12 colunas de todos os tracks (dezenas
+## de milhoes de linhas) e gravar uma cache enorme. track_ids = NULL le tudo.
+read_track_units <- function(databases_dirs, pattern, tz, farm_pattern = NULL, track_ids = NULL) {
+  files <- list_files_multi_dir(databases_dirs, pattern, farm_pattern)
+  if (length(files) == 0L) return(data.table::data.table(track_id = character(), timestamp = as.POSIXct(character()), idf = integer()))
+  if (!is.null(track_ids)) track_ids <- unique(as.character(track_ids))
+
+  dt <- data.table::rbindlist(lapply(files, function(f) {
+    x <- data.table::fread(f, select = c("TrackId", "DateTimeStamp", "TowerNumber"), na.strings = "NULL", header = TRUE)
+    data.table::setnames(x, c("track_id", "timestamp", "idf"))
+    x[, track_id := as.character(track_id)]
+    if (!is.null(track_ids)) x <- x[track_id %in% track_ids]
+    x
+  }))
+  # fonte ja' em hora LOCAL: force_tz (mesmo criterio de R/read_tracks.R)
+  dt[, timestamp := lubridate::force_tz(timestamp, tz)]
+  unique(dt)
+}

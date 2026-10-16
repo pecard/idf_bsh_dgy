@@ -74,3 +74,15 @@ invisible(ggplot_build(figs_test[[1]]$p))
 cat("test_idf_availability OK\n")
 stopifnot(identical(normalise_turbine_ids(c("T9", "T35", "DZH-1", "WTG12")), c("T09", "T35", "DZH-1", "WTG12")))
 cat("test_idf_availability (ids) OK\n")
+
+## leitura leve dos tracks (so' 3 colunas, so' os track_ids pedidos)
+suppressPackageStartupMessages(library(data.table)); source("R/read_utils.R")
+d_test <- tempfile("tracks_test_"); dir.create(d_test)
+fwrite(data.table(TrackId = c(1, 1, 2, 3), DateTimeStamp = c("2026-06-01 09:00:00", "2026-06-01 09:00:05", "2026-06-01 10:00:00", "2026-06-01 11:00:00"),
+                  Latitude = 41, Longitude = 64, TowerNumber = c(13, 13, 15, 99), SpeciesTypeName = "x"),
+       file.path(d_test, "TrackReport_Default_TST_20260601.csv"))
+tu_test <- read_track_units(d_test, "TrackReport_Default_TST", "Asia/Samarkand", NULL, track_ids = c("1", "3"))
+stopifnot(identical(sort(unique(tu_test$track_id)), c("1", "3")), nrow(tu_test) == 3L, setequal(names(tu_test), c("track_id", "timestamp", "idf")))
+stopifnot(inherits(tu_test$timestamp, "POSIXct"), attr(tu_test$timestamp, "tzone") == "Asia/Samarkand")
+stopifnot(nrow(read_track_units(d_test, "TrackReport_Default_TST", "Asia/Samarkand", NULL)) == 4L)
+cat("test read_track_units OK\n")

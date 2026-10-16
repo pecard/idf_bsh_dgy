@@ -10,6 +10,7 @@ params:
   analysis_date: ""
   username: ""
   code_version: ""
+  attribution_by_unit: !r NULL
   n_turbines: !r NULL
   n_units: !r NULL
   n_primary: !r NULL
@@ -114,7 +115,13 @@ Each IDF unit is analysed for the turbines it protects. The primary unit of a tu
 
 Each IDF unit sends a heartbeat approximately every `r params$heartbeat_interval_min` minutes when operational; a unit is considered offline once `r params$heartbeat_offline_gap_min` minutes pass without a heartbeat, counting only daylight hours (sunrise to sunset, computed from the project coordinates). Every offline interval is then classified by the evidence available for the same period:
 
-- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered during the gap by a bird track recorded by this same IDF unit at one of the turbines it protects -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.
+```{r comm-failure-def, results='asis'}
+if (isFALSE(params$attribution_by_unit)) {
+  cat("- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered during the gap at one of the turbines the unit protects (any IDF unit; curtailments are not attributed to individual units in this run) -- the system was actively deciding/acting, so the missing heartbeat may reflect a communication fault rather than bird protection being off.\n")
+} else {
+  cat("- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered during the gap by a bird track recorded by this same IDF unit at one of the turbines it protects -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.\n")
+}
+```
 - **Turbine operational, no detection**: no heartbeat and no such curtailment, but SCADA still recorded RPM readings from a turbine the unit protects.
 - **No evidence (heartbeat and SCADA both missing)**: neither signal is available; requires manual review.
 
