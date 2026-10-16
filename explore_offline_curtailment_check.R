@@ -101,7 +101,8 @@ print(idf_turbines_dt[order(idf)])
 offline_dt <- compute_offline_intervals(
   heartb_dt,
   offline_gap_min  = heartbeat_offline_gap_min,
-  online_grace_min = heartbeat_interval_min
+  online_grace_min = heartbeat_interval_min,
+  period = calendar_period(daylight_cal, proj_timezone) # inclui o tempo antes do 1.o / depois do ultimo heartbeat
 )
 
 cat(sprintf("\n===== %d intervalo(s) offline encontrado(s), %d unidade(s) IDF distintas =====\n",

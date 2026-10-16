@@ -520,7 +520,8 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   idf_availability_dt <- daylight_availability(
     heartb_dt, daylight_cal, proj_timezone,
     offline_gap_min  = heartbeat_offline_gap_min,
-    online_grace_min = heartbeat_interval_min
+    online_grace_min = heartbeat_interval_min,
+    data_range       = range(heartb_dt_unfilt$timestamp) # cobertura dos dados de heartbeat (todas as unidades)
   )
 
   idf_availability_summary <- summarise_availability(idf_availability_dt)
@@ -556,7 +557,8 @@ if (exists("heartb_dt") && isTRUE(run_sections_monthly$system_availability)) {
   offline_dt <- compute_offline_intervals(
     heartb_dt, offline_gap_min = heartbeat_offline_gap_min, online_grace_min = heartbeat_interval_min,
     period = c(as.POSIXct(paste(as.Date(ini, tz = proj_timezone), "00:00:00"), tz = proj_timezone),
-               as.POSIXct(paste(as.Date(end, tz = proj_timezone) + 1, "00:00:00"), tz = proj_timezone))
+               as.POSIXct(paste(as.Date(end, tz = proj_timezone) + 1, "00:00:00"), tz = proj_timezone)),
+    data_range = range(heartb_dt_unfilt$timestamp)
   )
   # so' a porcao DIURNA de cada gap -- clip_offline_intervals_to_daylight(),
   # R/availability_daylight.R -- para o total classificado (curtailment/
