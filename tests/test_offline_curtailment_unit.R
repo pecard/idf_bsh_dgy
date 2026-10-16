@@ -28,3 +28,16 @@ stopifnot(!any(orph_test$has_curtailment))
 
 stopifnot(identical(idf_unit_number(c("IDF13", "IDF-13", "GW19-13", "BSH68-01")), c(13L, 13L, 13L, 1L)))
 cat("test_offline_curtailment_unit OK\n")
+
+## curtailments por unidade (importancia relativa)
+suppressPackageStartupMessages(source("R/idf_labels.R")); source("R/fatality_window_analysis.R")
+cu_test <- data.table(turbine = "T23", track_id = c("a", "b", "c", "d", "z"), start = t0_test + c(100, 200, 300, 400, 500) , end = t0_test + c(110, 210, 310, 410, 510))
+tk_test <- data.table(track_id = c("a", "b", "c", "d"), timestamp = t0_test + c(95, 195, 295, 395), idf = c(13L, 13L, 15L, 99L))
+map_test <- c(IDF13 = "GW19-13", IDF15 = "GW23-15")
+res_test <- summarise_curtailments_by_unit(cu_test, tk_test, "T23", t0_test, t0_test + 3600, c("GW19-13", "GW23-15", "GW26-70"), map_test)
+stopifnot(identical(res_test$unit, c("GW19-13", "GW23-15", "GW26-70", "Other IDF units", "Unattributed")))
+stopifnot(identical(res_test$n, c(2L, 1L, 0L, 1L, 1L)), identical(res_test$pct, c(40, 20, 0, 20, 20)))
+## outra turbina / janela vazia -> zeros, sem Other/Unattributed
+res0_test <- summarise_curtailments_by_unit(cu_test, tk_test, "T99", t0_test, t0_test + 3600, c("GW19-13"), map_test)
+stopifnot(identical(res0_test$unit, "GW19-13"), res0_test$n == 0L, is.na(res0_test$pct))
+cat("test curtailments por unidade OK\n")

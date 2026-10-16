@@ -819,6 +819,17 @@ if (length(fatality_units_without_hb) > 0L) {
 ## heartbeats na janela (mesmo sem nenhum gap offline -- nesse caso e' todo
 ## "Online"); so' fica NULL (mensagem "No heartbeat records...") quando
 ## NENHUMA unidade tem heartbeats.
+## Unidades de interesse ordenadas por COBERTURA decrescente da turbina do
+## incidente (primaria primeiro, depois secundaria, terciaria, ...);
+## unidades sem cobertura calculada ficam no fim. Usada na ordem dos paineis
+## do calendario, das tabelas de disponibilidade/evidencia e de curtailments
+## por unidade.
+unit_order_by_coverage <- {
+  cov_tbl <- as.data.table(coverage_turbine_of_interest_dt)[idf %in% unname(heartbeat_idf_units)]
+  setorder(cov_tbl, -pct_coverage)
+  unique(c(cov_tbl$idf, unname(heartbeat_idf_units)))
+}
+
 p_fatality_offline_evidence_calendar <- if (any(hb_window_diag_dt$n_heartbeats > 0L)) {
   if (is.null(fatality_window_offline_evidence_combined_dt)) {
     fatality_window_offline_evidence_combined_dt <- data.table::data.table(
@@ -835,7 +846,8 @@ p_fatality_offline_evidence_calendar <- if (any(hb_window_diag_dt$n_heartbeats >
     no_data_idf = fatality_units_without_hb
   )
   plot_offline_evidence_slots(
-    fatality_window_offline_evidence_slots_dt, slot_mins = heartbeat_interval_min, date_breaks = "1 day"
+    fatality_window_offline_evidence_slots_dt, slot_mins = heartbeat_interval_min, date_breaks = "1 day",
+    idf_order = unit_order_by_coverage
   )
 } else NULL
 
@@ -850,6 +862,25 @@ fatality_abundance_pre_post_dt <- data.table::rbindlist(lapply(names(fatality_wi
   if (is.null(dt) || nrow(dt) == 0L) return(NULL)
   dt[, incident_id := id]; dt[]
 }), fill = TRUE)
+
+## Curtailments da turbina por unidade IDF (janela de investigacao e periodo
+## todo ini-end): importancia relativa de cada unidade a disparar
+## curtailments -- ver summarise_curtailments_by_unit(), R/fatality_window_analysis.R
+curtl_by_unit_window_dt <- summarise_curtailments_by_unit(
+  curtl_dt, track_dt, fatality_incidents$turbine[1], fatality_windows[[1]]$window_from, fatality_windows[[1]]$window_to,
+  unit_order_by_coverage, idf_display_map
+)
+curtl_by_unit_global_dt <- summarise_curtailments_by_unit(
+  curtl_dt, track_dt, fatality_incidents$turbine[1], ini, end, unit_order_by_coverage, idf_display_map
+)
+fatality_curtailments_by_unit_dt <- merge(
+  curtl_by_unit_window_dt[, .(unit, n_window = n, pct_window = pct)],
+  curtl_by_unit_global_dt[, .(unit, n_global = n, pct_global = pct)],
+  by = "unit", all = TRUE, sort = FALSE
+)
+fatality_curtailments_by_unit_dt[, ord := match(unit, c(unit_order_by_coverage, "Other IDF units", "Unattributed"))]
+setorder(fatality_curtailments_by_unit_dt, ord); fatality_curtailments_by_unit_dt[, ord := NULL]
+fatality_curtailments_by_unit_dt[is.na(n_window), n_window := 0L]; fatality_curtailments_by_unit_dt[is.na(n_global), n_global := 0L]
 
 write_xlsx_local(
   list(
@@ -867,6 +898,7 @@ write_xlsx_local(
     Global_offline_evidence_overall = fatality_global_offline_evidence_overall_dt,
     Global_offline_evidence_by_idf  = fatality_global_offline_evidence_by_idf_dt,
     Global_response_summary    = fatality_global_response_summary_dt,
+    Curtailments_by_IDF_unit   = fatality_curtailments_by_unit_dt,
     Abundance_pre_post         = fatality_abundance_pre_post_dt
   ),
   out_file("fatality_track_investigation", "xlsx")
@@ -1048,6 +1080,7 @@ report_params <- list(
   fatality_global_net_availability         = fatality_global_net_availability_dt,
   fatality_window_response_summary = fatality_window_response_summary_dt,
   fatality_abundance_pre_post      = fatality_abundance_pre_post_dt,
+  fatality_curtailments_by_unit    = as.data.frame(fatality_curtailments_by_unit_dt),
 
   id_risk_by_direction           = if (!is.null(id_risk_window_summary)) id_risk_window_summary$by_direction else NULL,
   short_track_summary            = short_track_window_summary_dt,

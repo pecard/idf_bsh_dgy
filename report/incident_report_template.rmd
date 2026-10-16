@@ -43,6 +43,7 @@ params:
   fatality_global_net_availability: !r NULL
   fatality_window_response_summary: !r NULL
   fatality_abundance_pre_post: !r NULL
+  fatality_curtailments_by_unit: !r NULL
 
   id_risk_by_direction: !r NULL
   short_track_summary: !r NULL
@@ -200,6 +201,21 @@ fatality_signal_labels <- c(
   near_turbine_not_last            = "Near turbine, not last position",
   far_from_turbine                 = "Far from turbine"
 )
+
+# Cobertura geometrica (%) de cada unidade IDF sobre a turbina do incidente
+# (params$coverage_turbine_of_interest: idf, pct_coverage) -- junta a coluna
+# "coverage_pct" a uma tabela com uma coluna de unidade e ordena as linhas
+# por cobertura decrescente (primaria primeiro, depois secundaria, terciaria,
+# ...); unidades sem cobertura calculada ficam no fim. Estavel: a ordem
+# original (ex: por classificacao) mantem-se dentro de cada unidade.
+add_coverage_order <- function(dt, idf_col = "idf") {
+  dt <- as.data.frame(dt)
+  cv <- params$coverage_turbine_of_interest
+  pct <- if (!is.null(cv) && nrow(cv) > 0L) cv$pct_coverage[match(dt[[idf_col]], cv$idf)] else rep(NA_real_, nrow(dt))
+  dt$coverage_pct <- pct
+  dt[order(-ifelse(is.na(pct), -Inf, pct), seq_len(nrow(dt))), , drop = FALSE]
+}
+fmt_coverage <- function(x) ifelse(is.na(x), "-", sprintf("%.1f", x))
 ```
 
 **`r params$project_ref`** -- Incident Report `r params$incident_id`
@@ -409,6 +425,100 @@ Efficacy is evaluated as the degree to which the IDF system contributes to achie
 
 # Effectiveness
 
+## IDF Unit Coverage
+
+Geometric overlap between the incident turbine's detection buffer and each IDF unit's detection buffer, for turbine `r params$incident_turbine` -- one row per IDF unit whose buffer overlaps this turbine's buffer, with the % of the turbine's buffer area covered by that unit. No manually curated Primary/Secondary/Other Level IDF matrix was available for the analysis, so the table below is the geometric computation directly; the full matrix (all turbines if evaluated) is in the accompanying workbook.
+
+&nbsp;
+
+<!-- Source: turbine_idf_coverage_dt[turbine == incident_turbine], R/turbine_idf_coverage.R -->
+```{r coverage-turbine-table}
+if (!is.null(params$coverage_turbine_of_interest) && nrow(params$coverage_turbine_of_interest) > 0) {
+  report_table(
+    rename_display(
+      drop_cols(params$coverage_turbine_of_interest, "turbine"),
+      c(idf = "IDF Unit", pct_coverage = "% Coverage")
+    ),
+    max_col_width_cm = 2
+  )
+}
+```
+```{r coverage-annex, results='asis'}
+annex_note(params$xlsx_coverage)
+```
+
+### 3D Coverage (Topography-corrected)
+
+Coverage of the airspace around the incident turbine, corrected for terrain, based on IDF bird position detections, run here only for `r params$incident_turbine` rather than farm-wide, since it is the most computationally expensive analysis in the pipeline and only the incident turbine is in scope for this report. "Low-terrain" cells are the two lowest mesh levels above the terrain surface in each horizontal (x, y) position, regardless of height above ground level or height band -- they measure coverage of the airspace closest to the local terrain, which depends on the topography around the turbine; "% Low-Terrain Covered" is the share of those cells with at least one bird detection within the proximity threshold.
+
+&nbsp;
+
+<!-- Source: summary_cov <- summarise_mesh_coverage(...), R/coverage_3d_topography.R -->
+```{r coverage3d-table, results='asis'}
+if (!is.null(params$coverage3d_by_turbine) && nrow(params$coverage3d_by_turbine) > 0) {
+  report_table(rename_display(
+    drop_cols(params$coverage3d_by_turbine, c("n_records", "n_valid", "low_sample")),
+    c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered",
+      n_low_terrain_mesh = "Low-Terrain Cells", n_low_terrain_covered = "Low-Terrain Covered Cells",
+      pct_low_terrain_covered = "% Low-Terrain Covered")
+  ), fixed_col_width_cm = 1.5)
+} else {
+  cat("DEM not available or 3D coverage not computed for this run.\n\n")
+}
+```
+
+&nbsp;
+
+The overall figure above blends cells at every height and distance from the turbine. The breakdown below splits it by height (below vs. at/above `r params$curtailment_trigger_height_m` m AGL, the height under which a curtailment is triggered) and by horizontal distance (within vs. beyond `r params$coverage_cylinder_inner_radius` m, the radius under which the system triggers an immediate response) -- coverage of the "at risk"/"inner" combination, the highest-priority quadrant, is the most relevant figure for assessing detection capability around a collision.
+
+&nbsp;
+
+```{r coverage3d-risk-dist-table, results='asis'}
+if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_risk_dist_band) > 0) {
+  report_table(rename_display(
+    drop_cols(params$coverage3d_by_risk_dist_band, "wtg_id"),
+    c(risk_band = "Height Band", dist_band = "Distance Band", n_mesh = "Air Mesh Cells",
+      n_covered = "Covered Cells", pct_covered = "% Covered")
+  ), fixed_col_width_cm = 1.5)
+} else {
+  cat("No height x distance breakdown available for this run -- this needs `dist_band_breaks` to have been passed to `run_coverage_3d_all_turbines()` (R/coverage_3d_topography.R) in addition to the risk-band breaks; without it, only the overall table above is computed.\n\n")
+}
+```
+&nbsp;
+
+```{r coverage3d-covered-image, results='asis'}
+if (!is.null(params$coverage3d_covered_png) && file.exists(params$coverage3d_covered_png)) {
+  cat("Covered air mesh (bird detections within the proximity threshold of a mesh node):\n\n")
+  # rel_path = FALSE -- OBRIGATORIO: por omissao (rel_path = TRUE),
+  # include_graphics() reescreve qualquer caminho (mesmo ja absoluto, com
+  # "/" -- ver normalizePath(winslash="/") em run_incident_zrshan.R) para
+  # um caminho RELATIVO ao working directory do knit, ANTES de o pandoc
+  # alguma vez ver o caminho original -- essa reescrita, nao o separador
+  # "\\"/"/" em si, e' a causa real do aviso "Could not fetch resource"
+  # (caso real, Paulo, 2026-10: o aviso mostrava so' "coverage_3d/
+  # coverage_3d_T23.png", sem nenhum prefixo de pasta, mesmo com o
+  # caminho absoluto ja corrigido). rel_path = FALSE usa o caminho tal e
+  # qual lhe foi passado, sem essa reescrita.
+  knitr::include_graphics(params$coverage3d_covered_png, rel_path = FALSE)
+} else {
+  cat("No static image available for this run -- the interactive HTML plot (folder `coverage_3d/`) could not be captured as a PNG, most likely because the screenshot step (`webshot2`, which needs a Chrome/Edge install) is unavailable on the machine that generated this report. The interactive HTML itself is unaffected and still shows this view.\n\n")
+}
+```
+```{r coverage3d-not-covered-image, results='asis'}
+if (!is.null(params$coverage3d_not_covered_png) && file.exists(params$coverage3d_not_covered_png)) {
+  cat("\n\n&nbsp;\n\nAir mesh nodes without any detection within the proximity threshold (not covered):\n\n")
+  knitr::include_graphics(params$coverage3d_not_covered_png, rel_path = FALSE)
+} else {
+  cat("\n\n&nbsp;\n\nNo static image available for this run -- same reason as above (the interactive HTML plot is unaffected).\n\n")
+}
+```
+```{r coverage3d-annex, results='asis'}
+annex_note(params$xlsx_coverage3d)
+if (!is.null(params$xlsx_coverage3d) && (is.null(params$coverage3d_covered_png) || is.null(params$coverage3d_not_covered_png))) {
+  cat("\n\n*Interactive 3D plots are also saved separately as HTML files (folder `coverage_3d/`).*\n")
+}
+```
+
 ## IDF Unit Availability -- Investigation Window vs. Overall Baseline
 
 Heartbeat-based offline percentage for the IDF unit(s) covering the incident turbine, during the investigation window, compared against the same unit(s) over the full data coverage period (`r params$report_start` to `r params$report_end`) as a baseline -- a materially worse figure in the window than the baseline may indicate reduced detection capability around the time of the incident.
@@ -449,10 +559,13 @@ if (!is.null(params$fatality_window_availability) && nrow(params$fatality_window
   dt$monitoring_period_pct <- ifelse(is.na(dt$monitoring_period_pct), "Not available", sprintf("%.1f", dt$monitoring_period_pct))
   dt$availability_cat <- as.character(dt$availability_cat)
   dt$availability_cat[is.na(dt$availability_cat)] <- "Not evaluated"
+  dt <- add_coverage_order(dt)
+  dt$coverage_pct <- fmt_coverage(dt$coverage_pct)
+  dt <- dt[, intersect(c("idf", "coverage_pct", "monitoring_period_pct", "availability_cat", "incident_id"), names(dt)), drop = FALSE]
   report_table(
     rename_display(
       dt,
-      c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
+      c(idf = "IDF Unit", coverage_pct = "Coverage (%)", monitoring_period_pct = "Offline (%)", availability_cat = "Category", incident_id = "Incident")
     ),
     max_col_width_cm = 2
   )
@@ -491,10 +604,13 @@ Breakdown of every offline interval for the IDF unit(s) of interest during the i
 <!-- Source: summarise_offline_evidence_window()$by_idf, R/fatality_window_analysis.R (mesmas colunas da folha Window_offline_evidence_by_idf, fatality_track_investigation.xlsx) -->
 ```{r fatality-window-offline-evidence-by-idf-table}
 if (!is.null(params$fatality_window_offline_evidence_by_idf) && nrow(params$fatality_window_offline_evidence_by_idf) > 0) {
+  dt <- add_coverage_order(drop_cols(params$fatality_window_offline_evidence_by_idf, "incident_id"))
+  dt$coverage_pct <- fmt_coverage(dt$coverage_pct)
+  dt <- dt[, c("idf", "coverage_pct", "classification", "n_intervals", "total_mins")]
   report_table(
     rename_display(
-      drop_cols(params$fatality_window_offline_evidence_by_idf, "incident_id"),
-      c(idf = "IDF Unit", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
+      dt,
+      c(idf = "IDF Unit", coverage_pct = "Coverage (%)", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
     ),
     max_col_width_cm = 4
   )
@@ -519,10 +635,13 @@ if (!is.null(params$fatality_global_availability) && nrow(params$fatality_global
   dt$monitoring_period_pct <- ifelse(is.na(dt$monitoring_period_pct), "Not available", sprintf("%.1f", dt$monitoring_period_pct))
   dt$availability_cat <- as.character(dt$availability_cat)
   dt$availability_cat[is.na(dt$availability_cat)] <- "Not evaluated"
+  dt <- add_coverage_order(dt)
+  dt$coverage_pct <- fmt_coverage(dt$coverage_pct)
+  dt <- dt[, intersect(c("idf", "coverage_pct", "monitoring_period_pct", "availability_cat", "incident_id"), names(dt)), drop = FALSE]
   report_table(
     rename_display(
       dt,
-      c(incident_id = "Incident", idf = "IDF Unit", monitoring_period_pct = "Offline (%)", availability_cat = "Category")
+      c(idf = "IDF Unit", coverage_pct = "Coverage (%)", monitoring_period_pct = "Offline (%)", availability_cat = "Category", incident_id = "Incident")
     ),
     max_col_width_cm = 2
   )
@@ -555,16 +674,50 @@ if (!is.null(params$fatality_global_net_availability) && nrow(params$fatality_gl
 <!-- Source: summarise_offline_evidence_window()$by_idf, R/fatality_window_analysis.R (mesmas colunas da folha Global_offline_evidence_by_idf, fatality_track_investigation.xlsx) -->
 ```{r fatality-global-offline-evidence-by-idf-table}
 if (!is.null(params$fatality_global_offline_evidence_by_idf) && nrow(params$fatality_global_offline_evidence_by_idf) > 0) {
+  dt <- add_coverage_order(drop_cols(params$fatality_global_offline_evidence_by_idf, "incident_id"))
+  dt$coverage_pct <- fmt_coverage(dt$coverage_pct)
+  dt <- dt[, c("idf", "coverage_pct", "classification", "n_intervals", "total_mins")]
   report_table(
     rename_display(
-      drop_cols(params$fatality_global_offline_evidence_by_idf, "incident_id"),
-      c(idf = "IDF Unit", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
+      dt,
+      c(idf = "IDF Unit", coverage_pct = "Coverage (%)", classification = "Classification", n_intervals = "N Intervals", total_mins = "Total (min)")
     ),
     max_col_width_cm = 4
   )
 }
 ```
 ```{r fatality-availability-annex, results='asis'}
+annex_note(params$xlsx_fatality)
+```
+
+### Curtailments per IDF Unit
+
+Curtailments recorded at turbine `r params$incident_turbine`, by the IDF unit that triggered them, in the investigation window and over the full data coverage period (`r params$report_start` to `r params$report_end`). Each curtailment is attributed to the IDF unit that recorded the bird track that triggered it (the unit of the track point closest in time to the start of the curtailment); curtailments whose track is not in the track data are shown as "Unattributed" and those from IDF units outside the units of interest as "Other IDF units". "%" is the share of all curtailments of this turbine in the same period. Units are ordered by coverage of the incident turbine (primary, secondary, tertiary, ...), to show the relative contribution of each unit to triggering curtailments.
+
+&nbsp;
+
+<!-- Source: summarise_curtailments_by_unit(), R/fatality_window_analysis.R -->
+```{r curtailments-by-unit-table, results='asis'}
+x <- params$fatality_curtailments_by_unit
+if (!is.null(x) && nrow(x) > 0L) {
+  x <- add_coverage_order(x, "unit")
+  # a ordem de x (por cobertura) ja' vem do runner; add_coverage_order so' junta a coluna
+  x <- x[match(params$fatality_curtailments_by_unit$unit, x$unit), , drop = FALSE]
+  has_cov <- !is.na(x$coverage_pct)
+  ord_lab <- c("Primary", "Secondary", "Tertiary", paste0(4:20, "th"))
+  rank_lab <- rep("-", nrow(x)); rank_lab[has_cov] <- ord_lab[seq_len(sum(has_cov))]
+  d <- data.frame(
+    `IDF Unit` = x$unit, `Coverage (%)` = fmt_coverage(x$coverage_pct), `Coverage Rank` = rank_lab,
+    `Window: Curtailments` = x$n_window, `Window: %` = ifelse(is.na(x$pct_window), "-", sprintf("%.1f", x$pct_window)),
+    `Overall: Curtailments` = x$n_global, `Overall: %` = ifelse(is.na(x$pct_global), "-", sprintf("%.1f", x$pct_global)),
+    check.names = FALSE
+  )
+  cat(knitr::knit_print(report_table(d, max_col_width_cm = 2.4)))
+} else {
+  cat("No curtailments by IDF unit are available for this report.\n\n")
+}
+```
+```{r curtailments-by-unit-annex, results='asis'}
 annex_note(params$xlsx_fatality)
 ```
 
@@ -752,100 +905,6 @@ annex_note(params$xlsx_shutdown)
 <!-- Source: plot_time_to_threshold(), R/curtailment_shutdown_time.R -->
 ```{r shutdown-plot, fig.width=6.30, fig.height=6}
 if (!is.null(params$shutdown_plot)) print(params$shutdown_plot)
-```
-
-## Turbine / IDF Unit Coverage
-
-Geometric overlap between the incident turbine's detection buffer and each IDF unit's detection buffer, for turbine `r params$incident_turbine` -- one row per IDF unit whose buffer overlaps this turbine's buffer, with the % of the turbine's buffer area covered by that unit. No manually curated Primary/Secondary/Other Level IDF matrix was available for the analysis, so the table below is the geometric computation directly; the full matrix (all turbines if evaluated) is in the accompanying workbook.
-
-&nbsp;
-
-<!-- Source: turbine_idf_coverage_dt[turbine == incident_turbine], R/turbine_idf_coverage.R -->
-```{r coverage-turbine-table}
-if (!is.null(params$coverage_turbine_of_interest) && nrow(params$coverage_turbine_of_interest) > 0) {
-  report_table(
-    rename_display(
-      drop_cols(params$coverage_turbine_of_interest, "turbine"),
-      c(idf = "IDF Unit", pct_coverage = "% Coverage")
-    ),
-    max_col_width_cm = 2
-  )
-}
-```
-```{r coverage-annex, results='asis'}
-annex_note(params$xlsx_coverage)
-```
-
-### 3D Coverage (Topography-corrected)
-
-Coverage of the airspace around the incident turbine, corrected for terrain, based on IDF bird position detections, run here only for `r params$incident_turbine` rather than farm-wide, since it is the most computationally expensive analysis in the pipeline and only the incident turbine is in scope for this report. "Low-terrain" cells are the two lowest mesh levels above the terrain surface in each horizontal (x, y) position, regardless of height above ground level or height band -- they measure coverage of the airspace closest to the local terrain, which depends on the topography around the turbine; "% Low-Terrain Covered" is the share of those cells with at least one bird detection within the proximity threshold.
-
-&nbsp;
-
-<!-- Source: summary_cov <- summarise_mesh_coverage(...), R/coverage_3d_topography.R -->
-```{r coverage3d-table, results='asis'}
-if (!is.null(params$coverage3d_by_turbine) && nrow(params$coverage3d_by_turbine) > 0) {
-  report_table(rename_display(
-    drop_cols(params$coverage3d_by_turbine, c("n_records", "n_valid", "low_sample")),
-    c(wtg_id = "Turbine", n_air_mesh = "Air Mesh Cells", n_covered = "Covered Cells", pct_covered = "% Covered",
-      n_low_terrain_mesh = "Low-Terrain Cells", n_low_terrain_covered = "Low-Terrain Covered Cells",
-      pct_low_terrain_covered = "% Low-Terrain Covered")
-  ), fixed_col_width_cm = 1.5)
-} else {
-  cat("DEM not available or 3D coverage not computed for this run.\n\n")
-}
-```
-
-&nbsp;
-
-The overall figure above blends cells at every height and distance from the turbine. The breakdown below splits it by height (below vs. at/above `r params$curtailment_trigger_height_m` m AGL, the height under which a curtailment is triggered) and by horizontal distance (within vs. beyond `r params$coverage_cylinder_inner_radius` m, the radius under which the system triggers an immediate response) -- coverage of the "at risk"/"inner" combination, the highest-priority quadrant, is the most relevant figure for assessing detection capability around a collision.
-
-&nbsp;
-
-```{r coverage3d-risk-dist-table, results='asis'}
-if (!is.null(params$coverage3d_by_risk_dist_band) && nrow(params$coverage3d_by_risk_dist_band) > 0) {
-  report_table(rename_display(
-    drop_cols(params$coverage3d_by_risk_dist_band, "wtg_id"),
-    c(risk_band = "Height Band", dist_band = "Distance Band", n_mesh = "Air Mesh Cells",
-      n_covered = "Covered Cells", pct_covered = "% Covered")
-  ), fixed_col_width_cm = 1.5)
-} else {
-  cat("No height x distance breakdown available for this run -- this needs `dist_band_breaks` to have been passed to `run_coverage_3d_all_turbines()` (R/coverage_3d_topography.R) in addition to the risk-band breaks; without it, only the overall table above is computed.\n\n")
-}
-```
-&nbsp;
-
-```{r coverage3d-covered-image, results='asis'}
-if (!is.null(params$coverage3d_covered_png) && file.exists(params$coverage3d_covered_png)) {
-  cat("Covered air mesh (bird detections within the proximity threshold of a mesh node):\n\n")
-  # rel_path = FALSE -- OBRIGATORIO: por omissao (rel_path = TRUE),
-  # include_graphics() reescreve qualquer caminho (mesmo ja absoluto, com
-  # "/" -- ver normalizePath(winslash="/") em run_incident_zrshan.R) para
-  # um caminho RELATIVO ao working directory do knit, ANTES de o pandoc
-  # alguma vez ver o caminho original -- essa reescrita, nao o separador
-  # "\\"/"/" em si, e' a causa real do aviso "Could not fetch resource"
-  # (caso real, Paulo, 2026-10: o aviso mostrava so' "coverage_3d/
-  # coverage_3d_T23.png", sem nenhum prefixo de pasta, mesmo com o
-  # caminho absoluto ja corrigido). rel_path = FALSE usa o caminho tal e
-  # qual lhe foi passado, sem essa reescrita.
-  knitr::include_graphics(params$coverage3d_covered_png, rel_path = FALSE)
-} else {
-  cat("No static image available for this run -- the interactive HTML plot (folder `coverage_3d/`) could not be captured as a PNG, most likely because the screenshot step (`webshot2`, which needs a Chrome/Edge install) is unavailable on the machine that generated this report. The interactive HTML itself is unaffected and still shows this view.\n\n")
-}
-```
-```{r coverage3d-not-covered-image, results='asis'}
-if (!is.null(params$coverage3d_not_covered_png) && file.exists(params$coverage3d_not_covered_png)) {
-  cat("\n\n&nbsp;\n\nAir mesh nodes without any detection within the proximity threshold (not covered):\n\n")
-  knitr::include_graphics(params$coverage3d_not_covered_png, rel_path = FALSE)
-} else {
-  cat("\n\n&nbsp;\n\nNo static image available for this run -- same reason as above (the interactive HTML plot is unaffected).\n\n")
-}
-```
-```{r coverage3d-annex, results='asis'}
-annex_note(params$xlsx_coverage3d)
-if (!is.null(params$xlsx_coverage3d) && (is.null(params$coverage3d_covered_png) || is.null(params$coverage3d_not_covered_png))) {
-  cat("\n\n*Interactive 3D plots are also saved separately as HTML files (folder `coverage_3d/`).*\n")
-}
 ```
 
 # Fatality Investigation

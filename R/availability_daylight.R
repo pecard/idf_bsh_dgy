@@ -529,7 +529,7 @@ offline_evidence_slot_grid <- function(daylight_cal, tz, start_date, end_date,
 ## pedido do Paulo, 2026-09, apos a 1a versao do calendario ter categorias
 ## dificeis de distinguir numa unica linha de legenda apertada.
 
-plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_breaks = "2 days", title = NULL) {
+plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_breaks = "2 days", title = NULL, idf_order = NULL) {
 
   if (is.null(title)) {
     title <- sprintf(
@@ -584,6 +584,14 @@ plot_offline_evidence_slots <- function(slot_grid_dt, slot_mins = 30, date_break
   rect_dt <- rect_dt[, .(ymin = min(time_decimal) - half_h, ymax = max(time_decimal) + half_h),
                      by = .(idf, date, run_id, slot_status)]
   rect_dt[, `:=`(ymin = pmax(ymin, 0), ymax = pmin(ymax, 24))]
+
+  # ordem dos paineis (facetas): por omissao alfabetica; idf_order fixa uma
+  # ordem (ex: por cobertura decrescente no relatorio de incidente)
+  if (!is.null(idf_order)) {
+    lv <- unique(c(idf_order, setdiff(sort(unique(rect_dt$idf)), idf_order)))
+    rect_dt[, idf := factor(idf, levels = lv)]
+    dummy_legend_dt[, idf := factor(idf, levels = lv)]
+  }
 
   ggplot(rect_dt, aes(fill = slot_status)) +
     geom_rect(aes(xmin = date - 0.475, xmax = date + 0.475, ymin = ymin, ymax = ymax)) +

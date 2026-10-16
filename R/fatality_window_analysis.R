@@ -418,3 +418,42 @@ summarise_individuals_pre_post <- function(track_dt, species, incident_date, day
     summarise_period(post_bins, "post_incident", post_from, post_to)
   ))
 }
+
+
+## 5. Curtailments da turbina por unidade IDF (importancia relativa de cada
+## unidade a disparar curtailments) ----
+##
+## Cada curtailment e' atribuido a UMA unidade -- a que registava o track que
+## o disparou (attribute_curtailment_unit(), R/offline_curtailment_check.R;
+## os curtailments nao trazem a unidade). units: nomes completos das
+## unidades de interesse, NA ordem em que devem aparecer (ex: por cobertura
+## decrescente). Unidades fora de `units` agrupam-se em "Other IDF units";
+## curtailments sem track em track_dt ficam "Unattributed". pct = % de TODOS
+## os curtailments da turbina nesse periodo.
+##
+## idf_display_map: R/idf_labels.R (rotulo interno "IDF<NN>" -> nome completo).
+summarise_curtailments_by_unit <- function(curtl_dt, track_dt, turbine_id, period_from, period_to, units, idf_display_map) {
+
+  cu <- data.table::as.data.table(curtl_dt)[turbine == turbine_id & start >= period_from & start <= period_to]
+  n_total <- nrow(cu)
+
+  if (n_total > 0L) {
+    cu <- attribute_curtailment_unit(cu, track_dt)
+    internal <- ifelse(is.na(cu$curtl_unit), NA_character_, sprintf("IDF%02d", cu$curtl_unit))
+    full <- ifelse(is.na(internal), NA_character_, relabel_idf(internal, idf_display_map))
+    group <- data.table::fcase(
+      is.na(full), "Unattributed",
+      full %in% units, full,
+      default = "Other IDF units"
+    )
+    counts <- table(factor(group, levels = unique(c(units, "Other IDF units", "Unattributed"))))
+  } else {
+    counts <- table(factor(character(), levels = unique(c(units, "Other IDF units", "Unattributed"))))
+  }
+
+  out <- data.table::data.table(unit = names(counts), n = as.integer(counts))
+  out[, pct := if (n_total > 0L) round(100 * n / n_total, 1) else NA_real_]
+  # "Other"/"Unattributed" so' aparecem quando tem curtailments
+  out <- out[unit %in% units | n > 0L]
+  out[]
+}
