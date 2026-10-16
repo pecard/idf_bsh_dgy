@@ -171,7 +171,7 @@ summarise_availability_window <- function(heartb_dt, idf_units, window_from, win
 summarise_offline_evidence_window <- function(heartb_dt, idf_units, turbine_id, window_from, window_to,
                                               curtl_dt, scada_dt, lat, lon, tz,
                                               offline_gap_min = 60, online_grace_min = 30,
-                                              track_dt = NULL) {
+                                              track_dt = NULL, idf_turbines_dt = NULL) {
 
   empty <- list(
     combined = data.table::data.table(
@@ -204,7 +204,10 @@ summarise_offline_evidence_window <- function(heartb_dt, idf_units, turbine_id, 
   offline_dt_daylight <- clip_offline_intervals_to_daylight(offline_dt, daylight_cal, tz)
   if (nrow(offline_dt_daylight) == 0L) return(empty)
 
-  idf_turbines_dt <- data.table::data.table(idf = idf_units, turbine = turbine_id)
+  # idf_turbines_dt (idf, turbine): relacao unidade -> turbina(s) que protege;
+  # por omissao 1 turbina (a do incidente) para todas as unidades. Varias
+  # turbinas/unidades de uma vez: R/idf_availability.R
+  if (is.null(idf_turbines_dt)) idf_turbines_dt <- data.table::data.table(idf = idf_units, turbine = turbine_id)
 
   curtl_checked_dt <- check_offline_curtailment_overlap(offline_dt_daylight, curtl_dt, idf_turbines_dt, track_dt = track_dt)
   scada_checked_dt <- check_offline_scada_presence(offline_dt_daylight, scada_dt, idf_turbines_dt)

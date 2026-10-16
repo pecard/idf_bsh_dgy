@@ -1,0 +1,219 @@
+---
+title: "`r params$title`"
+output: word_document
+params:
+  title: ""
+  project_ref: ""
+  farm_code: ""
+  period_start: ""
+  period_end: ""
+  analysis_date: ""
+  username: ""
+  code_version: ""
+  n_turbines: !r NULL
+  n_units: !r NULL
+  n_primary: !r NULL
+  n_secondary: !r NULL
+  relation_sources: ""
+  relation_min_pct_coverage: !r NULL
+  relation_max_secondary: !r NULL
+  idf_op_detection_range: !r NULL
+  heartbeat_interval_min: !r NULL
+  heartbeat_offline_gap_min: !r NULL
+  persistent_failure_threshold_pct: !r NULL
+  persistent_failure_basis: ""
+  relation_table: !r NULL
+  unit_table: !r NULL
+  alert_table: !r NULL
+  turbine_alert_table: !r NULL
+  net_overall: !r NULL
+  calendar_figures: !r NULL
+  xlsx_name: ""
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+
+# Helpers identicos aos restantes relatorios do projeto (mesma convencao visual)
+report_table <- function(x, max_col_width_cm = NULL, font_size = 9) {
+  ft <- flextable::flextable(x) |>
+    flextable::theme_box() |>
+    flextable::bg(part = "header", bg = "gray85") |>
+    flextable::bold(part = "header") |>
+    flextable::fontsize(size = font_size, part = "header") |>
+    flextable::fontsize(size = font_size, part = "body") |>
+    flextable::align(align = "center", part = "header") |>
+    flextable::valign(valign = "center", part = "all") |>
+    flextable::autofit()
+  if (!is.null(max_col_width_cm)) {
+    widths_in <- dim(ft)$widths
+    ft <- flextable::width(ft, j = seq_along(widths_in), width = pmin(widths_in * 2.54, max_col_width_cm), unit = "cm")
+  }
+  ft
+}
+
+# Numeros: 1 casa decimal; NA -> "Not available" (nunca 0)
+fmt_pct <- function(v) ifelse(is.na(v), "Not available", sprintf("%.1f", v))
+fmt_txt <- function(v, empty = "-") ifelse(is.na(v) | !nzchar(as.character(v)), empty, as.character(v))
+
+# Um paragrafo em branco entre blocos texto/tabela/figura
+gap <- function() cat("\n\n&nbsp;\n\n")
+
+show_table <- function(df, max_col_width_cm = 3, font_size = 9) {
+  if (is.null(df) || nrow(df) == 0L) {
+    cat("None.\n\n")
+    return(invisible(NULL))
+  }
+  cat(knitr::knit_print(report_table(df, max_col_width_cm = max_col_width_cm, font_size = font_size)))
+  invisible(NULL)
+}
+
+show_plot <- function(fig) {
+  f <- tempfile(fileext = ".png")
+  ggplot2::ggsave(f, fig$p, width = 6.3, height = fig$h, dpi = 220)
+  cat(sprintf("\n\n![](%s)\n\n", normalizePath(f, winslash = "/")))
+}
+```
+
+**`r params$project_ref`** -- IDF Availability Report
+
+Analysis period: **`r params$period_start`** to **`r params$period_end`**
+
+Analysis date: `r params$analysis_date` | Responsible Team: `r params$username` | Code version: `r params$code_version`
+
+This report is descriptive and fully automated, generated end-to-end by an R code pipeline.
+
+**Technical Summary**
+
+```{r summary-text, results='asis'}
+cat(sprintf(
+  "%d turbines and %d IDF units (%d primary, %d secondary) were analysed from %s to %s; the turbine-IDF relation comes from: %s.\n\n",
+  params$n_turbines, params$n_units, params$n_primary, params$n_secondary,
+  params$period_start, params$period_end, params$relation_sources
+))
+x <- params$net_overall
+if (!is.null(x) && nrow(x) > 0L) {
+  cat(sprintf(
+    "Across all evaluated units, raw offline time was %s%% of daylight time, net / confirmed offline time %s%% and time with no evidence %s%%.\n\n",
+    fmt_pct(x$raw_offline_pct[1]), fmt_pct(x$net_offline_pct[1]), fmt_pct(x$no_evidence_pct[1])
+  ))
+}
+n_alert <- if (is.null(params$alert_table)) 0L else nrow(params$alert_table)
+n_turb <- if (is.null(params$turbine_alert_table)) 0L else nrow(params$turbine_alert_table)
+cat(sprintf(
+  "%d IDF unit(s) are listed in the persistent-failure alert (offline for more than %s%% of the daylight time of the period, or without heartbeat records); %d turbine(s) have no IDF unit outside the alert.\n",
+  n_alert, params$persistent_failure_threshold_pct, n_turb
+))
+```
+
+---
+
+# Scope and method
+
+Each IDF unit is analysed for the turbines it protects. The primary unit of a turbine is the one with the largest overlap between the detection buffer of the unit and that of the turbine; the other units overlapping at least `r params$relation_min_pct_coverage`% of the turbine buffer are secondary units (at most `r params$relation_max_secondary` per turbine), unless a manual turbine-IDF matrix defines them. The buffer radius is `r params$idf_op_detection_range` m. Unit names are the full IDF unit names reported in the heartbeat files.
+
+Each IDF unit sends a heartbeat approximately every `r params$heartbeat_interval_min` minutes when operational; a unit is considered offline once `r params$heartbeat_offline_gap_min` minutes pass without a heartbeat, counting only daylight hours (sunrise to sunset, computed from the project coordinates). Every offline interval is then classified by the evidence available for the same period:
+
+- **IDF unit communication failure**: no heartbeat, but a curtailment was triggered during the gap by a bird track recorded by this same IDF unit at one of the turbines it protects -- the unit was actively deciding/acting, so the missing heartbeat reflects a communication fault rather than bird protection being off.
+- **Turbine operational, no detection**: no heartbeat and no such curtailment, but SCADA still recorded RPM readings from a turbine the unit protects.
+- **No evidence (heartbeat and SCADA both missing)**: neither signal is available; requires manual review.
+
+**Raw offline** is the share of daylight time without heartbeat; **net / confirmed offline** is raw offline minus the minutes classified as communication failure; **no evidence** is already included in the net figure and shown separately because it needs manual review. A unit without any heartbeat record in the period is shown as "Not available" / "Not evaluated" (never as 0%).
+
+# Turbine and IDF unit relation
+
+```{r relation-table, results='asis'}
+x <- params$relation_table
+if (!is.null(x) && nrow(x) > 0L) {
+  d <- data.frame(
+    Turbine = x$turbine, Role = x$role, `IDF Unit` = x$unit,
+    `Coverage (%)` = ifelse(is.na(x$pct_coverage), "-", sprintf("%.1f", x$pct_coverage)),
+    Source = x$relation_source,
+    `Offline (%)` = fmt_pct(x$offline_pct), Category = fmt_txt(x$availability_cat),
+    check.names = FALSE
+  )
+  show_table(d, max_col_width_cm = 3)
+} else cat("No turbine-IDF relation could be established.\n\n")
+```
+
+# Offline time by IDF unit
+
+```{r unit-table, results='asis'}
+x <- params$unit_table
+if (!is.null(x) && nrow(x) > 0L) {
+  d <- data.frame(
+    `IDF Unit` = x$unit, `Primary for` = fmt_txt(x$primary_for), `Secondary for` = fmt_txt(x$secondary_for),
+    `Offline (%)` = fmt_pct(x$offline_pct), `Net offline (%)` = fmt_pct(x$net_offline_pct),
+    `No evidence (%)` = fmt_pct(x$no_evidence_pct), Category = fmt_txt(x$availability_cat),
+    check.names = FALSE
+  )
+  show_table(d, max_col_width_cm = 3.2, font_size = 8)
+}
+```
+
+```{r net-overall, results='asis'}
+x <- params$net_overall
+if (!is.null(x) && nrow(x) > 0L) {
+  gap()
+  cat("All evaluated units together:\n\n")
+  gap()
+  show_table(data.frame(
+    Metric = c("Raw offline", "Net / confirmed offline", "No evidence (pending review; included in net offline above)"),
+    `Minutes` = c(x$raw_offline_mins[1], x$net_offline_mins[1], x$no_evidence_mins[1]),
+    `% of Daylight Monitoring Time` = c(x$raw_offline_pct[1], x$net_offline_pct[1], x$no_evidence_pct[1]),
+    check.names = FALSE
+  ), max_col_width_cm = 6)
+}
+```
+
+# Offline evidence calendars
+
+Every daylight time slot of the period for each IDF unit, coloured by status: Online, the three evidence categories above, Night (outside daylight hours, not evaluated) and No data (unit without heartbeat records or without calendar data).
+
+```{r calendars, results='asis'}
+figs <- params$calendar_figures
+if (is.null(figs) || length(figs) == 0L) {
+  cat("No IDF units to display.\n\n")
+} else {
+  for (fig in figs) {
+    gap()
+    show_plot(fig)
+  }
+}
+```
+
+# Alerts
+
+## Persistent failure
+
+IDF units offline for more than `r params$persistent_failure_threshold_pct`% of the daylight time of the analysed period (`r if (identical(params$persistent_failure_basis, "net")) "net / confirmed offline time" else "raw offline time"`), and units with no heartbeat record in the period.
+
+```{r alert-table, results='asis'}
+x <- params$alert_table
+gap()
+if (!is.null(x) && nrow(x) > 0L) {
+  d <- data.frame(
+    `IDF Unit` = x$unit, `Primary for` = fmt_txt(x$primary_for), `Secondary for` = fmt_txt(x$secondary_for),
+    `Offline (%)` = fmt_pct(x$offline_pct), `Net offline (%)` = fmt_pct(x$net_offline_pct),
+    `No evidence (%)` = fmt_pct(x$no_evidence_pct), Status = x$status,
+    check.names = FALSE
+  )
+  show_table(d, max_col_width_cm = 4, font_size = 8)
+} else cat("No IDF unit met the persistent-failure criterion.\n\n")
+```
+
+## Turbines without an IDF unit outside the alert
+
+Turbines for which every protecting unit (primary and secondary) is in the alert above.
+
+```{r turbine-alert-table, results='asis'}
+x <- params$turbine_alert_table
+gap()
+if (!is.null(x) && nrow(x) > 0L) {
+  show_table(data.frame(Turbine = x$turbine, `Protecting IDF units` = x$units, `Units (n)` = x$n_units, check.names = FALSE), max_col_width_cm = 8)
+} else cat("None.\n\n")
+```
+
+```{r annex, results='asis'}
+if (nzchar(params$xlsx_name)) cat(sprintf("\n\n&nbsp;\n\n*The full tables are available in the accompanying workbook: `%s`.*\n", params$xlsx_name))
+```
