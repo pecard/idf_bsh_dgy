@@ -54,3 +54,11 @@ res_oar_test <- summarise_curtailments_by_unit(cu_test, tk_test, "T23", t0_test,
 stopifnot(identical(res_oar_test$unit, c("GW19-13", "GW23-15", "IDF99", "Unattributed")))   # GW23-15 e IDF99 (sem codigo) listadas individualmente
 stopifnot(identical(res_oar_test$n, c(2L, 1L, 1L, 1L)))
 cat("test other_as_rows OK\n")
+
+## curtailments por unidade contribuinte (so' unidades da relacao; resto so' contado)
+cu_c_test <- copy(cu_sp_test)
+rc_test <- summarise_curtailments_contributing_units(cu_c_test, tk_test, "T23", t0_test, t0_test + 3600, c("GW19-13", "GW23-15"), map_test, species = "Egyptian-Vulture")
+# EV: a(GW19-13) b(GW19-13) d(IDF99 -> outra) z(sem track); c e' Steppe-Eagle (filtrado)
+stopifnot(identical(rc_test$by_unit$unit, c("GW19-13", "GW23-15")), identical(rc_test$by_unit$n, c(2L, 0L)), rc_test$by_unit$pct[1] == 100)
+stopifnot(rc_test$totals$n_total == 4L, rc_test$totals$n_in_relation == 2L, rc_test$totals$n_other_units == 1L, rc_test$totals$n_no_track == 1L)
+cat("test unidades contribuintes OK\n")

@@ -223,11 +223,14 @@ check_offline_curtailment_overlap <- function(offline_dt, curtl_dt, idf_turbines
   per_unit <- !is.null(track_dt)
   if (per_unit) {
     curtl_dt <- attribute_curtailment_unit(curtl_dt, track_dt)
-    n_na <- curtl_dt[is.na(curtl_unit), .N]
+    # so' as turbinas em analise (as outras nao interessam: os TrackReport costumam
+    # ser descarregados so' para as unidades que contribuem para essas turbinas)
+    cu_rel <- curtl_dt[turbine %in% unique(off_turbines$turbine)]
+    n_na <- cu_rel[is.na(curtl_unit), .N]
     if (n_na > 0L) {
       message(sprintf(
-        "Evidencia offline: %d de %d curtailment(s) sem unidade atribuivel (track_id ausente em track_dt) -- nao contam como evidencia de nenhuma unidade.",
-        n_na, nrow(curtl_dt)
+        "Evidencia offline: %d de %d curtailment(s) das turbinas analisadas sem unidade atribuivel (track_id ausente em track_dt) -- nao contam como evidencia de nenhuma unidade.",
+        n_na, nrow(cu_rel)
       ))
     }
     off_turbines[, offline_unit := idf_unit_number(idf)]

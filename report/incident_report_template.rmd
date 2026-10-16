@@ -44,6 +44,7 @@ params:
   fatality_window_response_summary: !r NULL
   fatality_abundance_pre_post: !r NULL
   fatality_curtailments_by_unit: !r NULL
+  fatality_curtailments_totals: !r NULL
 
   id_risk_by_direction: !r NULL
   short_track_summary: !r NULL
@@ -696,29 +697,35 @@ annex_note(params$xlsx_fatality)
 
 ### Curtailments per IDF Unit
 
-Curtailments recorded at turbine `r params$incident_turbine`, by the IDF unit that triggered them, in the investigation window and over the full data coverage period (`r params$report_start` to `r params$report_end`). Each curtailment is attributed to the IDF unit that recorded the bird track that triggered it (the unit of the track point closest in time to the start of the curtailment); curtailments whose track is not in the track data are shown as "Unattributed" and those from IDF units outside the units of interest as "Other IDF units". "%" is the share of all curtailments of this turbine in the same period. Units are ordered by coverage of the incident turbine (primary, secondary, tertiary, ...), to show the relative contribution of each unit to triggering curtailments.
+Curtailments of turbine `r params$incident_turbine` triggered by `r params$incident_species` during the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), by the IDF unit that triggered them, for the IDF units that contribute to the turbine (the units of interest, listed above). Each curtailment is attributed to the IDF unit that recorded the bird track that triggered it (the unit of the track point closest in time to the start of the curtailment). The track data are retrieved for the units that contribute to the turbine only, so curtailments whose track is not available, or that were triggered by a unit outside this list, are not interpreted: they are only counted below the table. "%" is the share of the curtailments attributed to the units listed. The table shows whether curtailments keep being triggered by the other units while the primary unit is offline (column "Offline (%)", the offline time of each unit in the same window).
 
-**Coverage Rank** is the position of the unit when the IDF units are ordered by decreasing "Coverage (%)" of the incident turbine (the share of the turbine detection-buffer area covered by the detection buffer of the unit, see IDF Unit Coverage above): the unit with the largest coverage is **Primary**, followed by **Secondary**, **Tertiary**, 4th, 5th and so on. The rank is shown as "-" where no coverage applies ("Other IDF units" and "Unattributed").
+**Coverage Rank** is the position of the unit when the IDF units are ordered by decreasing "Coverage (%)" of the incident turbine (the share of the turbine detection-buffer area covered by the detection buffer of the unit, see IDF Unit Coverage above): the unit with the largest coverage is **Primary**, followed by **Secondary**, **Tertiary**, 4th, 5th and so on.
 
 &nbsp;
 
-<!-- Source: summarise_curtailments_by_unit(), R/fatality_window_analysis.R -->
+<!-- Source: summarise_curtailments_contributing_units(), R/fatality_window_analysis.R -->
 ```{r curtailments-by-unit-table, results='asis'}
 x <- params$fatality_curtailments_by_unit
 if (!is.null(x) && nrow(x) > 0L) {
   x <- add_coverage_order(x, "unit")
-  # a ordem de x (por cobertura) ja' vem do runner; add_coverage_order so' junta a coluna
-  x <- x[match(params$fatality_curtailments_by_unit$unit, x$unit), , drop = FALSE]
+  x <- x[match(params$fatality_curtailments_by_unit$unit, x$unit), , drop = FALSE]  # ordem por cobertura vem do runner
   has_cov <- !is.na(x$coverage_pct)
-  ord_lab <- c("Primary", "Secondary", "Tertiary", paste0(4:20, "th"))
+  ord_lab <- c("Primary", "Secondary", "Tertiary", paste0(4:30, "th"))
   rank_lab <- rep("-", nrow(x)); rank_lab[has_cov] <- ord_lab[seq_len(sum(has_cov))]
   d <- data.frame(
     `IDF Unit` = x$unit, `Coverage (%)` = fmt_coverage(x$coverage_pct), `Coverage Rank` = rank_lab,
-    `Window: Curtailments` = x$n_window, `Window: %` = ifelse(is.na(x$pct_window), "-", sprintf("%.1f", x$pct_window)),
-    `Overall: Curtailments` = x$n_global, `Overall: %` = ifelse(is.na(x$pct_global), "-", sprintf("%.1f", x$pct_global)),
+    `Offline (%)` = ifelse(is.na(x$offline_pct), "Not available", sprintf("%.1f", x$offline_pct)),
+    `Curtailments` = x$n, `%` = ifelse(is.na(x$pct), "-", sprintf("%.1f", x$pct)),
     check.names = FALSE
   )
-  cat(knitr::knit_print(report_table(d, max_col_width_cm = 2.4)))
+  cat(knitr::knit_print(report_table(d, max_col_width_cm = 2.6)))
+  t <- params$fatality_curtailments_totals
+  if (!is.null(t) && nrow(t) > 0L) {
+    cat(sprintf(
+      "\n\n&nbsp;\n\n%d curtailment(s) of %s were triggered at this turbine in the window: %d attributed to the units above; %d attributed to other units and %d without track data (not shown).\n",
+      t$n_total, params$incident_species, t$n_in_relation, t$n_other_units, t$n_no_track
+    ))
+  }
 } else {
   cat("No curtailments by IDF unit are available for this report.\n\n")
 }

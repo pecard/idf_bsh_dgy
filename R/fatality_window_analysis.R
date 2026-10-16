@@ -491,3 +491,32 @@ summarise_curtailments_by_unit <- function(curtl_dt, track_dt, turbine_id, perio
   out <- out[unit %in% units | n > 0L]
   out[]
 }
+
+
+## Curtailments por unidade IDF CONTRIBUINTE (relatorios de incidente e de
+## disponibilidade): so' as unidades em `units` (as que contribuem para a
+## turbina), so' a(s) especie(s) pedidas, so' o periodo/janela dado. Os
+## TrackReport costumam ser descarregados so' para as unidades que
+## contribuem para a turbina (nao para o parque todo), por isso um
+## curtailment cujo track nao esta' nos dados, ou atribuido a uma unidade
+## fora de `units`, NAO e' interpretado -- so' contado a parte (totals).
+## % = parte dos curtailments atribuidos a unidades de `units`.
+##   by_unit: unit, n, pct
+##   totals : n_total, n_in_relation, n_other_units, n_no_track
+summarise_curtailments_contributing_units <- function(curtl_dt, track_dt, turbine_id, period_from, period_to,
+                                                      units, idf_display_map, species = NULL) {
+  r <- summarise_curtailments_by_unit(curtl_dt, track_dt, turbine_id, period_from, period_to, units,
+                                      idf_display_map, species = species, other_as_rows = TRUE)
+  in_rel <- r[unit %in% units]
+  n_rel <- sum(in_rel$n)
+  by_unit <- data.table::data.table(
+    unit = in_rel$unit, n = in_rel$n,
+    pct = if (n_rel > 0L) round(100 * in_rel$n / n_rel, 1) else rep(NA_real_, nrow(in_rel))
+  )
+  totals <- data.table::data.table(
+    n_total = sum(r$n), n_in_relation = n_rel,
+    n_other_units = sum(r$n[!r$unit %in% c(units, "Unattributed")]),
+    n_no_track = sum(r$n[r$unit == "Unattributed"])
+  )
+  list(by_unit = by_unit, totals = totals)
+}

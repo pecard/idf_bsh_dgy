@@ -865,24 +865,22 @@ fatality_abundance_pre_post_dt <- data.table::rbindlist(lapply(names(fatality_wi
   dt[, incident_id := id]; dt[]
 }), fill = TRUE)
 
-## Curtailments da turbina por unidade IDF (janela de investigacao e periodo
-## todo ini-end): importancia relativa de cada unidade a disparar
-## curtailments -- ver summarise_curtailments_by_unit(), R/fatality_window_analysis.R
-curtl_by_unit_window_dt <- summarise_curtailments_by_unit(
+## Curtailments da turbina por unidade IDF CONTRIBUINTE, so' da especie do
+## incidente e so' na janela de investigacao (sem comparacao com o periodo
+## todo/parque): mostra se continuam a ser disparados por outras unidades
+## mesmo quando a primaria esta offline. Os TrackReport costumam vir so' das
+## unidades que contribuem para a turbina; curtailments sem track ou de
+## outras unidades so' sao contados a parte (nao interpretados).
+## Ver summarise_curtailments_contributing_units(), R/fatality_window_analysis.R
+curtl_cu <- summarise_curtailments_contributing_units(
   curtl_dt, track_dt, fatality_incidents$turbine[1], fatality_windows[[1]]$window_from, fatality_windows[[1]]$window_to,
-  unit_order_by_coverage, idf_display_map
+  unit_order_by_coverage, idf_display_map, species = fatality_incidents$species[1]
 )
-curtl_by_unit_global_dt <- summarise_curtailments_by_unit(
-  curtl_dt, track_dt, fatality_incidents$turbine[1], ini, end, unit_order_by_coverage, idf_display_map
-)
-fatality_curtailments_by_unit_dt <- merge(
-  curtl_by_unit_window_dt[, .(unit, n_window = n, pct_window = pct)],
-  curtl_by_unit_global_dt[, .(unit, n_global = n, pct_global = pct)],
-  by = "unit", all = TRUE, sort = FALSE
-)
-fatality_curtailments_by_unit_dt[, ord := match(unit, c(unit_order_by_coverage, "Other IDF units", "Unattributed"))]
-setorder(fatality_curtailments_by_unit_dt, ord); fatality_curtailments_by_unit_dt[, ord := NULL]
-fatality_curtailments_by_unit_dt[is.na(n_window), n_window := 0L]; fatality_curtailments_by_unit_dt[is.na(n_global), n_global := 0L]
+fatality_curtailments_by_unit_dt <- copy(curtl_cu$by_unit)
+fatality_curtailments_totals_dt  <- curtl_cu$totals
+# % offline de cada unidade na janela (para ver o padrao: curtailments das outras unidades com a primaria offline)
+win_off_dt <- as.data.table(fatality_windows[[1]]$availability$by_idf)[, .(unit = idf, offline_pct = monitoring_period_pct)]
+fatality_curtailments_by_unit_dt[win_off_dt, on = "unit", offline_pct := i.offline_pct]
 
 write_xlsx_local(
   list(
@@ -901,6 +899,7 @@ write_xlsx_local(
     Global_offline_evidence_by_idf  = fatality_global_offline_evidence_by_idf_dt,
     Global_response_summary    = fatality_global_response_summary_dt,
     Curtailments_by_IDF_unit   = fatality_curtailments_by_unit_dt,
+    Curtailments_by_IDF_unit_totals = fatality_curtailments_totals_dt,
     Abundance_pre_post         = fatality_abundance_pre_post_dt
   ),
   out_file("fatality_track_investigation", "xlsx")
@@ -1083,6 +1082,7 @@ report_params <- list(
   fatality_window_response_summary = fatality_window_response_summary_dt,
   fatality_abundance_pre_post      = fatality_abundance_pre_post_dt,
   fatality_curtailments_by_unit    = as.data.frame(fatality_curtailments_by_unit_dt),
+  fatality_curtailments_totals     = as.data.frame(fatality_curtailments_totals_dt),
 
   id_risk_by_direction           = if (!is.null(id_risk_window_summary)) id_risk_window_summary$by_direction else NULL,
   short_track_summary            = short_track_window_summary_dt,

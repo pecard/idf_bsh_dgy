@@ -30,6 +30,7 @@ params:
   remaining_table: !r NULL
   turbine_area_radius_m: !r NULL
   curtl_by_unit_table: !r NULL
+  curtl_totals_table: !r NULL
   species_of_interest: ""
   curtl_unattributed_note: ""
   alert_table: !r NULL
@@ -204,14 +205,9 @@ if (!is.null(x) && nrow(x) > 0L) {
 
 # Curtailments triggered by each IDF unit
 
-Curtailments of each turbine over the analysed period, by the IDF unit that triggered them. Each curtailment is attributed to the IDF unit that recorded the bird track that triggered it (the unit of the track point closest in time to the start of the curtailment); curtailments whose track is not in the track data are shown as "Unattributed", and IDF units outside the relation of the turbine that triggered curtailments are listed individually (with "-" as coverage rank, and their coverage of the turbine when their buffer overlaps it). The **species of interest** columns count only curtailments triggered by tracks of `r if (nzchar(params$species_of_interest)) params$species_of_interest else "any species"`; the **all species** columns count every curtailment. "%" is the share of all curtailments of the turbine in the same period. Units are listed by decreasing coverage of the turbine: the unit with the largest coverage is the **Primary** unit, followed by **Secondary**, **Tertiary**, 4th, 5th and so on, which shows the relative contribution of each unit, in particular of the non-primary ones, to triggering curtailments.
+Curtailments of each turbine triggered by `r if (nzchar(params$species_of_interest)) params$species_of_interest else "any species"` during the analysed period, by the IDF unit that triggered them, for the IDF units that contribute to the turbine (the units of its relation). Each curtailment is attributed to the IDF unit that recorded the bird track that triggered it (the unit of the track point closest in time to the start of the curtailment). The track data are retrieved for the units that contribute to the turbines only, so curtailments whose track is not available, or that were triggered by a unit outside the relation, are not interpreted: they are only counted below each table. "%" is the share of the curtailments attributed to the units listed. Together with the offline time of each unit in the same period, the table shows whether curtailments keep being triggered by the other units while the primary unit is offline.
 
-```{r curtl-unattributed-note, results='asis'}
-if (!is.null(params$curtl_unattributed_note) && nzchar(params$curtl_unattributed_note)) {
-  gap()
-  cat("**Note:** ", params$curtl_unattributed_note, "\n\n", sep = "")
-}
-```
+Units are listed by decreasing coverage of the turbine: the unit with the largest coverage is the **Primary** unit, followed by **Secondary**, **Tertiary**, 4th, 5th and so on.
 
 ```{r curtl-by-unit-table, results='asis'}
 x <- params$curtl_by_unit_table
@@ -222,12 +218,20 @@ if (!is.null(x) && nrow(x) > 0L) {
     Turbine = x$turbine, `IDF Unit` = x$unit,
     `Coverage rank` = ifelse(is.na(x$rank), "-", ord_lab[pmin(x$rank, length(ord_lab))]),
     `Coverage (%)` = fmt_coverage(x$pct_coverage),
-    `Species: Curtailments` = x$n_species, `Species: %` = ifelse(is.na(x$pct_species), "-", sprintf("%.1f", x$pct_species)),
-    `All: Curtailments` = x$n_all, `All: %` = ifelse(is.na(x$pct_all), "-", sprintf("%.1f", x$pct_all)),
+    `Offline (%)` = fmt_pct(x$offline_pct),
+    Curtailments = x$n, `%` = ifelse(is.na(x$pct), "-", sprintf("%.1f", x$pct)),
     check.names = FALSE
   )
-  show_table(d, max_col_width_cm = 2.6, font_size = 8)
-} else cat("Curtailments by IDF unit are not available for this run: the attribution of curtailments to units needs the track data (attribute_curtailments_by_unit = TRUE) and at least one curtailment in the period.\n\n")
+  show_table(d, max_col_width_cm = 2.8, font_size = 8)
+  t <- params$curtl_totals_table
+  if (!is.null(t) && nrow(t) > 0L) {
+    gap()
+    for (i in seq_len(nrow(t))) {
+      cat(sprintf("Turbine %s: %d curtailment(s) in the period; %d attributed to the units above, %d attributed to other units and %d without track data (not shown).\n\n",
+                  t$turbine[i], t$n_total[i], t$n_in_relation[i], t$n_other_units[i], t$n_no_track[i]))
+    }
+  }
+} else cat("Curtailments by IDF unit are not available for this run: the attribution of curtailments to units needs the track data (attribute_curtailments_by_unit = TRUE).\n\n")
 ```
 
 # Offline evidence calendars
