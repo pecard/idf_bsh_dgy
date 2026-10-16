@@ -281,3 +281,57 @@ read_track_units <- function(databases_dirs, pattern, tz, farm_pattern = NULL, t
   dt[, timestamp := lubridate::force_tz(timestamp, tz)]
   unique(dt)
 }
+
+
+## 7. Protecao REMANESCENTE sem a unidade primaria (geometrica) ----
+##
+## Por turbina: % da area do circulo de raio turbine_area_m (omissao 1000 m)
+## em redor da turbina que fica coberta pelos buffers das unidades que NAO
+## sao a primaria (secundarias, terciarias, ... -- todas as outras da relacao,
+## em UNIAO, sem contar duas vezes areas sobrepostas), mais a % coberta so'
+## pela primaria e por todas as unidades. Da' a protecao que resta quando a
+## primaria falha. unit_buffer_m = raio de deteccao de cada unidade IDF.
+##
+## relation_dt: idf_relation_*() (turbine, idf "IDF<NN>", role, rank, pct_coverage)
+## com `unit` (idf_relation_add_unit()). wtg_sf/idf_sf: pontos em CRS metrico,
+## com wtg_id_col / idf_id_col ("InternalNa" / "imaging_he").
+idf_remaining_coverage <- function(relation_dt, wtg_sf, idf_sf, unit_buffer_m = 1000, turbine_area_m = 1000,
+                                   wtg_id_col = "InternalNa", idf_id_col = "imaging_he") {
+  empty <- data.table::data.table(
+    turbine = character(), primary_unit = character(), n_other_units = integer(), other_units = character(),
+    primary_pct = numeric(), without_primary_pct = numeric(), all_units_pct = numeric()
+  )
+  if (nrow(relation_dt) == 0L) return(empty)
+
+  idf_buf <- sf::st_buffer(idf_sf, unit_buffer_m)
+  cover_pct <- function(area_geom, idf_labels) {
+    if (length(idf_labels) == 0L) return(0)
+    u <- sf::st_union(idf_buf[idf_buf[[idf_id_col]] %in% idf_labels, ])
+    if (length(u) == 0L || all(sf::st_is_empty(u))) return(0)
+    inter <- suppressWarnings(sf::st_intersection(area_geom, u))
+    if (length(inter) == 0L || all(sf::st_is_empty(inter))) return(0)
+    100 * sum(as.numeric(sf::st_area(inter))) / as.numeric(sf::st_area(area_geom))
+  }
+
+  rows <- lapply(unique(relation_dt$turbine), function(tb) {
+    pt <- wtg_sf[wtg_sf[[wtg_id_col]] == tb, ]
+    if (nrow(pt) == 0L) return(NULL)
+    area <- sf::st_geometry(sf::st_buffer(pt[1, ], turbine_area_m))
+    rel <- relation_dt[turbine == tb][order(rank)]
+    prim <- rel[role == "Primary"]
+    oth <- rel[role != "Primary"]
+    data.table::data.table(
+      turbine = tb,
+      primary_unit = if (nrow(prim) > 0L) paste(prim$unit, collapse = ", ") else NA_character_,
+      n_other_units = nrow(oth),
+      other_units = if (nrow(oth) > 0L) paste(oth$unit, collapse = ", ") else NA_character_,
+      primary_pct = round(cover_pct(area, prim$idf), 1),
+      without_primary_pct = round(cover_pct(area, oth$idf), 1),
+      all_units_pct = round(cover_pct(area, rel$idf), 1)
+    )
+  })
+  out <- data.table::rbindlist(rows)
+  if (nrow(out) == 0L) return(empty)
+  data.table::setorder(out, turbine)
+  out[]
+}

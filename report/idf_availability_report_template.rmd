@@ -27,6 +27,10 @@ params:
   persistent_failure_basis: ""
   relation_table: !r NULL
   unit_table: !r NULL
+  remaining_table: !r NULL
+  turbine_area_radius_m: !r NULL
+  curtl_by_unit_table: !r NULL
+  species_of_interest: ""
   alert_table: !r NULL
   turbine_alert_table: !r NULL
   net_overall: !r NULL
@@ -57,6 +61,7 @@ report_table <- function(x, max_col_width_cm = NULL, font_size = 9) {
 
 # Numeros: 1 casa decimal; NA -> "Not available" (nunca 0)
 fmt_pct <- function(v) ifelse(is.na(v), "Not available", sprintf("%.1f", v))
+fmt_coverage <- function(v) ifelse(is.na(v), "-", sprintf("%.1f", v))
 fmt_txt <- function(v, empty = "-") ifelse(is.na(v) | !nzchar(as.character(v)), empty, as.character(v))
 
 # Um paragrafo em branco entre blocos texto/tabela/figura
@@ -145,6 +150,26 @@ if (!is.null(x) && nrow(x) > 0L) {
 } else cat("No turbine-IDF relation could be established.\n\n")
 ```
 
+## Coverage without the primary IDF unit
+
+Geometric estimate of the protection that remains when the primary IDF unit of a turbine fails: share of the circular area of radius `r params$turbine_area_radius_m` m around the turbine that is covered by the detection buffer (`r params$idf_op_detection_range` m) of the other units of the relation -- secondary, tertiary and so on, taken together (the union of their buffers, so overlapping areas are counted once). "Primary" is the share covered by the primary unit alone and "All units" the share covered by all units together.
+
+```{r remaining-table, results='asis'}
+x <- params$remaining_table
+gap()
+if (!is.null(x) && nrow(x) > 0L) {
+  d <- data.frame(
+    Turbine = x$turbine, `Primary unit` = fmt_txt(x$primary_unit), `Other units` = fmt_txt(x$other_units),
+    `Other units (n)` = x$n_other_units,
+    `Primary (%)` = fmt_coverage(x$primary_pct),
+    `Without primary (%)` = fmt_coverage(x$without_primary_pct),
+    `All units (%)` = fmt_coverage(x$all_units_pct),
+    check.names = FALSE
+  )
+  show_table(d, max_col_width_cm = 3.2, font_size = 8)
+} else cat("No coverage could be computed.\n\n")
+```
+
 # Offline time by IDF unit
 
 ```{r unit-table, results='asis'}
@@ -174,6 +199,27 @@ if (!is.null(x) && nrow(x) > 0L) {
     check.names = FALSE
   ), max_col_width_cm = 6)
 }
+```
+
+# Curtailments triggered by each IDF unit
+
+Curtailments of each turbine over the analysed period, by the IDF unit that triggered them. Each curtailment is attributed to the IDF unit that recorded the bird track that triggered it (the unit of the track point closest in time to the start of the curtailment); curtailments whose track is not in the track data are shown as "Unattributed" and those from IDF units outside the relation of the turbine as "Other IDF units". The **species of interest** columns count only curtailments triggered by tracks of `r if (nzchar(params$species_of_interest)) params$species_of_interest else "any species"`; the **all species** columns count every curtailment. "%" is the share of all curtailments of the turbine in the same period. Units are listed by decreasing coverage of the turbine: the unit with the largest coverage is the **Primary** unit, followed by **Secondary**, **Tertiary**, 4th, 5th and so on, which shows the relative contribution of each unit, in particular of the non-primary ones, to triggering curtailments.
+
+```{r curtl-by-unit-table, results='asis'}
+x <- params$curtl_by_unit_table
+gap()
+if (!is.null(x) && nrow(x) > 0L) {
+  ord_lab <- c("Primary", "Secondary", "Tertiary", paste0(4:30, "th"))
+  d <- data.frame(
+    Turbine = x$turbine, `IDF Unit` = x$unit,
+    `Coverage rank` = ifelse(is.na(x$rank), "-", ord_lab[pmin(x$rank, length(ord_lab))]),
+    `Coverage (%)` = fmt_coverage(x$pct_coverage),
+    `Species: Curtailments` = x$n_species, `Species: %` = ifelse(is.na(x$pct_species), "-", sprintf("%.1f", x$pct_species)),
+    `All: Curtailments` = x$n_all, `All: %` = ifelse(is.na(x$pct_all), "-", sprintf("%.1f", x$pct_all)),
+    check.names = FALSE
+  )
+  show_table(d, max_col_width_cm = 2.6, font_size = 8)
+} else cat("Curtailments by IDF unit are not available for this run: the attribution of curtailments to units needs the track data (attribute_curtailments_by_unit = TRUE) and at least one curtailment in the period.\n\n")
 ```
 
 # Offline evidence calendars

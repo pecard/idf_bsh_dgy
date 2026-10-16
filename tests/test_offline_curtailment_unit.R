@@ -41,3 +41,10 @@ stopifnot(identical(res_test$n, c(2L, 1L, 0L, 1L, 1L)), identical(res_test$pct, 
 res0_test <- summarise_curtailments_by_unit(cu_test, tk_test, "T99", t0_test, t0_test + 3600, c("GW19-13"), map_test)
 stopifnot(identical(res0_test$unit, "GW19-13"), res0_test$n == 0L, is.na(res0_test$pct))
 cat("test curtailments por unidade OK\n")
+
+## filtro por especie
+cu_sp_test <- copy(cu_test)[, species := c("Egyptian-Vulture", "Egyptian-Vulture", "Steppe-Eagle", "Egyptian-Vulture", "Egyptian-Vulture")]
+res_sp_test <- summarise_curtailments_by_unit(cu_sp_test, tk_test, "T23", t0_test, t0_test + 3600, c("GW19-13", "GW23-15"), map_test, species = "Egyptian-Vulture")
+stopifnot(res_sp_test[unit == "GW19-13", n] == 2L, res_sp_test[unit == "GW23-15", n] == 0L, sum(res_sp_test$n) == 4L)  # o do GW23-15 era Steppe-Eagle
+stopifnot(res_sp_test[unit == "GW19-13", pct] == 50)
+cat("test especie OK\n")

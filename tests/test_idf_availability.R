@@ -104,3 +104,25 @@ an3_test <- idf_availability_analysis(relation_test, heartb_dt_test, curtl_dt_te
                                       data_range = range(heartb_dt_test$timestamp), known_units = c("GW10-01", "GW11-02", "IDF03"))
 stopifnot(all(idf_unit_summary(relation_test, an3_test)$availability_cat == "Not evaluated"))
 cat("test_idf_availability (known units absent = 100% offline) OK\n")
+
+## protecao remanescente sem a primaria (geometrica)
+suppressPackageStartupMessages(library(sf))
+wtg_sf_test <- st_as_sf(data.frame(InternalNa = c("T01", "T02"), x = c(0, 10000), y = 0), coords = c("x", "y"), crs = 32641)
+idf_sf_test <- st_as_sf(data.frame(imaging_he = c("IDF01", "IDF02", "IDF03", "IDF04"), x = c(0, 0, 1500, 10000), y = c(0, 0, 0, 0)), coords = c("x", "y"), crs = 32641)
+rel_rem_test <- data.table(turbine = c("T01", "T01", "T01", "T02"), idf = c("IDF01", "IDF02", "IDF03", "IDF04"),
+                           role = c("Primary", "Secondary", "Secondary", "Primary"), rank = c(1L, 2L, 3L, 1L), unit = c("U1", "U2", "U3", "U4"))
+rem_test <- idf_remaining_coverage(rel_rem_test, wtg_sf_test, idf_sf_test, unit_buffer_m = 1000, turbine_area_m = 1000)
+stopifnot(identical(rem_test$turbine, c("T01", "T02")))
+stopifnot(rem_test[turbine == "T01", primary_pct] == 100)          # primaria no mesmo ponto: cobre 100%
+stopifnot(rem_test[turbine == "T01", without_primary_pct] == 100)  # U2 tambem no mesmo ponto: 100% sem a primaria
+stopifnot(rem_test[turbine == "T01", n_other_units] == 2L)
+stopifnot(rem_test[turbine == "T02", without_primary_pct] == 0, is.na(rem_test[turbine == "T02", other_units]))  # sem secundarias: 0%
+# so' uma secundaria a 1500 m (buffers de 1000 m): cobertura parcial entre 0 e 100, sem dupla contagem
+rel2_test <- rel_rem_test[idf %in% c("IDF01", "IDF03") & turbine == "T01"]
+r2_test <- idf_remaining_coverage(rel2_test, wtg_sf_test, idf_sf_test, 1000, 1000)
+stopifnot(r2_test$without_primary_pct > 0, r2_test$without_primary_pct < 50, r2_test$all_units_pct == 100)
+## varias secundarias sobrepostas: a UNIAO nao excede a soma
+rel3_test <- data.table(turbine = "T01", idf = c("IDF01", "IDF03", "IDF03"), role = c("Primary", "Secondary", "Secondary"), rank = 1:3, unit = c("U1", "U3", "U3b"))
+r3_test <- idf_remaining_coverage(rel3_test, wtg_sf_test, idf_sf_test, 1000, 1000)
+stopifnot(abs(r3_test$without_primary_pct - r2_test$without_primary_pct) < 0.01)
+cat("test remaining coverage OK\n")

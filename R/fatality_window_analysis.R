@@ -456,9 +456,11 @@ summarise_individuals_pre_post <- function(track_dt, species, incident_date, day
 ## os curtailments da turbina nesse periodo.
 ##
 ## idf_display_map: R/idf_labels.R (rotulo interno "IDF<NN>" -> nome completo).
-summarise_curtailments_by_unit <- function(curtl_dt, track_dt, turbine_id, period_from, period_to, units, idf_display_map) {
+summarise_curtailments_by_unit <- function(curtl_dt, track_dt, turbine_id, period_from, period_to, units, idf_display_map, species = NULL) {
 
   cu <- data.table::as.data.table(curtl_dt)[turbine == turbine_id & start >= period_from & start <= period_to]
+  # species: so' os curtailments disparados por tracks classificados como essa(s) especie(s) (NULL = todas)
+  if (!is.null(species)) { sp_sel <- species; cu <- cu[cu$species %in% sp_sel] } # (nao usar o nome do argumento dentro de [ ]: colide com a coluna)
   n_total <- nrow(cu)
 
   if (n_total > 0L) {

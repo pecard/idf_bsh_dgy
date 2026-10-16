@@ -77,6 +77,10 @@ idf_op_detection_range      <- 1000   # m; raio de deteccao do IDF (buffer da tu
 relation_min_pct_coverage   <- 20     # %
 relation_max_secondary      <- 3      # n.o maximo de unidades secundarias por turbina
 
+## Area em redor da turbina (raio, m) usada na "protecao remanescente": %
+## dessa area coberta pelas unidades que NAO sao a primaria
+turbine_area_radius_m <- 1000
+
 ##
 ## 5. Disponibilidade e alerta ----
 ##
@@ -89,6 +93,11 @@ heartbeat_offline_gap_min <- 60   # min; sem heartbeat durante este tempo = offl
 ## com curtailment disparado pela propria unidade)
 persistent_failure_threshold_pct <- 50
 persistent_failure_basis         <- "raw"
+
+## Especie de interesse para a tabela de curtailments disparados por cada
+## unidade IDF (NULL = todas as especies). Precisa da atribuicao por unidade
+## (attribute_curtailments_by_unit = TRUE).
+species_of_interest <- "Egyptian-Vulture"
 
 ## Calendarios: n.o de unidades por figura e espacamento das datas no eixo
 calendar_units_per_figure <- 6
