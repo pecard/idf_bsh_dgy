@@ -217,6 +217,8 @@ add_coverage_order <- function(dt, idf_col = "idf") {
   dt[order(-ifelse(is.na(pct), -Inf, pct), seq_len(nrow(dt))), , drop = FALSE]
 }
 fmt_coverage <- function(x) ifelse(is.na(x), "-", sprintf("%.1f", x))
+# Queda de RPM que define "resposta" (curtailment_latency_decline_pct, ex: 0.10 -> "10%")
+drop_txt <- paste0(format(100 * (if (is.null(params$curtailment_latency_decline_pct)) 0.10 else params$curtailment_latency_decline_pct)), "%")
 ```
 
 **`r params$project_ref`** -- Incident Report `r params$incident_id`
@@ -279,7 +281,8 @@ gap_min <- if (is.null(params$heartbeat_offline_gap_min)) "60" else params$heart
 decl_pct <- if (is.null(params$curtailment_latency_decline_pct)) "10" else format(100 * params$curtailment_latency_decline_pct)
 perf <- data.frame(
   Metric = c("Raw offline (% of daylight time)", "Net / confirmed offline (%)", "No evidence, pending manual review (%)",
-             "Curtailments assessed (n)", "Reached (%)", "No response (n)", "Median latency (s)"),
+             "Curtailments assessed (n)", sprintf("Reached %s drop in rotor speed (%%)", drop_txt),
+             sprintf("No %s drop (n)", drop_txt), sprintf("Median time to %s drop (s)", drop_txt)),
   `Investigation window` = c(
     syn_num(syn_first(w_net, "raw_offline_pct")), syn_num(syn_first(w_net, "net_offline_pct")), syn_num(syn_first(w_net, "no_evidence_pct")),
     syn_num(syn_first(w_rsp, "n_eligible"), 0), syn_num(syn_first(w_rsp, "pct_reached")),
@@ -294,10 +297,10 @@ perf <- data.frame(
     sprintf("Share of daylight hours in which the IDF unit(s) sent no status signal (heartbeat) for %s minutes or more, i.e. were considered offline.", gap_min),
     "The same, after removing the periods in which a curtailment was still triggered at the turbine -- evidence that the system was working despite the missing signal.",
     "Offline periods with neither a curtailment nor turbine speed (RPM) data available; these need manual review.",
-    "Curtailments (turbine slow-down or stop orders triggered by a bird detection) at the incident turbine that could be assessed.",
-    sprintf("Share of those curtailments after which the turbine rotor speed dropped by at least %s%%, i.e. the turbine reacted to the order.", decl_pct),
-    "Curtailments after which no such drop in rotor speed was observed.",
-    "Typical time (median) between the curtailment order and the first measurable drop in rotor speed; lower means a faster reaction."
+    "Curtailments (turbine slow-down or stop orders triggered by a bird detection) at the incident turbine for which the response could be assessed: the rotor speed (RPM) at the start of the order is known and above the cut-in speed.",
+    sprintf("Share of those curtailments in which the rotor speed fell at least %s below its value at the start of the order, within the duration of the order plus %s s -- i.e. the turbine started to slow down in response.", drop_txt, if (is.null(params$shutdown_time_buffer_sec)) "60" else params$shutdown_time_buffer_sec),
+    sprintf("Curtailments assessed in which no such %s fall in rotor speed was recorded in that period.", drop_txt),
+    sprintf("Typical (median) time between the start of the curtailment order and the first rotor-speed reading at least %s below the starting value; it is the response time of the same %s drop counted in the row above, so it covers only the curtailments that reached it, and its resolution is that of the SCADA readings. Lower means a faster reaction; the time to stop is reported separately (Shutdown Time).", drop_txt, drop_txt)
   ),
   check.names = FALSE
 )
@@ -788,7 +791,7 @@ if (!is.null(params$short_track_by_species) && nrow(params$short_track_by_specie
 
 Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, over the full data coverage period (`r params$report_start` to `r params$report_end`) for the incident turbine -- context for the window-specific figures in the Fatality Investigation section. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. `r params$shutdown_time_buffer_sec` s past the end of the curtailment order are allowed for this to happen. `r params$latency_n_no_data` curtailments (`r params$latency_pct_no_data`%) have no SCADA baseline within `r params$curtailment_start_end_gap_sec` s before the signal and are excluded below; of the remainder, `r params$latency_n_below_cutin` (`r params$latency_pct_below_cutin`%) were already below the cut-in speed (`r params$curtailment_cutin_rpm` rpm) at the start of the order and are also excluded, since there is no meaningful response to measure on a turbine that was not operating.
 
-In the tables below, "Curtailments" (Eligible) is the number of curtailment orders left after the two exclusions above -- these are the ones where a response could meaningfully be measured. "Reached" is how many of those eligible curtailments had RPM actually decline by the threshold within the search window (i.e. the turbine responded, however slowly); "% Reached" is that count as a percentage of the eligible curtailments. The remainder ("No Response") never showed that decline within the window at all.
+In the tables below, "Curtailments" (Eligible) is the number of curtailment orders left after the two exclusions above -- these are the ones where a response could meaningfully be measured. "Reached `r drop_txt` Drop" is how many of those eligible curtailments had the rotor speed (RPM) actually fall by at least `r drop_txt` below its value at the start of the order within the search window (i.e. the turbine started to respond, however slowly); "% Reached `r drop_txt` Drop" is that count as a percentage of the eligible curtailments. The remainder ("No `r drop_txt` Drop") never showed that fall within the window at all. The latency ("Mean/Median Time to `r drop_txt` Drop") is the time from the start of the curtailment order to the first SCADA RPM reading at least `r drop_txt` below the starting value, and is measured only for the curtailments that reached it -- so the two measures describe the same event, as a share of the curtailments and as a time. The time to stop is a different measure, reported in Shutdown Time.
 
 ### Response Latency by Turbine
 
@@ -801,8 +804,9 @@ if (!is.null(params$latency_by_turbine)) {
         "n_curtailments", "n_no_data", "pct_no_data", "n_known",
         "n_below_cutin", "pct_below_cutin", "n_no_response", "pct_no_response"
       )),
-      c(turbine = "Turbine", n_eligible = "Curtailments", n_reached = "Reached",
-        pct_reached = "% Reached", mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)")
+      c(turbine = "Turbine", n_eligible = "Curtailments", n_reached = paste("Reached", drop_txt, "Drop"),
+        pct_reached = paste("% Reached", drop_txt, "Drop"), mean_latency_sec = paste0("Mean Time to ", drop_txt, " Drop (s)"),
+        median_latency_sec = paste0("Median Time to ", drop_txt, " Drop (s)"))
     ),
     max_col_width_cm = 2
   )
@@ -1039,9 +1043,9 @@ if (!is.null(params$fatality_window_response_summary) && nrow(params$fatality_wi
     rename_display(
       drop_cols(params$fatality_window_response_summary, c("n_curtailments", "n_known", "n_below_cutin", "pct_below_cutin")),
       c(incident_id = "Incident", n_no_data = "No Data", pct_no_data = "% No Data",
-        n_eligible = "Curtailments", n_reached = "Reached", pct_reached = "% Reached",
-        n_no_response = "No Response", pct_no_response = "% No Response",
-        mean_latency_sec = "Mean (s)", median_latency_sec = "Median (s)")
+        n_eligible = "Curtailments", n_reached = paste("Reached", drop_txt, "Drop"), pct_reached = paste("% Reached", drop_txt, "Drop"),
+        n_no_response = paste("No", drop_txt, "Drop"), pct_no_response = paste("% No", drop_txt, "Drop"),
+        mean_latency_sec = paste0("Mean Time to ", drop_txt, " Drop (s)"), median_latency_sec = paste0("Median Time to ", drop_txt, " Drop (s)"))
     ),
     max_col_width_cm = 2
   )
