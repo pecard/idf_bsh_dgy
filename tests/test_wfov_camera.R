@@ -15,8 +15,8 @@ res <- wfov_three_period(w, "GW89-58", ev, 7, 7, 7, n_perm = 3000)
 r <- res$rates; sh <- res$shares
 stopifnot(isTRUE(res$has_pre), nrow(res$totals) == 3L, res$totals$period[1] == "Earlier period",
           identical(res$totals$tracks, c(300L, 310L, 180L)), nrow(r) == 9L, r$camera[9] == "All cameras",
-          r[camera == "3", n_after] == 0L, r[camera == "3", p_degradation_adj] < 0.05, r[camera == "3", exceeds_natural],
-          r[camera == "3", p_natural_adj] > 0.05, r[camera == "All cameras", p_degradation] < 0.05,
+          r[camera == "3", n_after] == 0L, r[camera == "3", p_degradation_adj] < 0.05,
+          r[camera == "All cameras", p_degradation] < 0.05,
           r[camera == "1", p_degradation_adj] > 0.05, sh[camera == "3", p_degradation_adj] < 0.05,
           res$p_any_camera < 0.05, abs(r[camera == "All cameras", change_vs_baseline_pct] - (100 * (180 / 7) / (610 / 14) - 100)) < 3)
 
@@ -25,6 +25,21 @@ set.seed(2)
 ctl <- rbind(mk(300, ev - 14 * 86400, cams8, "p"), mk(300, ev - 7 * 86400, cams8, "b"), mk(300, ev, cams8, "a"))
 r0 <- wfov_three_period(ctl, "GW89-58", ev, 7, 7, 7, n_perm = 2000)
 stopifnot(r0$p_total > 0.05, r0$p_any_camera > 0.05, r0$p_any_share > 0.05)
+
+## efeito com intervalo: a variacao % observada esta dentro do intervalo de 95% e o intervalo exclui 0 quando ha queda clara
+a_all <- r[camera == "All cameras"]
+stopifnot(a_all$ci_low_pct <= a_all$change_vs_baseline_pct, a_all$change_vs_baseline_pct <= a_all$ci_high_pct, a_all$ci_high_pct < 0,
+          abs(a_all$change_before_vs_earlier_pct - (100 * (310 / 7) / (300 / 7) - 100)) < 1e-9)
+c0 <- r0$rates[camera == "All cameras"]
+stopifnot(c0$ci_low_pct < 0, c0$ci_high_pct > 0)     # sem mudanca: o intervalo inclui 0
+
+## calibracao: com ritmo diurno + dias sobredispersos, blocos de 24 h nao dao falsos positivos a mais
+set.seed(11)
+sim_null <- function() rbindlist(lapply(-14:6, function(d) { n <- rpois(1, 92 * rgamma(1, 4, 4))
+  hr <- sample(0:23, n, TRUE, prob = dnorm(0:23, 12, 3.5) + 0.01)
+  data.table(track_id = paste0(d, "_", seq_len(n)), timestamp = ev + d * 86400 + hr * 3600 + runif(n, 0, 3600), idf = 58L, camera = sample(cams8, n, TRUE)) }))
+fp <- mean(replicate(60, wfov_three_period(sim_null(), "GW89-58", ev, 7, 7, 7, n_perm = 300, seed = NULL, n_boot = 0)$p_total < 0.05))
+stopifnot(fp <= 0.12)
 
 ## reprodutivel e a seed nao altera o RNG global
 set.seed(42); a <- runif(1); set.seed(42)
@@ -35,7 +50,7 @@ stopifnot(identical(r0a$rates$p_degradation, r0b$rates$p_degradation))
 
 ## sem periodo adicional: so' Before/After
 r2 <- wfov_three_period(w, "GW89-58", ev, 0, 7, 7, n_perm = 500)
-stopifnot(!r2$has_pre, nrow(r2$totals) == 2L, is.na(r2$rates$exceeds_natural[1]), r2$rates[camera == "3", p_degradation_adj] < 0.05)
+stopifnot(!r2$has_pre, nrow(r2$totals) == 2L, is.na(r2$rates$change_before_vs_earlier_pct[1]), r2$rates[camera == "3", p_degradation_adj] < 0.05)
 
 ## unilateral: um AUMENTO de volume nao e' degradacao
 up <- rbind(mk(200, ev - 14 * 86400, cams8, "p"), mk(200, ev - 7 * 86400, cams8, "b"), mk(400, ev, cams8, "a"))

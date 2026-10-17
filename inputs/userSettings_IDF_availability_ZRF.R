@@ -124,12 +124,13 @@ idf_malfunctions <- data.frame(
   turbine = "T94", 
   days_before = 7, 
   days_after = 7,
-  days_pre = 7,                      # periodo adicional ANTES do "antes", mesma unidade (0 = sem); serve de referencia da variacao natural
+  days_pre = 21,                      # periodo adicional ANTES do "antes", mesma unidade (0 = sem); com a linha de base (earlier + before) compara-se o 'after'; 21 dias da' mais poder que 7
   stringsAsFactors = FALSE
 )
 
 ## Teste de permutacao Monte Carlo das cameras WFOV: n.o de permutacoes e
-## tamanho (h) dos blocos de tempo que se permutam (0/NA = permutar tracks).
+## tamanho (h) dos blocos de tempo que se permutam. 24 = o dia e' a unidade independente
+## (recomendado; blocos curtos dao p-values demasiado otimistas).
 wfov_n_perm      <- 10000
-wfov_block_hours <- 6
+wfov_block_hours <- 24
 

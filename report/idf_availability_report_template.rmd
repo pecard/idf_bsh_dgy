@@ -41,6 +41,7 @@ params:
   data_sources: !r NULL
   malfunction_events: !r NULL
   wfov_n_perm: !r NULL
+  wfov_n_boot: !r NULL
   wfov_block_hours: !r NULL
   wfov_results: !r NULL
   timezone_name: ""
@@ -294,10 +295,10 @@ if (is.null(x) || nrow(x) == 0L) {
 
 ```{r wfov-method, results='asis'}
 if (length(params$wfov_results) > 0L) {
-  cat("\n\n**WFOV camera pattern.** The WFOV module is the set of eight monocular cameras that make the first detection of objects in the visible space; the objects are then followed by the binocular stereo camera. Every track in the TrackReport records the WFOV camera that captured it. For each reported WFOV malfunction, the tracks of the unit are counted by camera in three consecutive periods of the same unit, and therefore of the same airspace: an earlier period, the period before and the period after the reported date and time. Each track is counted once per camera, at its first record. The earlier period and the period before give the natural variation of the unit when no failure is reported; the comparison of interest is the period after against the baseline formed by the earlier period and the period before.\n\n")
+  cat("\n\n**WFOV camera pattern.** The WFOV module is the set of eight monocular cameras that make the first detection of objects in the visible space; the objects are then followed by the binocular stereo camera. Every track in the TrackReport records the WFOV camera that captured it. For each reported WFOV malfunction, the tracks of the unit are counted by camera in three consecutive periods of the same unit, and therefore of the same airspace: an earlier period, the period before and the period after the reported date and time. Each track is counted once per camera, at its first record. The comparison of interest is the period after against the baseline formed by the earlier period and the period before; the change between those two periods (no failure reported) describes the natural variation of the unit.\n\n")
   cat("Two measures are given for each camera and for all cameras together: the number of tracks per day, and the share of each camera in the tracks of the unit. The number of tracks depends on the bird activity, which is not known: a fall in all cameras can reflect fewer birds, and the share of each camera shows whether one camera lost weight within the unit.\n\n")
-  cat(sprintf("Significance is assessed with a Monte Carlo permutation test between the three periods: the periods are divided into blocks of %s h, the labels of the periods are randomly reassigned to the blocks %s times, keeping the number of blocks of each period, and the statistics are recalculated. Blocks, not single tracks, are permuted because tracks close in time (the same flock, the same hour) are not independent. The test of degradation is one-sided, since the question is whether the detection fell after the reported date: the p-value is the proportion of permutations with a fall at least as large as the observed one, and the adjusted p-value compares each camera with the largest fall among all cameras in each permutation, so it accounts for looking at eight cameras at once. The natural variation is the change between the period before and the earlier period; its p-value (two-sided, adjusted) tells whether that change is itself unusual. A camera is marked as degraded when its adjusted p-value is below 0.05 and the fall after the reported date is larger than the natural variation. All values are descriptive, depend on the number of tracks and on the random seed (the Monte Carlo error is about 0.005 near p = 0.05), and a change in the bird traffic of the period alone can produce them. The reported date may be earlier than the date of the record. The comparison complements, and does not replace, the heartbeat, SCADA and curtailment evidence in the previous sections.\n\n",
-    pv(params$wfov_block_hours), pv(params$wfov_n_perm)))
+  cat(sprintf("The effect is the change in the number of tracks per day of the period after the reported date against the baseline (earlier period and period before together), with a 95%% interval obtained by resampling the days of the baseline and the days of the period after (bootstrap, %s resamples); an interval that includes 0 means that the change cannot be separated from the day-to-day variation of the unit. Significance is assessed with a Monte Carlo permutation test between the three periods: the periods are divided into blocks of %s h, the labels of the periods are randomly reassigned to the blocks %s times, keeping the number of blocks of each period, and the statistics are recalculated. The block is one day by default because the day, not the track or the hour, is the independent unit: the bird traffic has a daily rhythm and good and bad days, and shorter blocks give p-values that are too optimistic. The test is one-sided, since the question is whether the detection fell after the reported date: the p-value is the proportion of permutations with a fall at least as large as the observed one, and the adjusted p-value compares each camera with the largest fall among all cameras in each permutation, so it accounts for looking at eight cameras at once. The change between the period before and the earlier period (no reported failure) is shown only to describe the natural variation of the unit between periods; it is not a test. All values are descriptive and depend on the number of days and tracks: with periods of 7 days and day-to-day variation of about 50%%, a fall of 33%% is detected only about half of the time, so a p-value that is not small is not evidence that the detection did not degrade. A change in the bird traffic alone can also produce a fall. The reported date may be earlier than the date of the record. The comparison complements, and does not replace, the heartbeat, SCADA and curtailment evidence in the previous sections.\n\n",
+    pv(params$wfov_n_boot), pv(params$wfov_block_hours), pv(params$wfov_n_perm)))
 }
 ```
 
@@ -321,23 +322,28 @@ for (r in params$wfov_results) {
   x <- r$rates
   if (!is.null(x) && nrow(x) > 0L) {
     a <- x[x$camera == "All cameras", ]
-    cat(sprintf("\n\nTracks of the unit per day: %s after the reported date against %s in the baseline (%s%%); one-sided permutation p = %s for the fall of all cameras together, adjusted p = %s for the camera with the largest fall (tracks per day) and %s for the camera with the largest fall in share.\n\n",
-      sprintf("%.1f", a$per_day_after),
-      if (isTRUE(r$has_pre)) sprintf("%.1f", (a$n_earlier + a$n_before) / (r$days_pre + r$days_before)) else sprintf("%.1f", a$per_day_before),
-      ifelse(is.na(a$change_vs_baseline_pct), "-", sprintf("%+.1f", a$change_vs_baseline_pct)),
-      fmt_p(a$p_degradation), fmt_p(r$p_any_camera), fmt_p(r$p_any_share)))
+    base_pd <- if (isTRUE(r$has_pre)) (a$n_earlier + a$n_before) / (r$days_pre + r$days_before) else a$per_day_before
+    cat(sprintf("\n\n**Unit as a whole.** %.1f tracks per day after the reported date against %.1f in the baseline: a change of %s%% (95%% interval %s%% to %s%%); one-sided permutation %s. Among the cameras, the adjusted p-value of the largest fall is %s for tracks per day and %s for the share in the tracks of the unit.\n\n",
+      a$per_day_after, base_pd,
+      ifelse(is.na(a$change_vs_baseline_pct), "-", sprintf("%+.0f", a$change_vs_baseline_pct)),
+      ifelse(is.na(a$ci_low_pct), "-", sprintf("%+.0f", a$ci_low_pct)), ifelse(is.na(a$ci_high_pct), "-", sprintf("%+.0f", a$ci_high_pct)),
+      ifelse(is.na(a$p_degradation), "p not available", ifelse(a$p_degradation < 0.001, "p < 0.001", sprintf("p = %.3f", a$p_degradation))), fmt_p(r$p_any_camera), fmt_p(r$p_any_share)))
+    if (isTRUE(r$has_pre) && !is.na(a$change_before_vs_earlier_pct)) {
+      v <- x$change_before_vs_earlier_pct[x$camera != "All cameras"]; v <- v[!is.na(v)]
+      cat(sprintf("Natural variation (no reported failure): the unit changed %+.0f%% between the earlier period and the period before; the cameras changed between %+.0f%% and %+.0f%%.\n\n",
+                  a$change_before_vs_earlier_pct, min(v), max(v)))
+    }
     cat("**Tracks per day by camera**\n\n")
     gap()
     pre <- isTRUE(r$has_pre)
+    ci_txt <- ifelse(is.na(x$ci_low_pct) | is.na(x$ci_high_pct), "-", sprintf("%+.0f to %+.0f", x$ci_low_pct, x$ci_high_pct))
     d <- data.frame(Camera = x$camera,
                     `Earlier (n/day)` = if (pre) sprintf("%.1f", x$per_day_earlier) else "-",
                     `Before (n/day)` = sprintf("%.1f", x$per_day_before), `After (n/day)` = sprintf("%.1f", x$per_day_after),
                     `Change after vs baseline (%)` = ifelse(is.na(x$change_vs_baseline_pct), "-", sprintf("%+.0f", x$change_vs_baseline_pct)),
+                    `95% interval (%)` = ci_txt,
                     `p adj. (fall)` = fmt_p(x$p_degradation_adj),
                     `Change before vs earlier (%)` = if (pre) ifelse(is.na(x$change_before_vs_earlier_pct), "-", sprintf("%+.0f", x$change_before_vs_earlier_pct)) else "-",
-                    `p adj. (natural)` = if (pre) fmt_p(x$p_natural_adj) else "-",
-                    `Fall > natural change` = if (pre) ifelse(is.na(x$exceeds_natural), "-", ifelse(x$exceeds_natural, "Yes", "No")) else "-",
-                    Degraded = ifelse(!is.na(x$p_degradation_adj) & x$p_degradation_adj < 0.05 & (!pre | x$exceeds_natural %in% TRUE), "Yes", "No"),
                     check.names = FALSE)
     show_table(d, fixed_col_width_cm = w15, font_size = 8)
     if (!is.null(r$fig_rates)) { gap(); show_plot(r$fig_rates) }
@@ -345,7 +351,7 @@ for (r in params$wfov_results) {
 
   x <- r$shares
   if (!is.null(x) && nrow(x) > 0L) {
-    cat("\n\n**Share of each camera in the tracks of the unit**\n\n")
+    cat("\n\n**Share of each camera in the tracks of the unit.** A camera whose share falls more than the others lost weight within the unit, whatever the bird activity; compare with the change of the unit as a whole above.\n\n")
     gap()
     pre <- isTRUE(r$has_pre)
     d <- data.frame(Camera = x$camera,
@@ -354,9 +360,6 @@ for (r in params$wfov_results) {
                     `Change after vs baseline (pp)` = ifelse(is.na(x$change_vs_baseline_pp), "-", sprintf("%+.1f", x$change_vs_baseline_pp)),
                     `p adj. (fall)` = fmt_p(x$p_degradation_adj),
                     `Change before vs earlier (pp)` = if (pre) ifelse(is.na(x$change_before_vs_earlier_pp), "-", sprintf("%+.1f", x$change_before_vs_earlier_pp)) else "-",
-                    `p adj. (natural)` = if (pre) fmt_p(x$p_natural_adj) else "-",
-                    `Fall > natural change` = if (pre) ifelse(is.na(x$exceeds_natural), "-", ifelse(x$exceeds_natural, "Yes", "No")) else "-",
-                    Degraded = ifelse(!is.na(x$p_degradation_adj) & x$p_degradation_adj < 0.05 & (!pre | x$exceeds_natural %in% TRUE), "Yes", "No"),
                     check.names = FALSE)
     show_table(d, fixed_col_width_cm = w15, font_size = 8)
   }
@@ -451,7 +454,7 @@ if (!is.null(x) && nrow(x) > 0L) {
 **Reported malfunctions (WFOV cameras)**
 
 - Malfunctions come from the list supplied by the IDF team (unit, date and time, type) and are not derived from the portal data. Only WFOV malfunctions are assessed, through the WFOV camera recorded in each track of the unit: the share of tracks per camera before and after the reported date and time, within the windows stated for each event. The tracks are those of the TrackReport files provided, which must cover both windows; when they do not, the comparison is stated as partial.
-- Three periods of the same unit (same airspace): an earlier period, the period before and the period after the reported date and time. The change between the earlier period and the period before (no reported failure) is the natural variation of the unit; the change after the reported date is read against the baseline formed by the two earlier periods. Tracks per day and the share of each camera are given, with one-sided Monte Carlo permutation p-values for the fall after the reported date (permuting time blocks between the three periods), adjusted for the number of cameras by the maximum statistic, and a two-sided adjusted p-value for the natural variation.
+- Three periods of the same unit (same airspace): an earlier period, the period before and the period after the reported date and time. The effect is the change in tracks per day after the reported date against the baseline formed by the other two periods, with a 95% interval from a bootstrap of days. The significance is a one-sided Monte Carlo permutation test (time blocks of one day permuted between the three periods), adjusted for the number of cameras by the maximum statistic. The change between the earlier period and the period before only describes the natural variation of the unit. With 7-day periods the test has limited power (a fall of 33% is detected about half of the time, assuming a day-to-day variation of 50%), so a result that is not significant does not exclude degradation.
 - The comparison is indirect evidence: it depends on the birds that crossed the area in each window, on the number of tracks (few tracks give unstable shares) and on the accuracy of the reported date.
 
 **Alerts**

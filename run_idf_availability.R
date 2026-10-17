@@ -254,7 +254,7 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   if (!"days_pre" %in% names(mf)) mf$days_pre <- 0
   mf$days_pre[is.na(mf$days_pre)] <- 0
   if (!exists("wfov_n_perm")) wfov_n_perm <- 10000L
-  if (!exists("wfov_block_hours")) wfov_block_hours <- 6
+  if (!exists("wfov_block_hours")) wfov_block_hours <- 24
   mf$event_time <- as.POSIXct(as.character(mf$datetime), tz = proj_timezone)
   mf$is_wfov <- grepl("WFOV", mf$type, ignore.case = TRUE)
   wf <- mf[mf$is_wfov, , drop = FALSE]
@@ -286,7 +286,7 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
          days_pre = d_p, days_before = d_b, days_after = d_a, has_pre = !is.null(res) && isTRUE(res$has_pre),
          rates = if (is.null(res)) NULL else res$rates, shares = if (is.null(res)) NULL else res$shares, totals = if (is.null(res)) NULL else res$totals,
          p_total = if (is.null(res)) NA_real_ else res$p_total, p_any_camera = if (is.null(res)) NA_real_ else res$p_any_camera,
-         p_any_share = if (is.null(res)) NA_real_ else res$p_any_share, p_natural_total = if (is.null(res)) NA_real_ else res$p_natural_total,
+         p_any_share = if (is.null(res)) NA_real_ else res$p_any_share,
          context = ctx, note = note,
          fig_rates = if (is.null(res)) NULL else plot_wfov_rates(res, label),
          fig_daily = if (is.null(res)) NULL else plot_wfov_daily(res, label))
@@ -365,7 +365,7 @@ report_params <- list(
   net_overall = if (is.null(analysis$net_overall)) NULL else as.data.frame(analysis$net_overall),
   calendar_figures = calendar_figures,
   malfunction_events = malfunction_events_df,
-  wfov_n_perm = if (exists("wfov_n_perm")) wfov_n_perm else NULL, wfov_block_hours = if (exists("wfov_block_hours")) wfov_block_hours else NULL,
+  wfov_n_perm = if (exists("wfov_n_perm")) wfov_n_perm else NULL, wfov_n_boot = 5000, wfov_block_hours = if (exists("wfov_block_hours")) wfov_block_hours else NULL,
   wfov_results = wfov_results,
   xlsx_name = out_name("idf_availability", "xlsx", avail_tag, run_date)
 )

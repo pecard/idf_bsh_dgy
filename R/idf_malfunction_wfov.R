@@ -78,28 +78,33 @@ wfov_order_cameras <- function(cams) {
 ## Analise de UMA falha em 3 periodos consecutivos da MESMA unidade (mesmo espaco
 ## aereo): periodo adicional ("Earlier period"), "Before" e "After" a data da falha.
 ##   days_pre / days_before / days_after: duracao (dias) de cada periodo;
-##   days_pre = 0 -> so' Before e After (sem placebo; a linha de base e' o Before).
+##   days_pre = 0 -> so' Before e After (a linha de base e' o Before).
 ## Metricas por camara (e para todas as cameras): n.o de tracks por dia e quota (%)
 ## de cada camara. Cada TRACK conta uma vez por camara (a que o capturou).
 ##
 ## Teste de PERMUTACAO Monte Carlo ENTRE OS 3 PERIODOS: as janelas sao divididas em
-## BLOCOS de tempo (block_hours h; tracks proximos no tempo nao sao independentes),
-## os rotulos de periodo sao reatribuidos aleatoriamente aos blocos (mantendo o n.o
-## de blocos de cada periodo) e as estatisticas sao recalculadas. Hipotese nula: os
-## 3 periodos sao permutaveis (nada mudou na unidade).
+## BLOCOS de tempo, os rotulos de periodo sao reatribuidos aleatoriamente aos blocos
+## (mantendo o n.o de blocos de cada periodo) e as estatisticas sao recalculadas.
+## Hipotese nula: os 3 periodos sao permutaveis (nada mudou na unidade).
+## block_hours = 24 (omissao): o DIA e' a unidade independente (ritmo diurno e dias
+## "bons"/"maus" de passagem); blocos mais curtos tratam horas do mesmo dia como
+## independentes e dao p-values demasiado otimistas (simulacao: ~12% de falsos
+## positivos com 6 h, ~3% com 24 h).
 ##   Degradacao (unilateral, "depois" PIOR que a linha de base Earlier + Before):
 ##     taxa:  D = log(taxa base / taxa depois)   (positivo = menos tracks por dia)
 ##     quota: D = log(quota base / quota depois) (positivo = a camara perdeu peso)
 ##     p = (k + 1) / (N + 1), k = permutacoes com D >= observado
 ##     p ajustado = igual, comparando com o MAXIMO de D entre as cameras (comparacoes multiplas)
-##   Variacao natural (placebo, bilateral): Before vs Earlier, nas mesmas permutacoes:
-##     p = permutacoes com |log razao| >= observado (ajustado pelo maximo entre cameras).
-##   exceeds_natural: a degradacao observada (D) e' maior que a variacao natural |Before vs Earlier|.
+## Efeito com incerteza: variacao % depois vs linha de base (tracks por dia) com
+## intervalo de 95% por bootstrap de DIAS (reamostragem dos dias da linha de base e dos
+## dias do "After", separadamente; percentis 2.5% e 97.5%).
+## A variacao Before vs Earlier (sem falha) e' so' descritiva: mostra a oscilacao
+## natural entre periodos da propria unidade.
 ## Devolve list(rates, shares, totals, daily, windows, has_pre, p_total, p_any_camera, p_any_share).
 wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_before = 7, days_after = 7,
-                              n_perm = 10000L, block_hours = 6, seed = 1L, alpha = 0.05) {
+                              n_perm = 10000L, block_hours = 24, seed = 1L, n_boot = 5000L) {
   tz <- attr(event_time, "tzone"); if (is.null(tz) || !nzchar(tz[1L])) tz <- ""
-  if (is.null(block_hours) || is.na(block_hours) || block_hours <= 0) block_hours <- 6
+  if (is.null(block_hours) || is.na(block_hours) || block_hours <= 0) block_hours <- 24
   has_pre <- !is.null(days_pre) && !is.na(days_pre) && days_pre > 0
   if (!has_pre) days_pre <- 0
   u <- idf_unit_number(unit)
@@ -117,42 +122,38 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
   per_days <- c(if (has_pre) days_pre, days_before, days_after)
   per_from <- c(if (has_pre) tp, t0, event_time)
   K <- length(per_name)
-  nb <- as.integer(ceiling(per_days * 24 / block_hours))
-  off <- c(0L, cumsum(nb))[seq_len(K)]
-  n_blk <- sum(nb)
-  lab_obs <- rep(seq_len(K), nb)
-  # bloco de cada instante (dentro do periodo a que pertence)
-  blk_of <- function(ts) {
-    k <- findInterval(as.numeric(ts), as.numeric(per_from))
-    k <- pmax(k, 1L)
-    h <- as.numeric(difftime(ts, per_from[k], units = "hours")) / block_hours
-    off[k] + pmin(floor(h) + 1L, nb[k])
-  }
-  period_of <- function(ts) per_name[pmax(findInterval(as.numeric(ts), as.numeric(per_from)), 1L)]
 
-  M <- matrix(0L, n_blk, nc + 1L)                  # colunas: cameras..., total de tracks
-  if (nrow(tr) > 0L) {
-    bi <- blk_of(tr$timestamp); ci <- match(tr$camera, cams)
-    for (k in seq_len(nrow(tr))) M[bi[k], ci[k]] <- M[bi[k], ci[k]] + 1L
+  # matriz de contagens (blocos x cameras + total) para uma duracao de bloco em horas
+  count_matrix <- function(bh) {
+    nb <- as.integer(ceiling(per_days * 24 / bh))
+    off <- c(0L, cumsum(nb))[seq_len(K)]
+    blk_of <- function(ts) {
+      k <- pmax(findInterval(as.numeric(ts), as.numeric(per_from)), 1L)
+      h <- as.numeric(difftime(ts, per_from[k], units = "hours")) / bh
+      off[k] + pmin(floor(h) + 1L, nb[k])
+    }
+    M <- matrix(0L, sum(nb), nc + 1L)
+    if (nrow(tr) > 0L) {
+      bi <- blk_of(tr$timestamp); ci <- match(tr$camera, cams)
+      for (k in seq_len(nrow(tr))) M[bi[k], ci[k]] <- M[bi[k], ci[k]] + 1L
+    }
+    if (nrow(trk) > 0L) M[, nc + 1L] <- tabulate(blk_of(trk$timestamp), nrow(M))
+    list(M = M, lab = rep(seq_len(K), nb))
   }
-  if (nrow(trk) > 0L) M[, nc + 1L] <- tabulate(blk_of(trk$timestamp), n_blk)
+  cm <- count_matrix(block_hours); M <- cm$M; lab_obs <- cm$lab
 
   eps <- 0.5
+  base_days <- if (has_pre) days_pre + days_before else days_before
   stats_for <- function(lab) {
     cnt <- rowsum(M, lab, reorder = TRUE)           # K x (nc + 1), linhas = periodos 1..K
-    cA <- cnt[K, ]; cB <- cnt[K - 1L, ]
-    cP <- if (has_pre) cnt[1L, ] else NULL
-    c_base <- if (has_pre) cP + cB else cB
-    d_base <- if (has_pre) days_pre + days_before else days_before
-    D_rate <- log((c_base + eps) / d_base) - log((cA + eps) / days_after)
-    N_rate <- if (has_pre) log((cB + eps) / days_before) - log((cP + eps) / days_pre) else rep(NA_real_, nc + 1L)
+    cA <- cnt[K, ]
+    c_base <- if (has_pre) cnt[1L, ] + cnt[K - 1L, ] else cnt[K - 1L, ]
+    D_rate <- log((c_base + eps) / base_days) - log((cA + eps) / days_after)
     share <- function(cn) (cn[seq_len(nc)] + eps) / (sum(cn[seq_len(nc)]) + eps * nc)
     D_share <- if (nc > 0L) log(share(c_base)) - log(share(cA)) else numeric(0)
-    N_share <- if (has_pre && nc > 0L) log(share(cB)) - log(share(cP)) else rep(NA_real_, nc)
-    c(D_rate, N_rate, D_share, N_share)
+    c(D_rate, D_share)
   }
-  idx <- list(D_rate = seq_len(nc + 1L), N_rate = nc + 1L + seq_len(nc + 1L),
-              D_share = 2L * (nc + 1L) + seq_len(nc), N_share = 2L * (nc + 1L) + nc + seq_len(nc))
+  idx_rate <- seq_len(nc + 1L); idx_share <- nc + 1L + seq_len(nc)
   obs <- stats_for(lab_obs)
 
   total_tracks <- sum(M[, nc + 1L])
@@ -163,6 +164,21 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
     perm <- matrix(NA_real_, n_perm, length(obs))
     for (i in seq_len(n_perm)) perm[i, ] <- stats_for(sample(lab_obs))
   }
+
+  # bootstrap de DIAS (blocos de 24 h) para o intervalo da variacao % (tracks por dia)
+  dm <- count_matrix(24); Md <- dm$M; lab_d <- dm$lab
+  grp <- ifelse(lab_d == K, "after", "base")
+  ci_pct <- matrix(NA_real_, nc + 1L, 2L)
+  if (total_tracks > 0L && n_boot >= 1L && any(grp == "after") && any(grp == "base")) {
+    ib <- which(grp == "base"); ia <- which(grp == "after")
+    bs <- matrix(NA_real_, n_boot, nc + 1L)
+    for (b in seq_len(n_boot)) {
+      mb <- colMeans(Md[sample(ib, length(ib), TRUE), , drop = FALSE])
+      ma <- colMeans(Md[sample(ia, length(ia), TRUE), , drop = FALSE])
+      bs[b, ] <- ifelse(mb > 0, 100 * (ma / mb - 1), NA_real_)
+    }
+    ci_pct <- t(apply(bs, 2L, function(v) if (all(is.na(v))) c(NA_real_, NA_real_) else stats::quantile(v, c(0.025, 0.975), na.rm = TRUE, names = FALSE)))
+  }
   if (has_seed && !is.null(old)) assign(".Random.seed", old, envir = globalenv())
 
   p_one <- function(cols, o) {            # unilateral (degradacao): p bruto e ajustado pelo maximo
@@ -172,11 +188,6 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
     list(p = vapply(seq_along(cols), function(j) (sum(pm[, j] >= o[j] - 1e-12) + 1) / (N + 1), numeric(1)),
          adj = vapply(seq_along(cols), function(j) (sum(mx >= o[j] - 1e-12) + 1) / (N + 1), numeric(1)))
   }
-  p_two_adj <- function(cols, o) {        # bilateral (variacao natural), ajustado pelo maximo
-    if (is.null(perm) || !has_pre || length(cols) == 0L || anyNA(o)) return(rep(NA_real_, length(cols)))
-    pm <- abs(perm[, cols, drop = FALSE]); N <- nrow(pm); mx <- apply(pm, 1L, max)
-    vapply(seq_along(cols), function(j) (sum(mx >= abs(o[j]) - 1e-12) + 1) / (N + 1), numeric(1))
-  }
 
   cnt_obs <- rowsum(M, lab_obs, reorder = TRUE)
   rows <- c(cams, "All cameras")
@@ -184,20 +195,19 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
   d_P <- if (has_pre) days_pre else NA_real_
 
   # --- taxas (tracks/dia) ---
-  Dr <- obs[idx$D_rate]; Nr <- obs[idx$N_rate]
-  pr <- p_one(idx$D_rate[seq_len(nc)], Dr[seq_len(nc)])
-  pr_tot <- p_one(idx$D_rate[nc + 1L], Dr[nc + 1L])$p
-  plc_r <- p_two_adj(idx$N_rate[seq_len(nc)], Nr[seq_len(nc)])
-  plc_tot <- p_two_adj(idx$N_rate[nc + 1L], Nr[nc + 1L])
+  Dr <- obs[idx_rate]
+  pr <- p_one(idx_rate[seq_len(nc)], Dr[seq_len(nc)])
+  pr_tot <- p_one(idx_rate[nc + 1L], Dr[nc + 1L])$p
+  # variacao % observada da media diaria (sem pseudo-contagem): depois vs linha de base
+  base_rate <- ((if (has_pre) nP else 0) + nB) / base_days
+  chg <- ifelse(base_rate > 0, 100 * ((nA / days_after) / base_rate - 1), NA_real_)
   rates <- data.table::data.table(
     camera = rows,
     n_earlier = nP, n_before = nB, n_after = nA,
     per_day_earlier = nP / d_P, per_day_before = nB / days_before, per_day_after = nA / days_after,
-    change_vs_baseline_pct = 100 * (exp(-Dr) - 1),
+    change_vs_baseline_pct = chg, ci_low_pct = ci_pct[, 1L], ci_high_pct = ci_pct[, 2L],
     p_degradation = c(pr$p, pr_tot), p_degradation_adj = c(pr$adj, pr_tot),
-    change_before_vs_earlier_pct = if (has_pre) 100 * (exp(Nr) - 1) else NA_real_,
-    p_natural_adj = c(plc_r, plc_tot),
-    exceeds_natural = if (has_pre) Dr > 0 & Dr > abs(Nr) else NA
+    change_before_vs_earlier_pct = if (has_pre) ifelse(nP > 0, 100 * (nB / days_before) / (nP / d_P) - 100, NA_real_) else NA_real_
   )
   if (!has_pre) rates[, c("per_day_earlier", "n_earlier") := NA_real_]
 
@@ -205,8 +215,7 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
   tot_cam <- function(v) sum(v[seq_len(nc)])
   pct <- function(v) if (nc == 0L || is.na(tot_cam(v)) || tot_cam(v) == 0) rep(NA_real_, nc) else 100 * v[seq_len(nc)] / tot_cam(v)
   base_cnt <- if (has_pre) nP + nB else nB
-  Ds <- obs[idx$D_share]; Ns <- obs[idx$N_share]
-  ps <- p_one(idx$D_share, Ds)
+  ps <- p_one(idx_share, obs[idx_share])
   shares <- data.table::data.table(
     camera = cams,
     pct_earlier = if (has_pre) pct(nP) else NA_real_, pct_before = pct(nB), pct_after = pct(nA)
@@ -214,8 +223,6 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
   shares[, change_vs_baseline_pp := pct_after - pct(base_cnt)]
   shares[, p_degradation := ps$p]; shares[, p_degradation_adj := ps$adj]
   shares[, change_before_vs_earlier_pp := if (has_pre) pct_before - pct_earlier else NA_real_]
-  shares[, p_natural_adj := p_two_adj(idx$N_share, Ns)]
-  shares[, exceeds_natural := if (has_pre) Ds > 0 & Ds > abs(Ns) else NA]
 
   wins <- data.table::data.table(
     period = per_name, from = per_from, to = c(per_from[-1L], t1), days = per_days)
@@ -228,7 +235,7 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
        windows = list(from = tp, event = event_time, to = t1), has_pre = has_pre,
        p_total = pr_tot, p_any_camera = if (nc > 0L) suppressWarnings(min(pr$adj, na.rm = TRUE)) else NA_real_,
        p_any_share = if (nc > 0L) suppressWarnings(min(ps$adj, na.rm = TRUE)) else NA_real_,
-       p_natural_total = plc_tot, n_perm = if (is.null(perm)) 0L else nrow(perm), block_hours = block_hours)
+       n_perm = if (is.null(perm)) 0L else nrow(perm), block_hours = block_hours)
 }
 
 ## Contexto da mesma janela com as outras fontes: heartbeats por dia da
