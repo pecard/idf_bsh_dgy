@@ -40,6 +40,8 @@ params:
   xlsx_name: ""
   data_sources: !r NULL
   malfunction_events: !r NULL
+  wfov_n_perm: !r NULL
+  wfov_block_hours: !r NULL
   wfov_results: !r NULL
   timezone_name: ""
 ---
@@ -73,6 +75,8 @@ fmt_coverage <- function(v) ifelse(is.na(v), "-", sprintf("%.1f", v))
 fmt_txt <- function(v, empty = "-") ifelse(is.na(v) | !nzchar(as.character(v)), empty, as.character(v))
 
 # Um paragrafo em branco entre blocos texto/tabela/figura
+fmt_p <- function(v) ifelse(is.na(v), "-", ifelse(v < 0.001, "<0.001", sprintf("%.3f", v)))
+
 gap <- function() cat("\n\n&nbsp;\n\n")
 
 show_table <- function(df, max_col_width_cm = 3, font_size = 9) {
@@ -278,7 +282,7 @@ if (is.null(x) || nrow(x) == 0L) {
 
 ```{r wfov-method, results='asis'}
 if (length(params$wfov_results) > 0L) {
-  cat("\n\n**WFOV camera pattern.** The WFOV module is the set of eight monocular cameras that make the first detection of objects in the visible space; the objects are then followed by the binocular stereo camera. Every track in the TrackReport records the WFOV camera that captured it. For each reported WFOV malfunction, the share of the tracks of the unit captured by each camera is compared between the window before and the window after the reported date and time. A camera that stopped capturing objects shows as a share that falls to, or close to, zero. The windows are counted from the reported date and time, each track is counted once per camera (at its first record) and p-values are Fisher exact tests of one camera against all the others, before versus after; they are descriptive, are not corrected for multiple comparisons and depend on the number of tracks in each window. The reported date may be earlier than the date of the record, and a change in the bird traffic of the period alone can change the shares. The comparison complements, and does not replace, the heartbeat, SCADA and curtailment evidence in the previous sections.\n\n")
+  cat("\n\n**WFOV camera pattern.** The WFOV module is the set of eight monocular cameras that make the first detection of objects in the visible space; the objects are then followed by the binocular stereo camera. Every track in the TrackReport records the WFOV camera that captured it. For each reported WFOV malfunction, the share of the tracks of the unit captured by each camera is compared between the window before and the window after the reported date and time. A camera that stopped capturing objects shows as a share that falls to, or close to, zero. The windows are counted from the reported date and time and each track is counted once per camera (at its first record). Significance is assessed with a Monte Carlo permutation test: the window blocks (`r pv(params$wfov_block_hours)` h each, aligned with the reported time) are randomly re-labelled \"before\" or 'after' `r pv(params$wfov_n_perm)` times, keeping the number of blocks of each window, and the change in the share of every camera is recomputed. Blocks, not single tracks, are permuted because tracks that are close in time (the same flock, the same hour) are not independent. The p-value of a camera is the proportion of permutations with a change at least as large as the observed one (in absolute value); the adjusted p-value compares it with the largest change among all cameras in each permutation, so it accounts for looking at eight cameras at once. The overall p-value is the adjusted p-value of the camera with the largest change. All are descriptive and depend on the number of tracks and on the random seed (the Monte Carlo error is about 0.005 near p = 0.05). The reported date may be earlier than the date of the record, and a change in the bird traffic of the period alone can change the shares. The comparison complements, and does not replace, the heartbeat, SCADA and curtailment evidence in the previous sections.\n\n")
 }
 ```
 
@@ -297,11 +301,12 @@ for (r in params$wfov_results) {
   }
   x <- r$summary
   if (!is.null(x) && nrow(x) > 0L) {
+    if (!is.null(r$omnibus) && !is.na(r$omnibus)) cat(sprintf("Overall permutation p-value (camera with the largest change, adjusted for the eight cameras): %s.\n\n", fmt_p(r$omnibus)))
     gap()
     d <- data.frame(Camera = x$camera, `Before (n)` = x$n_before, `Before (%)` = fmt_pct(x$pct_before),
                     `After (n)` = x$n_after, `After (%)` = fmt_pct(x$pct_after),
                     `Change (pp)` = ifelse(is.na(x$delta_pp), "-", sprintf("%+.1f", x$delta_pp)),
-                    `p-value` = ifelse(is.na(x$p_value), "-", ifelse(x$p_value < 0.001, "<0.001", sprintf("%.3f", x$p_value))),
+                    `p (perm.)` = fmt_p(x$p_perm), `p adj.` = fmt_p(x$p_adj),
                     Status = x$status, check.names = FALSE)
     show_table(d, max_col_width_cm = 4, font_size = 8)
     if (!is.null(r$fig_share)) { gap(); show_plot(r$fig_share) }

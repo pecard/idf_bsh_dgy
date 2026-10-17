@@ -79,9 +79,11 @@ wfov_order_cameras <- function(cams) {
 ##   unit: codigo/numero da unidade; event_time: POSIXct da falha
 ##   days_before/days_after: dias das janelas [event - d, event) e [event, event + d]
 ##   drop_rel: uma camara "perde peso" se a sua % depois <= drop_rel x % antes
+##   n_perm / block_hours / seed: teste de PERMUTACAO Monte Carlo (ver wfov_permutation_test)
 ## Cada TRACK conta uma vez por camara (a camara que o capturou).
 ## Devolve list(summary, daily, totals, windows, coverage_ok).
-wfov_camera_compare <- function(wfov_dt, unit, event_time, days_before = 5, days_after = 5, drop_rel = 0.5) {
+wfov_camera_compare <- function(wfov_dt, unit, event_time, days_before = 5, days_after = 5, drop_rel = 0.5,
+                                n_perm = 10000L, block_hours = 6, seed = 1L) {
   tz <- attr(event_time, "tzone"); if (is.null(tz) || !nzchar(tz[1L])) tz <- ""
   t0 <- event_time - days_before * 86400
   t1 <- event_time + days_after * 86400
@@ -101,10 +103,9 @@ wfov_camera_compare <- function(wfov_dt, unit, event_time, days_before = 5, days
   summ[, pct_before := if (n_b > 0L) 100 * n_before / n_b else NA_real_]
   summ[, pct_after  := if (n_a > 0L) 100 * n_after / n_a else NA_real_]
   summ[, delta_pp := pct_after - pct_before]
-  summ[, p_value := vapply(seq_len(.N), function(i) {
-    m <- matrix(c(n_before[i], n_b - n_before[i], n_after[i], n_a - n_after[i]), 2L)
-    if (n_b == 0L || n_a == 0L) NA_real_ else tryCatch(stats::fisher.test(m)$p.value, error = function(e) NA_real_)
-  }, numeric(1))]
+  perm <- wfov_permutation_test(tr, cams, event_time, days_before, days_after, n_perm, block_hours, seed)
+  summ[, p_perm := perm$p_camera]
+  summ[, p_adj := perm$p_adjusted]
   summ[, status := data.table::fcase(
     n_before == 0L & n_after == 0L, "No tracks",
     n_before > 0L & n_after == 0L, "No tracks after the event",
@@ -124,9 +125,77 @@ wfov_camera_compare <- function(wfov_dt, unit, event_time, days_before = 5, days
   )
 
   daily <- tr[, .(n = .N), by = .(date = as.Date(timestamp, tz = tz), camera)]
-  list(summary = summ[], daily = daily[], totals = totals[],
+  list(summary = summ[], daily = daily[], totals = totals[], omnibus = perm$omnibus,
        windows = list(from = t0, event = event_time, to = t1),
        n_cameras_before = uniqueN(tr[period == "before", camera]))
+}
+
+
+## Teste de PERMUTACAO Monte Carlo (em vez de Fisher/qui-quadrado).
+## Hipotese nula: a distribuicao dos tracks pelas cameras nao depende de a janela
+## ser antes ou depois da falha. Para respeitar a dependencia temporal (varios
+## tracks do mesmo bando/periodo), permutam-se BLOCOS de tempo (block_hours h,
+## alinhados com a data da falha, incluindo blocos sem tracks) e nao tracks
+## individuais: os rotulos "antes/depois" sao reatribuidos aleatoriamente aos
+## blocos, mantendo o n.o de blocos de cada janela. Em cada permutacao calcula-se,
+## por camara, a variacao da % (depois - antes).
+##   p_camera:   proporcao de permutacoes com |variacao| >= observada ((k+1)/(N+1))
+##   p_adjusted: igual, mas comparando com o MAXIMO |variacao| entre as camaras em
+##               cada permutacao (controla comparacoes multiplas entre as cameras)
+##   omnibus:    p-value global = p ajustado da camara com maior |variacao| (a soma das
+##               |variacoes| dilui-se pelo ruido das restantes cameras e perde poder)
+## block_hours = NULL/NA/<=0: blocos de 1 track (equivale a permutar tracks).
+## Resultado depende de n_perm (erro Monte Carlo ~ sqrt(p(1-p)/N)) e da seed.
+wfov_permutation_test <- function(tr, cams, event_time, days_before, days_after, n_perm = 10000L, block_hours = 6, seed = 1L) {
+  nc <- length(cams)
+  na_out <- list(p_camera = rep(NA_real_, nc), p_adjusted = rep(NA_real_, nc), omnibus = NA_real_)
+  if (nc == 0L || nrow(tr) == 0L || n_perm < 1L) return(na_out)
+
+  per_side <- function(d) if (is.null(block_hours) || is.na(block_hours) || block_hours <= 0) NA_integer_ else as.integer(ceiling(d * 24 / block_hours))
+  nb_b <- per_side(days_before); nb_a <- per_side(days_after)
+  if (is.na(nb_b)) {
+    # blocos de 1 track: cada linha e' um bloco
+    blk <- seq_len(nrow(tr)); n_blk <- nrow(tr)
+    n_before_blk <- tr[, sum(timestamp < event_time)]
+  } else {
+    h <- as.numeric(difftime(tr$timestamp, event_time, units = "hours")) / block_hours
+    blk <- floor(h) + nb_b + 1L                      # 1 .. nb_b + nb_a
+    blk <- pmin(pmax(blk, 1L), nb_b + nb_a)
+    n_blk <- nb_b + nb_a; n_before_blk <- nb_b
+  }
+  # matriz blocos x cameras com a contagem de tracks
+  B <- matrix(0L, n_blk, nc, dimnames = list(NULL, cams))
+  ci <- match(tr$camera, cams)
+  for (k in seq_len(nrow(tr))) B[blk[k], ci[k]] <- B[blk[k], ci[k]] + 1L
+  is_before <- if (is.na(nb_b)) {
+    # blocos de 1 track: o rotulo observado vem do instante de cada track
+    tr$timestamp < event_time
+  } else seq_len(n_blk) <= nb_b
+  stat <- function(sel) {
+    cb <- colSums(B[sel, , drop = FALSE]); ca <- colSums(B[!sel, , drop = FALSE])
+    nb <- sum(cb); na <- sum(ca)
+    if (nb == 0 || na == 0) return(rep(NA_real_, nc))
+    100 * ca / na - 100 * cb / nb
+  }
+  obs <- stat(is_before)
+  if (anyNA(obs)) return(na_out)
+
+  if (!is.null(seed)) { old <- if (exists(".Random.seed", envir = globalenv())) get(".Random.seed", envir = globalenv()) else NULL; set.seed(seed) }
+  perm <- matrix(NA_real_, n_perm, nc)
+  for (i in seq_len(n_perm)) {
+    sel <- logical(n_blk); sel[sample.int(n_blk, n_before_blk)] <- TRUE
+    perm[i, ] <- stat(sel)
+  }
+  if (!is.null(seed) && !is.null(old)) assign(".Random.seed", old, envir = globalenv())
+  perm <- perm[stats::complete.cases(perm), , drop = FALSE]
+  N <- nrow(perm)
+  if (N == 0L) return(na_out)
+  ap <- abs(perm); ao <- abs(obs)
+  p_cam <- vapply(seq_len(nc), function(j) (sum(ap[, j] >= ao[j] - 1e-12) + 1) / (N + 1), numeric(1))
+  mx <- apply(ap, 1L, max)
+  p_adj <- vapply(seq_len(nc), function(j) (sum(mx >= ao[j] - 1e-12) + 1) / (N + 1), numeric(1))
+  om <- min(p_adj)
+  list(p_camera = p_cam, p_adjusted = p_adj, omnibus = om, n_perm_used = N)
 }
 
 ## Contexto da mesma janela com as outras fontes: heartbeats por dia da

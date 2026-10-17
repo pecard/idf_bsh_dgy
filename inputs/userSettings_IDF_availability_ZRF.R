@@ -123,3 +123,8 @@ idf_malfunctions <- data.frame(
   turbine = "T94", days_before = 5, days_after = 5,
   stringsAsFactors = FALSE
 )
+
+## Teste de permutacao Monte Carlo das cameras WFOV: n.o de permutacoes e
+## tamanho (h) dos blocos de tempo que se permutam (0/NA = permutar tracks).
+wfov_n_perm      <- 10000
+wfov_block_hours <- 6
