@@ -53,4 +53,20 @@ sel <- select_benchmark_units("GW89-58", ev, 5, 5, idf_test, hb_t, 30, k = 2)
 stopifnot(identical(sel$unit, c("GW1-59", "GW1-60")), sel$dist_m[1] == 1000)
 sel2 <- select_benchmark_units("GW89-58", ev, 5, 5, idf_test, hb_t, 30, k = 5, exclude_units = "GW1-59", max_dist_m = 5000)
 stopifnot(identical(sel2$unit, "GW1-60"))
+# periodo adicional (placebo): pre ~ antes (estavel), depois sem camara 3 e menos volume
+set.seed(9)
+mk2 <- function(n, from, cams, prefix) data.table(track_id = paste0(prefix, seq_len(n)), timestamp = from + runif(n, 0, 5 * 86400), idf = 58L, camera = sample(cams, n, TRUE))
+w3 <- rbind(mk2(150, ev - 10 * 86400, as.character(1:8), "p"), mk2(160, ev - 5 * 86400, as.character(1:8), "b"), mk2(90, ev, as.character(c(1:2, 4:8)), "a"))
+r3 <- wfov_camera_compare(w3, "GW89-58", ev, 5, 5, n_perm = 2000, days_pre = 5)
+s3 <- r3$summary
+stopifnot(isTRUE(r3$has_pre), nrow(r3$totals) == 3L, r3$totals$period[1] == "Earlier period",
+          sum(s3$n_pre) == 150L, s3[camera == "3", p_adj] < 0.05, s3[camera == "3", exceeds_placebo],
+          s3[camera == "3", p_adj_placebo] > 0.05, s3[camera == "3", p_adj_pooled] < 0.05,
+          r3$omnibus_placebo > 0.05, r3$totals$p_vs_previous[2] > 0.05, r3$totals$p_vs_previous[3] < 0.05,
+          abs(r3$totals$ratio_vs_previous[3] - 90 / 160) < 0.01)
+p3 <- plot_wfov_share(r3, "t"); ggsave(tempfile(fileext = ".png"), p3$p, width = 6, height = 3)
+ggsave(tempfile(fileext = ".png"), plot_wfov_daily(r3, "t")$p, width = 6, height = 3)
+hb2 <- data.table(idf = "GW89-58", timestamp = ev - 8 * 86400 + seq(0, 12.9 * 86400, by = 1800))
+cx3 <- wfov_event_context("GW89-58", ev, 5, 5, hb2, data.table(turbine = "T94", start = ev - 86400), data.table(turbinelabel = "T94", datetime = ev - 3600), "T94", days_pre = 2)
+stopifnot("earlier" %in% names(cx3), abs(cx3$earlier[1] - 48) < 1, is.na(wfov_event_context("GW89-58", ev, 5, 5, hb, data.table(turbine = "T94", start = ev), data.table(turbinelabel = "T94", datetime = ev), "T94", days_pre = 2)$earlier[1]))
 cat("test_wfov_camera OK\n")

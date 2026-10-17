@@ -116,11 +116,12 @@ calendar_date_breaks      <- "2 days"
 ## `ini`-`end`). Outros tipos (PTU, estereo, ...) ficam listados, sem avaliacao.
 ## Colunas: unit (codigo completo), datetime (hora local; se so' se conhece o
 ## dia, assumir uma hora), type (texto da equipa IDF), turbine (opcional: turbinas
-## para curtailments/SCADA do contexto), days_before / days_after.
+## para curtailments/SCADA do contexto), days_before / days_after, days_pre.
 ## NULL ou sem linhas = sem esta secao.
 idf_malfunctions <- data.frame(
   unit = "GW89-58", datetime = "2026-05-27 02:30:00", type = "WFOV camera module malfunction",
-  turbine = "T94", days_before = 5, days_after = 5,
+  turbine = "T94", days_before = 7, days_after = 7,
+  days_pre = 7,                      # periodo adicional ANTES do "antes", mesma unidade (0 = sem); serve de referencia da variacao natural
   benchmark_units = NA_character_,   # unidades de referencia separadas por virgula; NA = escolha automatica (abaixo)
   stringsAsFactors = FALSE
 )

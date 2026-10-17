@@ -250,6 +250,8 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   mf <- as.data.frame(idf_malfunctions, stringsAsFactors = FALSE)
   if (!"turbine" %in% names(mf)) mf$turbine <- NA_character_
   if (!"days_before" %in% names(mf)) mf$days_before <- 5
+  if (!"days_pre" %in% names(mf)) mf$days_pre <- 0
+  mf$days_pre[is.na(mf$days_pre)] <- 0
   if (!"days_after" %in% names(mf)) mf$days_after <- 5
   if (!exists("wfov_n_perm")) wfov_n_perm <- 10000L
   if (!exists("wfov_block_hours")) wfov_block_hours <- 6
@@ -277,24 +279,24 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
     wfov_dt <- tryCatch(
       read_track_wfov(databases_dirs, trackreport_pattern, proj_timezone, farm_pattern,
                       units = c(wf$unit, unlist(lapply(bm_refs, function(r) r$unit))),
-                      from = min(wf$event_time - wf$days_before * 86400), to = max(wf$event_time + wf$days_after * 86400)),
+                      from = min(wf$event_time - (wf$days_before + wf$days_pre) * 86400), to = max(wf$event_time + wf$days_after * 86400)),
       error = function(e) { message("Leitura WFOV_camera falhou: ", conditionMessage(e)); NULL })
   }
   wfov_range <- if (is.null(wfov_dt)) NULL else attr(wfov_dt, "all_range")
   no_col <- if (is.null(wfov_dt)) character(0) else attr(wfov_dt, "files_without_column")
 
   wfov_results <- lapply(seq_len(nrow(wf)), function(i) {
-    ev <- wf$event_time[i]; d_b <- wf$days_before[i]; d_a <- wf$days_after[i]
+    ev <- wf$event_time[i]; d_b <- wf$days_before[i]; d_a <- wf$days_after[i]; d_p <- wf$days_pre[i]
     label <- sprintf("%s -- %s", wf$unit[i], format(ev, "%Y-%m-%d %H:%M"))
     refs <- bm_refs[[i]]
     bm <- if (is.null(wfov_dt) || nrow(refs) == 0L) NULL else tryCatch(
       wfov_benchmark(wfov_dt, wf$unit[i], refs$unit, ev, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours),
       error = function(e) { message("Benchmark WFOV falhou: ", conditionMessage(e)); NULL })
     ref_labels <- stats::setNames(refs$unit, as.character(refs$unit_number))
-    res <- if (is.null(wfov_dt)) NULL else wfov_camera_compare(wfov_dt, wf$unit[i], ev, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours)
+    res <- if (is.null(wfov_dt)) NULL else wfov_camera_compare(wfov_dt, wf$unit[i], ev, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours, days_pre = d_p)
     tb <- if (!is.na(wf$turbine[i]) && nzchar(wf$turbine[i])) trimws(strsplit(wf$turbine[i], ",")[[1]]) else NULL
-    ctx <- wfov_event_context(wf$unit[i], ev, d_b, d_a, heartb_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, tb)
-    covered <- !is.null(wfov_range) && wfov_range[1L] <= ev - d_b * 86400 && wfov_range[2L] >= ev + d_a * 86400
+    ctx <- wfov_event_context(wf$unit[i], ev, d_b, d_a, heartb_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, tb, days_pre = d_p)
+    covered <- !is.null(wfov_range) && wfov_range[1L] <= ev - (d_b + d_p) * 86400 && wfov_range[2L] >= ev + d_a * 86400
     note <- if (is.null(wfov_dt) || nrow(wfov_dt) == 0L) {
       if (length(no_col) > 0L) "The TrackReport files read have no WFOV camera column." else "No TrackReport data with a WFOV camera were read for this unit and window."
     } else if (!covered) {
@@ -302,7 +304,8 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
               format(wfov_range[1L], "%Y-%m-%d"), format(wfov_range[2L], "%Y-%m-%d"))
     } else ""
     list(label = label, omnibus = if (is.null(res)) NA_real_ else res$omnibus, unit = wf$unit[i], event_time = format(ev, "%Y-%m-%d %H:%M"), type = wf$type[i],
-         days_before = d_b, days_after = d_a, summary = if (is.null(res)) NULL else res$summary, totals = if (is.null(res)) NULL else res$totals,
+         days_before = d_b, days_after = d_a, days_pre = d_p, has_pre = !is.null(res) && isTRUE(res$has_pre),
+         omnibus_placebo = if (is.null(res)) NULL else res$omnibus_placebo, omnibus_pooled = if (is.null(res)) NULL else res$omnibus_pooled, summary = if (is.null(res)) NULL else res$summary, totals = if (is.null(res)) NULL else res$totals,
          context = ctx, note = note,
          benchmark = if (is.null(bm)) NULL else list(
            refs = merge(as.data.frame(bm$refs), as.data.frame(refs)[, c("unit_number", "unit", "dist_m", "completeness")], by = "unit_number", sort = FALSE),
