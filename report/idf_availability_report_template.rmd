@@ -39,6 +39,8 @@ params:
   calendar_figures: !r NULL
   xlsx_name: ""
   data_sources: !r NULL
+  malfunction_events: !r NULL
+  wfov_results: !r NULL
   timezone_name: ""
 ---
 
@@ -261,6 +263,61 @@ if (is.null(figs) || length(figs) == 0L) {
 }
 ```
 
+# Malfunctions reported by the IDF team
+
+```{r malf-intro, results='asis'}
+x <- params$malfunction_events
+if (is.null(x) || nrow(x) == 0L) {
+  cat("No malfunctions reported by the IDF team were provided for this report.\n\n")
+} else {
+  cat("The IDF team reported the malfunctions below. They are not directly available in, or computable from, the portal data (heartbeats, SCADA, curtailments). For WFOV camera malfunctions, the tracks recorded by the unit are compared before and after the reported date; the other types are listed without assessment.\n\n")
+  gap()
+  show_table(as.data.frame(x), max_col_width_cm = 5)
+}
+```
+
+```{r wfov-method, results='asis'}
+if (length(params$wfov_results) > 0L) {
+  cat("\n\n**WFOV camera pattern.** The WFOV module is the set of eight monocular cameras that make the first detection of objects in the visible space; the objects are then followed by the binocular stereo camera. Every track in the TrackReport records the WFOV camera that captured it. For each reported WFOV malfunction, the share of the tracks of the unit captured by each camera is compared between the window before and the window after the reported date and time. A camera that stopped capturing objects shows as a share that falls to, or close to, zero. The windows are counted from the reported date and time, each track is counted once per camera (at its first record) and p-values are Fisher exact tests of one camera against all the others, before versus after; they are descriptive, are not corrected for multiple comparisons and depend on the number of tracks in each window. The reported date may be earlier than the date of the record, and a change in the bird traffic of the period alone can change the shares. The comparison complements, and does not replace, the heartbeat, SCADA and curtailment evidence in the previous sections.\n\n")
+}
+```
+
+```{r wfov-events, results='asis'}
+for (r in params$wfov_results) {
+  cat(sprintf("\n\n## %s -- %s\n\n", r$label, r$type))
+  cat(sprintf("Reported date and time: %s. Windows: %s days before and %s days after.\n\n", r$event_time, r$days_before, r$days_after))
+  if (nzchar(r$note)) cat(r$note, "\n\n")
+  x <- r$totals
+  if (!is.null(x) && nrow(x) > 0L) {
+    gap()
+    d <- data.frame(Window = x$period, From = format(x$from, "%Y-%m-%d %H:%M"), To = format(x$to, "%Y-%m-%d %H:%M"),
+                    `Tracks (n)` = x$tracks, `Tracks per day` = sprintf("%.1f", x$tracks_per_day),
+                    `Active cameras (n)` = x$cameras_active, check.names = FALSE)
+    show_table(d, max_col_width_cm = 4)
+  }
+  x <- r$summary
+  if (!is.null(x) && nrow(x) > 0L) {
+    gap()
+    d <- data.frame(Camera = x$camera, `Before (n)` = x$n_before, `Before (%)` = fmt_pct(x$pct_before),
+                    `After (n)` = x$n_after, `After (%)` = fmt_pct(x$pct_after),
+                    `Change (pp)` = ifelse(is.na(x$delta_pp), "-", sprintf("%+.1f", x$delta_pp)),
+                    `p-value` = ifelse(is.na(x$p_value), "-", ifelse(x$p_value < 0.001, "<0.001", sprintf("%.3f", x$p_value))),
+                    Status = x$status, check.names = FALSE)
+    show_table(d, max_col_width_cm = 4, font_size = 8)
+    if (!is.null(r$fig_share)) { gap(); show_plot(r$fig_share) }
+    if (!is.null(r$fig_daily)) { gap(); show_plot(r$fig_daily) }
+  } else if (!nzchar(r$note)) cat("No tracks of this unit were recorded in the comparison windows.\n\n")
+  x <- r$context
+  if (!is.null(x) && nrow(x) > 0L) {
+    cat("\n\nOther evidence in the same windows (rates per day covered by each dataset; \"Not available\" when the dataset does not cover the window):\n\n")
+    gap()
+    d <- data.frame(Metric = x$metric, Before = fmt_pct(x$before), After = fmt_pct(x$after),
+                    `Change (%)` = ifelse(is.na(x$change_pct), "-", sprintf("%+.1f", x$change_pct)), check.names = FALSE)
+    show_table(d, max_col_width_cm = 8)
+  }
+}
+```
+
 # Alerts
 
 ## Persistent failure
@@ -334,6 +391,11 @@ if (!is.null(x) && nrow(x) > 0L) {
 
 - Only curtailments of the species of interest (`r pv(params$species_of_interest, "all species")`) that started inside the analysed period are counted, and only for the units that contribute to the turbine (primary and secondary). Curtailments triggered by other units, or with no track available, are counted apart and are not compared with the rest of the wind farm.
 - The unit of a curtailment is the unit that recorded the track point closest in time to the start of the order. Tracks are read only for the curtailments of the period.
+
+**Reported malfunctions (WFOV cameras)**
+
+- Malfunctions come from the list supplied by the IDF team (unit, date and time, type) and are not derived from the portal data. Only WFOV malfunctions are assessed, through the WFOV camera recorded in each track of the unit: the share of tracks per camera before and after the reported date and time, within the windows stated for each event. The tracks are those of the TrackReport files provided, which must cover both windows; when they do not, the comparison is stated as partial.
+- The comparison is indirect evidence: it depends on the birds that crossed the area in each window, on the number of tracks (few tracks give unstable shares) and on the accuracy of the reported date.
 
 **Alerts**
 

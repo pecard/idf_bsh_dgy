@@ -104,3 +104,22 @@ species_of_interest <- "Egyptian-Vulture"
 ## Calendarios: n.o de unidades por figura e espacamento das datas no eixo
 calendar_units_per_figure <- 6
 calendar_date_breaks      <- "2 days"
+
+##
+## 6. Falhas reportadas pela equipa IDF (opcional) ----
+##
+## Falhas que nao se obtem dos dados do portal. Para as do tipo WFOV compara-se,
+## na unidade avariada, a % de tracks capturados por cada camara WFOV
+## (coluna WFOV_camera do TrackReport) nas janelas ANTES e DEPOIS da data da
+## falha, e mostra-se junto com heartbeats, curtailments e SCADA do mesmo
+## periodo. Os TrackReport tem de cobrir as janelas (mesmo fora do periodo
+## `ini`-`end`). Outros tipos (PTU, estereo, ...) ficam listados, sem avaliacao.
+## Colunas: unit (codigo completo), datetime (hora local; se so' se conhece o
+## dia, assumir uma hora), type (texto da equipa IDF), turbine (opcional: turbinas
+## para curtailments/SCADA do contexto), days_before / days_after.
+## NULL ou sem linhas = sem esta secao.
+idf_malfunctions <- data.frame(
+  unit = "GW89-58", datetime = "2026-05-27 02:30:00", type = "WFOV camera module malfunction",
+  turbine = "T94", days_before = 5, days_after = 5,
+  stringsAsFactors = FALSE
+)

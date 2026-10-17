@@ -238,6 +238,61 @@ calendar_figures <- idf_calendar_figures(
   turbine_label = turbines_text
 )
 
+
+##
+## 3b. Falhas reportadas pela equipa IDF: padrao das cameras WFOV antes/depois ----
+##
+
+malfunction_events_df <- NULL
+wfov_results <- NULL
+if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunctions) > 0L) {
+  source("R/idf_malfunction_wfov.R")
+  mf <- as.data.frame(idf_malfunctions, stringsAsFactors = FALSE)
+  if (!"turbine" %in% names(mf)) mf$turbine <- NA_character_
+  if (!"days_before" %in% names(mf)) mf$days_before <- 5
+  if (!"days_after" %in% names(mf)) mf$days_after <- 5
+  mf$event_time <- as.POSIXct(as.character(mf$datetime), tz = proj_timezone)
+  mf$is_wfov <- grepl("WFOV", mf$type, ignore.case = TRUE)
+  wf <- mf[mf$is_wfov, , drop = FALSE]
+
+  wfov_dt <- NULL
+  if (nrow(wf) > 0L) {
+    wfov_dt <- tryCatch(
+      read_track_wfov(databases_dirs, trackreport_pattern, proj_timezone, farm_pattern, units = wf$unit,
+                      from = min(wf$event_time - wf$days_before * 86400), to = max(wf$event_time + wf$days_after * 86400)),
+      error = function(e) { message("Leitura WFOV_camera falhou: ", conditionMessage(e)); NULL })
+  }
+  wfov_range <- if (is.null(wfov_dt)) NULL else attr(wfov_dt, "all_range")
+  no_col <- if (is.null(wfov_dt)) character(0) else attr(wfov_dt, "files_without_column")
+
+  wfov_results <- lapply(seq_len(nrow(wf)), function(i) {
+    ev <- wf$event_time[i]; d_b <- wf$days_before[i]; d_a <- wf$days_after[i]
+    label <- sprintf("%s -- %s", wf$unit[i], format(ev, "%Y-%m-%d %H:%M"))
+    res <- if (is.null(wfov_dt)) NULL else wfov_camera_compare(wfov_dt, wf$unit[i], ev, d_b, d_a)
+    tb <- if (!is.na(wf$turbine[i]) && nzchar(wf$turbine[i])) trimws(strsplit(wf$turbine[i], ",")[[1]]) else NULL
+    ctx <- wfov_event_context(wf$unit[i], ev, d_b, d_a, heartb_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, tb)
+    covered <- !is.null(wfov_range) && wfov_range[1L] <= ev - d_b * 86400 && wfov_range[2L] >= ev + d_a * 86400
+    note <- if (is.null(wfov_dt) || nrow(wfov_dt) == 0L) {
+      if (length(no_col) > 0L) "The TrackReport files read have no WFOV camera column." else "No TrackReport data with a WFOV camera were read for this unit and window."
+    } else if (!covered) {
+      sprintf("The TrackReport files cover %s to %s, which does not include the whole comparison window; the comparison is partial.",
+              format(wfov_range[1L], "%Y-%m-%d"), format(wfov_range[2L], "%Y-%m-%d"))
+    } else ""
+    list(label = label, unit = wf$unit[i], event_time = format(ev, "%Y-%m-%d %H:%M"), type = wf$type[i],
+         days_before = d_b, days_after = d_a, summary = if (is.null(res)) NULL else res$summary, totals = if (is.null(res)) NULL else res$totals,
+         context = ctx, note = note,
+         fig_share = if (is.null(res)) NULL else plot_wfov_share(res, label),
+         fig_daily = if (is.null(res)) NULL else plot_wfov_daily(res, label))
+  })
+
+  malfunction_events_df <- data.frame(
+    `IDF Unit` = mf$unit, `Reported date/time` = format(mf$event_time, "%Y-%m-%d %H:%M"), `Reported malfunction` = mf$type,
+    Assessment = ifelse(mf$is_wfov, "WFOV camera pattern before/after (this report)", "Not assessable from the portal data"),
+    check.names = FALSE
+  )
+  message(sprintf("Falhas reportadas: %d (%d WFOV avaliadas).", nrow(mf), nrow(wf)))
+}
+
 write_xlsx_tagged(
   list(
     Turbine_IDF_relation        = relation_table_dt,
@@ -251,6 +306,12 @@ write_xlsx_tagged(
     Offline_evidence_overall    = analysis$evidence$overall,
     Net_availability_overall    = analysis$net_overall,
     IDF_label_map               = idf_label_table(idf_display_map)
+  ) |> c(
+    if (!is.null(malfunction_events_df)) list(Reported_malfunctions = malfunction_events_df),
+    if (!is.null(wfov_results)) list(
+      WFOV_camera_before_after = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$summary)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$summary)), fill = TRUE),
+      WFOV_event_context = data.table::rbindlist(lapply(wfov_results, function(r) cbind(`IDF Unit` = r$unit, Event = r$event_time, r$context)), fill = TRUE)
+    )
   ),
   out_file("idf_availability", "xlsx")
 )
@@ -294,6 +355,8 @@ report_params <- list(
   alert_table = as.data.frame(alert_dt), turbine_alert_table = as.data.frame(turbine_alert_dt),
   net_overall = if (is.null(analysis$net_overall)) NULL else as.data.frame(analysis$net_overall),
   calendar_figures = calendar_figures,
+  malfunction_events = malfunction_events_df,
+  wfov_results = wfov_results,
   xlsx_name = out_name("idf_availability", "xlsx", avail_tag, run_date)
 )
 

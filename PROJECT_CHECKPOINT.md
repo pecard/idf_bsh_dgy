@@ -110,3 +110,9 @@ Ficheiros gerados em `/tmp/` (ex: relatório Word `build_report_en.js`, matriz d
 ### Methodology annex in availability, monthly and annual reports
 - New section "Methodology, Definitions and Data Notes" before "Annexes" in `report/idf_availability_report_template.rmd`, `report/monthly_report_template.rmd` and `report/report_template.rmd` (same structure as the incident report: data and period with per-dataset coverage table, availability/offline rules, curtailment response incl. search-window rationale, bird metrics, sample size).
 - New params `data_sources` and `timezone_name`, built by `build_data_sources_table()` (`R/methodology_notes.R`) in `IDF_monthly_report.R` and `IDF_analysis.R`; `run_idf_availability.R` builds its own table.
+
+### IDF availability: malfunctions reported by the IDF team (WFOV camera pattern)
+- `R/idf_malfunction_wfov.R`: `read_track_wfov()` (TrackId, DateTimeStamp, TowerNumber and the WFOV camera column, found by name, only the units/window requested), `wfov_camera_compare()` (tracks per camera before/after the reported date; share, change in pp, Fisher p-value per camera, status), `wfov_event_context()` (heartbeats, curtailments, SCADA rates before/after) and two plots.
+- Settings: `idf_malfunctions` data.frame in `inputs/userSettings_IDF_availability_ZRF.R` (unit, datetime, type, turbine, days_before, days_after). Only types containing "WFOV" are assessed; the others are listed as "Not assessable from the portal data".
+- Report section "Malfunctions reported by the IDF team" (before "Alerts"), annex bullet, xlsx sheets `Reported_malfunctions`, `WFOV_camera_before_after`, `WFOV_event_context`. Test: `tests/test_wfov_camera.R` (synthetic).
+- The column name in the TrackReport is matched case/separator-insensitive ("WFOV_camera"); not yet run on real files.
