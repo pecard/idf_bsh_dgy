@@ -251,6 +251,8 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   if (!"turbine" %in% names(mf)) mf$turbine <- NA_character_
   if (!"days_before" %in% names(mf)) mf$days_before <- 5
   if (!"days_after" %in% names(mf)) mf$days_after <- 5
+  if (!exists("wfov_n_perm")) wfov_n_perm <- 10000L
+  if (!exists("wfov_block_hours")) wfov_block_hours <- 6
   mf$event_time <- as.POSIXct(as.character(mf$datetime), tz = proj_timezone)
   mf$is_wfov <- grepl("WFOV", mf$type, ignore.case = TRUE)
   wf <- mf[mf$is_wfov, , drop = FALSE]
@@ -268,7 +270,7 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   wfov_results <- lapply(seq_len(nrow(wf)), function(i) {
     ev <- wf$event_time[i]; d_b <- wf$days_before[i]; d_a <- wf$days_after[i]
     label <- sprintf("%s -- %s", wf$unit[i], format(ev, "%Y-%m-%d %H:%M"))
-    res <- if (is.null(wfov_dt)) NULL else wfov_camera_compare(wfov_dt, wf$unit[i], ev, d_b, d_a)
+    res <- if (is.null(wfov_dt)) NULL else wfov_camera_compare(wfov_dt, wf$unit[i], ev, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours)
     tb <- if (!is.na(wf$turbine[i]) && nzchar(wf$turbine[i])) trimws(strsplit(wf$turbine[i], ",")[[1]]) else NULL
     ctx <- wfov_event_context(wf$unit[i], ev, d_b, d_a, heartb_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, tb)
     covered <- !is.null(wfov_range) && wfov_range[1L] <= ev - d_b * 86400 && wfov_range[2L] >= ev + d_a * 86400
@@ -278,7 +280,7 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
       sprintf("The TrackReport files cover %s to %s, which does not include the whole comparison window; the comparison is partial.",
               format(wfov_range[1L], "%Y-%m-%d"), format(wfov_range[2L], "%Y-%m-%d"))
     } else ""
-    list(label = label, unit = wf$unit[i], event_time = format(ev, "%Y-%m-%d %H:%M"), type = wf$type[i],
+    list(label = label, omnibus = if (is.null(res)) NA_real_ else res$omnibus, unit = wf$unit[i], event_time = format(ev, "%Y-%m-%d %H:%M"), type = wf$type[i],
          days_before = d_b, days_after = d_a, summary = if (is.null(res)) NULL else res$summary, totals = if (is.null(res)) NULL else res$totals,
          context = ctx, note = note,
          fig_share = if (is.null(res)) NULL else plot_wfov_share(res, label),
@@ -356,6 +358,7 @@ report_params <- list(
   net_overall = if (is.null(analysis$net_overall)) NULL else as.data.frame(analysis$net_overall),
   calendar_figures = calendar_figures,
   malfunction_events = malfunction_events_df,
+  wfov_n_perm = if (exists("wfov_n_perm")) wfov_n_perm else NULL, wfov_block_hours = if (exists("wfov_block_hours")) wfov_block_hours else NULL,
   wfov_results = wfov_results,
   xlsx_name = out_name("idf_availability", "xlsx", avail_tag, run_date)
 )
