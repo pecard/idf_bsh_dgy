@@ -295,5 +295,5 @@ fatality_incidents <- data.table::data.table(
   turbine       = "T23",
   species       = "Egyptian-Vulture",
   incident_date = as.Date("2026-06-03"),
-  days_before   = 15
+  days_before   = 30
 )
