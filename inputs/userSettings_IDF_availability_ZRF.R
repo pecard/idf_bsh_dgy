@@ -59,7 +59,7 @@ end <- as.POSIXct('2026-10-15 23:59:59', tz = proj_timezone)
 
 ## Turbinas a analisar (NULL = todas as turbinas do shapefile com pelo menos
 ## uma unidade IDF a cobri-las)
-turbines_of_interest <- c("T105")
+turbines_of_interest <- c("T94")
 
 ##
 ## 4. Relacao turbina <-> unidade IDF primaria/secundaria ----
@@ -119,8 +119,11 @@ calendar_date_breaks      <- "2 days"
 ## para curtailments/SCADA do contexto), days_before / days_after, days_pre.
 ## NULL ou sem linhas = sem esta secao.
 idf_malfunctions <- data.frame(
-  unit = "GW89-58", datetime = "2026-05-27 02:30:00", type = "WFOV camera module malfunction",
-  turbine = "T94", days_before = 7, days_after = 7,
+  unit = "GW89-58", datetime = "2026-05-27 02:30:00", 
+  type = "WFOV camera module malfunction",
+  turbine = "T94", 
+  days_before = 7, 
+  days_after = 7,
   days_pre = 7,                      # periodo adicional ANTES do "antes", mesma unidade (0 = sem); serve de referencia da variacao natural
   benchmark_units = NA_character_,   # unidades de referencia separadas por virgula; NA = escolha automatica (abaixo)
   stringsAsFactors = FALSE
