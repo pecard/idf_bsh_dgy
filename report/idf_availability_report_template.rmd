@@ -38,6 +38,8 @@ params:
   net_overall: !r NULL
   calendar_figures: !r NULL
   xlsx_name: ""
+  data_sources: !r NULL
+  timezone_name: ""
 ---
 
 ```{r setup, include=FALSE}
@@ -60,6 +62,8 @@ report_table <- function(x, max_col_width_cm = NULL, font_size = 9) {
   }
   ft
 }
+
+pv <- function(x, default = "not available") if (is.null(x) || length(x) == 0L || all(is.na(x)) || identical(x, "")) default else paste(x, collapse = ", ")
 
 # Numeros: 1 casa decimal; NA -> "Not available" (nunca 0)
 fmt_pct <- function(v) ifelse(is.na(v), "Not available", sprintf("%.1f", v))
@@ -289,6 +293,57 @@ if (!is.null(x) && nrow(x) > 0L) {
   show_table(data.frame(Turbine = x$turbine, `Protecting IDF units` = x$units, `Units (n)` = x$n_units, check.names = FALSE), max_col_width_cm = 8)
 } else cat("None.\n\n")
 ```
+
+# Methodology, Definitions and Data Notes
+
+This section states how each figure of the report is obtained, so that every number can be traced and read in context. It is descriptive: it reports what the data show and does not establish the cause of any failure.
+
+**Data and period**
+
+- All times are local time (`r pv(params$timezone_name)`). The analysed period is `r pv(params$period_start)` to `r pv(params$period_end)`, in calendar days of that time zone.
+- Duplicate rows in the raw files are removed on loading.
+- The period actually covered by each dataset, as available when the report was produced, is:
+
+```{r annex-data-sources, results='asis'}
+x <- params$data_sources
+gap()
+if (!is.null(x) && nrow(x) > 0L) {
+  x <- as.data.frame(x); x[is.na(x)] <- "-"
+  show_table(x, max_col_width_cm = 6)
+} else cat("The data coverage table is not available for this run.\n\n")
+```
+
+- Data that are not part of the period retrieved are treated as unavailable, not as zero. Heartbeat files cover all IDF units of the wind farm for the period retrieved.
+- Figures are rounded for display (1 decimal for percentages); percentages may not add up to exactly 100.
+
+**Turbine and IDF unit relation**
+
+- The detection buffer of each IDF unit and of each turbine has a radius of `r pv(params$idf_op_detection_range)` m. "Coverage (%)" is the part of the area of the turbine buffer that is inside the buffer of the IDF unit.
+- Units are ranked by decreasing coverage: the largest is the primary unit of the turbine, then secondary, tertiary, 4th, 5th and so on, unless a manual turbine-IDF matrix defines the relation (source: `r pv(params$relation_sources)`). The ranking is geometric: it does not use bird detections and ignores terrain.
+- "Coverage without the primary IDF unit" is the area of the circle of radius `r pv(params$turbine_area_radius_m)` m around the turbine covered by the union of all non-primary unit buffers, divided by the area of that circle.
+
+**Offline time**
+
+- A unit sends a heartbeat about every `r pv(params$heartbeat_interval_min)` minutes when operational. A gap of at least `r pv(params$heartbeat_offline_gap_min)` minutes without a heartbeat is an offline period.
+- Only daylight hours (sunrise to sunset, computed from the project coordinates) are evaluated; night time is not counted as unavailability.
+- The time between the start of the period and the first heartbeat of a unit, and between its last heartbeat and the end of the period, counts as offline like any other gap, within the period covered by the heartbeat data of all units. A unit without any heartbeat in a period covered by the data is 100% offline; a unit that does not appear in the heartbeat data at all is "Not evaluated".
+- Net / confirmed offline time is the raw offline time minus the time classified as communication failure. "No evidence" time is not subtracted: it is included in the net figure and shown apart because it needs manual review.
+- The evidence for each offline interval is the one listed in "Scope and method". Curtailments count as evidence only for the unit that recorded the track that triggered them; curtailments whose track is not in the track data are not evidence for any unit, so communication-failure time is a lower bound. SCADA readings are matched to the turbine, not to a unit.
+
+**Curtailments per IDF unit**
+
+- Only curtailments of the species of interest (`r pv(params$species_of_interest, "all species")`) that started inside the analysed period are counted, and only for the units that contribute to the turbine (primary and secondary). Curtailments triggered by other units, or with no track available, are counted apart and are not compared with the rest of the wind farm.
+- The unit of a curtailment is the unit that recorded the track point closest in time to the start of the order. Tracks are read only for the curtailments of the period.
+
+**Alerts**
+
+- A unit is in the persistent-failure alert when its `r if (identical(params$persistent_failure_basis, "net")) "net" else "raw"` offline time exceeds `r pv(params$persistent_failure_threshold_pct)`% of the daylight time of the period, or when it has no heartbeat records. A turbine is listed when every unit that protects it is in the alert.
+- Offline time depends on the period chosen: a short period amplifies the weight of a single gap, and the contractual availability should be read for the contractual reference period.
+
+**Sample size and interpretation**
+
+- Counts of curtailments per unit are small: always read a percentage together with the count next to it.
+- Every result is conditional on the data retrieved (period, units and datasets above). The report is generated automatically from those data, with the code version stated at the top of the report.
 
 ```{r annex, results='asis'}
 if (nzchar(params$xlsx_name)) cat(sprintf("\n\n&nbsp;\n\n*The full tables are available in the accompanying workbook: `%s`.*\n", params$xlsx_name))

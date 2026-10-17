@@ -260,7 +260,21 @@ write_xlsx_tagged(
 ## 4. Relatorio Word ----
 ##
 
+## Cobertura temporal de cada dataset (anexo de metodologia). Tracks: so' os lidos para atribuicao.
+fmt_dt <- function(x) if (length(x) == 0L || all(is.na(x))) NA_character_ else format(x, "%Y-%m-%d %H:%M")
+data_sources_df <- data.frame(
+  Dataset = c("Heartbeats", "Curtailments", "SCADA", "Tracks (only those that triggered curtailments)"),
+  First = c(fmt_dt(min(heartb_dt_unfilt$timestamp)), fmt_dt(min(curtl_dt_unfilt$start)), fmt_dt(min(scada_dt_unfilt$datetime)),
+            if (is.null(track_dt)) NA_character_ else fmt_dt(min(track_dt$timestamp))),
+  Last = c(fmt_dt(max(heartb_dt_unfilt$timestamp)), fmt_dt(max(curtl_dt_unfilt$start)), fmt_dt(max(scada_dt_unfilt$datetime)),
+           if (is.null(track_dt)) NA_character_ else fmt_dt(max(track_dt$timestamp))),
+  Rows = c(format(nrow(heartb_dt_unfilt), big.mark = ","), format(nrow(curtl_dt_unfilt), big.mark = ","), format(nrow(scada_dt_unfilt), big.mark = ","),
+           if (is.null(track_dt)) "not read" else format(nrow(track_dt), big.mark = ",")),
+  check.names = FALSE
+)
+
 report_params <- list(
+  data_sources = data_sources_df, timezone_name = proj_timezone,
   title = paste("IDF Availability Report -", project_ref, "-", turbines_text),
   project_ref = project_ref, farm_code = farm_code,
   period_start = as.character(period_from_date), period_end = as.character(period_to_date),
