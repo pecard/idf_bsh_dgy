@@ -257,10 +257,26 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   mf$is_wfov <- grepl("WFOV", mf$type, ignore.case = TRUE)
   wf <- mf[mf$is_wfov, , drop = FALSE]
 
+  ## Unidades de referencia (benchmark): coluna benchmark_units (separadas por virgula)
+  ## ou, se vazia, as wfov_benchmark_k mais proximas com heartbeats completos na janela
+  if (!exists("wfov_benchmark_k")) wfov_benchmark_k <- 3L
+  if (!exists("wfov_benchmark_max_dist_m")) wfov_benchmark_max_dist_m <- Inf
+  if (!exists("wfov_benchmark_min_completeness")) wfov_benchmark_min_completeness <- 0.9
+  if (!"benchmark_units" %in% names(wf)) wf$benchmark_units <- NA_character_
+  bm_refs <- lapply(seq_len(nrow(wf)), function(i) {
+    others <- mf$unit[!(mf$unit == wf$unit[i]) & abs(as.numeric(difftime(mf$event_time, wf$event_time[i], units = "days"))) <= wf$days_before[i] + wf$days_after[i]]
+    man <- if (!is.na(wf$benchmark_units[i]) && nzchar(wf$benchmark_units[i])) trimws(strsplit(wf$benchmark_units[i], ",")[[1]]) else NULL
+    if (!is.null(man)) data.table::data.table(unit_number = idf_unit_number(man), unit = man, dist_m = NA_real_, completeness = NA_real_)
+    else select_benchmark_units(wf$unit[i], wf$event_time[i], wf$days_before[i], wf$days_after[i], idf, heartb_dt_unfilt,
+                                interval_min = heartbeat_interval_min, k = wfov_benchmark_k, max_dist_m = wfov_benchmark_max_dist_m,
+                                min_completeness = wfov_benchmark_min_completeness, exclude_units = others)
+  })
+
   wfov_dt <- NULL
   if (nrow(wf) > 0L) {
     wfov_dt <- tryCatch(
-      read_track_wfov(databases_dirs, trackreport_pattern, proj_timezone, farm_pattern, units = wf$unit,
+      read_track_wfov(databases_dirs, trackreport_pattern, proj_timezone, farm_pattern,
+                      units = c(wf$unit, unlist(lapply(bm_refs, function(r) r$unit))),
                       from = min(wf$event_time - wf$days_before * 86400), to = max(wf$event_time + wf$days_after * 86400)),
       error = function(e) { message("Leitura WFOV_camera falhou: ", conditionMessage(e)); NULL })
   }
@@ -270,6 +286,11 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   wfov_results <- lapply(seq_len(nrow(wf)), function(i) {
     ev <- wf$event_time[i]; d_b <- wf$days_before[i]; d_a <- wf$days_after[i]
     label <- sprintf("%s -- %s", wf$unit[i], format(ev, "%Y-%m-%d %H:%M"))
+    refs <- bm_refs[[i]]
+    bm <- if (is.null(wfov_dt) || nrow(refs) == 0L) NULL else tryCatch(
+      wfov_benchmark(wfov_dt, wf$unit[i], refs$unit, ev, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours),
+      error = function(e) { message("Benchmark WFOV falhou: ", conditionMessage(e)); NULL })
+    ref_labels <- stats::setNames(refs$unit, as.character(refs$unit_number))
     res <- if (is.null(wfov_dt)) NULL else wfov_camera_compare(wfov_dt, wf$unit[i], ev, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours)
     tb <- if (!is.na(wf$turbine[i]) && nzchar(wf$turbine[i])) trimws(strsplit(wf$turbine[i], ",")[[1]]) else NULL
     ctx <- wfov_event_context(wf$unit[i], ev, d_b, d_a, heartb_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, tb)
@@ -283,6 +304,11 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
     list(label = label, omnibus = if (is.null(res)) NA_real_ else res$omnibus, unit = wf$unit[i], event_time = format(ev, "%Y-%m-%d %H:%M"), type = wf$type[i],
          days_before = d_b, days_after = d_a, summary = if (is.null(res)) NULL else res$summary, totals = if (is.null(res)) NULL else res$totals,
          context = ctx, note = note,
+         benchmark = if (is.null(bm)) NULL else list(
+           refs = merge(as.data.frame(bm$refs), as.data.frame(refs)[, c("unit_number", "unit", "dist_m", "completeness")], by = "unit_number", sort = FALSE),
+           total = as.data.frame(bm$total), by_camera = as.data.frame(bm$by_camera), manual = !is.na(wf$benchmark_units[i]) && nzchar(wf$benchmark_units[i])),
+         fig_benchmark = if (is.null(bm)) NULL else plot_wfov_benchmark(bm, wf$unit[i], ref_labels, label),
+         n_benchmark_units = nrow(refs),
          fig_share = if (is.null(res)) NULL else plot_wfov_share(res, label),
          fig_daily = if (is.null(res)) NULL else plot_wfov_daily(res, label))
   })
@@ -312,6 +338,9 @@ write_xlsx_tagged(
     if (!is.null(malfunction_events_df)) list(Reported_malfunctions = malfunction_events_df),
     if (!is.null(wfov_results)) list(
       WFOV_camera_before_after = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$summary)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$summary)), fill = TRUE),
+      WFOV_benchmark_units = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$benchmark)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$benchmark$refs)), fill = TRUE),
+      WFOV_benchmark_total = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$benchmark)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$benchmark$total)), fill = TRUE),
+      WFOV_benchmark_camera = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$benchmark)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$benchmark$by_camera)), fill = TRUE),
       WFOV_event_context = data.table::rbindlist(lapply(wfov_results, function(r) cbind(`IDF Unit` = r$unit, Event = r$event_time, r$context)), fill = TRUE)
     )
   ),
@@ -358,7 +387,7 @@ report_params <- list(
   net_overall = if (is.null(analysis$net_overall)) NULL else as.data.frame(analysis$net_overall),
   calendar_figures = calendar_figures,
   malfunction_events = malfunction_events_df,
-  wfov_n_perm = if (exists("wfov_n_perm")) wfov_n_perm else NULL, wfov_block_hours = if (exists("wfov_block_hours")) wfov_block_hours else NULL,
+  wfov_n_perm = if (exists("wfov_n_perm")) wfov_n_perm else NULL, wfov_benchmark_min_completeness = if (exists("wfov_benchmark_min_completeness")) wfov_benchmark_min_completeness else 0.9, wfov_block_hours = if (exists("wfov_block_hours")) wfov_block_hours else NULL,
   wfov_results = wfov_results,
   xlsx_name = out_name("idf_availability", "xlsx", avail_tag, run_date)
 )

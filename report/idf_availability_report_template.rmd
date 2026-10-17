@@ -41,6 +41,7 @@ params:
   data_sources: !r NULL
   malfunction_events: !r NULL
   wfov_n_perm: !r NULL
+  wfov_benchmark_min_completeness: !r NULL
   wfov_block_hours: !r NULL
   wfov_results: !r NULL
   timezone_name: ""
@@ -282,7 +283,7 @@ if (is.null(x) || nrow(x) == 0L) {
 
 ```{r wfov-method, results='asis'}
 if (length(params$wfov_results) > 0L) {
-  cat("\n\n**WFOV camera pattern.** The WFOV module is the set of eight monocular cameras that make the first detection of objects in the visible space; the objects are then followed by the binocular stereo camera. Every track in the TrackReport records the WFOV camera that captured it. For each reported WFOV malfunction, the share of the tracks of the unit captured by each camera is compared between the window before and the window after the reported date and time. A camera that stopped capturing objects shows as a share that falls to, or close to, zero. The windows are counted from the reported date and time and each track is counted once per camera (at its first record). Significance is assessed with a Monte Carlo permutation test: the window blocks (`r pv(params$wfov_block_hours)` h each, aligned with the reported time) are randomly re-labelled \"before\" or 'after' `r pv(params$wfov_n_perm)` times, keeping the number of blocks of each window, and the change in the share of every camera is recomputed. Blocks, not single tracks, are permuted because tracks that are close in time (the same flock, the same hour) are not independent. The p-value of a camera is the proportion of permutations with a change at least as large as the observed one (in absolute value); the adjusted p-value compares it with the largest change among all cameras in each permutation, so it accounts for looking at eight cameras at once. The overall p-value is the adjusted p-value of the camera with the largest change. All are descriptive and depend on the number of tracks and on the random seed (the Monte Carlo error is about 0.005 near p = 0.05). The reported date may be earlier than the date of the record, and a change in the bird traffic of the period alone can change the shares. The comparison complements, and does not replace, the heartbeat, SCADA and curtailment evidence in the previous sections.\n\n")
+  cat("\n\n**WFOV camera pattern.** The WFOV module is the set of eight monocular cameras that make the first detection of objects in the visible space; the objects are then followed by the binocular stereo camera. Every track in the TrackReport records the WFOV camera that captured it. For each reported WFOV malfunction, the share of the tracks of the unit captured by each camera is compared between the window before and the window after the reported date and time. A camera that stopped capturing objects shows as a share that falls to, or close to, zero. The windows are counted from the reported date and time and each track is counted once per camera (at its first record). Significance is assessed with a Monte Carlo permutation test: the window blocks (`r pv(params$wfov_block_hours)` h each, aligned with the reported time) are randomly re-labelled \"before\" or 'after' `r pv(params$wfov_n_perm)` times, keeping the number of blocks of each window, and the change in the share of every camera is recomputed. Blocks, not single tracks, are permuted because tracks that are close in time (the same flock, the same hour) are not independent. The p-value of a camera is the proportion of permutations with a change at least as large as the observed one (in absolute value); the adjusted p-value compares it with the largest change among all cameras in each permutation, so it accounts for looking at eight cameras at once. The overall p-value is the adjusted p-value of the camera with the largest change. All are descriptive and depend on the number of tracks and on the random seed (the Monte Carlo error is about 0.005 near p = 0.05). The camera shares compare the composition of the tracks of the unit and do not show a change in their number. The number of tracks of a unit depends on the bird activity, which is not known: a lower number of tracks after the reported date can reflect the unit or fewer birds. For this reason the change of the unit is compared with a benchmark, the same ratio (tracks per day after / before) in neighbouring IDF units that operated normally in the same period (heartbeats complete in the whole window); the benchmark units are listed for each event. The relative change versus the benchmark is the ratio of the unit divided by the ratio of the pooled benchmark units, and its p-value uses the same block permutation, with the same blocks re-labelled for the unit and for the benchmark so that the activity common to the birds is kept. The benchmark is not a control in the experimental sense: neighbouring units see different parts of the airspace, so the individual ratios of the benchmark units show how much the ratio varies between units that did not fail. The reported date may be earlier than the date of the record, and a change in the bird traffic of the period alone can change the shares. The comparison complements, and does not replace, the heartbeat, SCADA and curtailment evidence in the previous sections.\n\n")
 }
 ```
 
@@ -299,6 +300,23 @@ for (r in params$wfov_results) {
                     `Active cameras (n)` = x$cameras_active, check.names = FALSE)
     show_table(d, max_col_width_cm = 4)
   }
+  bm <- r$benchmark
+  if (!is.null(bm)) {
+    t <- bm$total
+    cat(sprintf("\n\n**Benchmark.** %d reference unit(s)%s. Tracks per day after / before: %s for the unit and %s for the pooled benchmark; the unit changed %s%% relative to the benchmark (permutation p = %s).\n\n",
+      nrow(bm$refs), if (isTRUE(bm$manual)) " (chosen manually)" else " (nearest units with complete heartbeats in the window)",
+      ifelse(is.na(t$unit_ratio), "not available", sprintf("%.2f", t$unit_ratio)), ifelse(is.na(t$ref_ratio), "not available", sprintf("%.2f", t$ref_ratio)),
+      ifelse(is.na(t$relative_vs_benchmark_pct), "not available", sprintf("%+.1f", t$relative_vs_benchmark_pct)), fmt_p(t$p_perm)))
+    gap()
+    d <- data.frame(`IDF Unit` = bm$refs$unit, `Distance (m)` = ifelse(is.na(bm$refs$dist_m), "-", sprintf("%.0f", bm$refs$dist_m)),
+                    `Heartbeats complete (%)` = ifelse(is.na(bm$refs$completeness), "-", sprintf("%.0f", 100 * bm$refs$completeness)),
+                    `Tracks before (n)` = bm$refs$tracks_before, `Tracks after (n)` = bm$refs$tracks_after,
+                    `Ratio after / before` = ifelse(is.na(bm$refs$ratio), "-", sprintf("%.2f", bm$refs$ratio)), check.names = FALSE)
+    show_table(d, max_col_width_cm = 4, font_size = 8)
+    if (!is.null(r$fig_benchmark)) { gap(); show_plot(r$fig_benchmark) }
+  } else if (isTRUE(r$n_benchmark_units == 0L)) {
+    cat("\n\nNo benchmark could be computed: no neighbouring IDF unit had complete heartbeats in the whole window (or none was provided), so the change in the number of tracks cannot be separated from a change in the bird activity.\n\n")
+  }
   x <- r$summary
   if (!is.null(x) && nrow(x) > 0L) {
     if (!is.null(r$omnibus) && !is.na(r$omnibus)) cat(sprintf("Overall permutation p-value (camera with the largest change, adjusted for the eight cameras): %s.\n\n", fmt_p(r$omnibus)))
@@ -307,6 +325,8 @@ for (r in params$wfov_results) {
                     `After (n)` = x$n_after, `After (%)` = fmt_pct(x$pct_after),
                     `Change (pp)` = ifelse(is.na(x$delta_pp), "-", sprintf("%+.1f", x$delta_pp)),
                     `p (perm.)` = fmt_p(x$p_perm), `p adj.` = fmt_p(x$p_adj),
+                    `Tracks vs benchmark (%)` = if (!is.null(bm)) { v <- bm$by_camera$relative_vs_benchmark_pct[match(x$camera, bm$by_camera$camera)]; ifelse(is.na(v), "-", sprintf("%+.1f", v)) } else "-",
+                    `p vs benchmark (adj.)` = if (!is.null(bm)) fmt_p(bm$by_camera$p_adj[match(x$camera, bm$by_camera$camera)]) else "-",
                     Status = x$status, check.names = FALSE)
     show_table(d, max_col_width_cm = 4, font_size = 8)
     if (!is.null(r$fig_share)) { gap(); show_plot(r$fig_share) }
@@ -400,6 +420,7 @@ if (!is.null(x) && nrow(x) > 0L) {
 **Reported malfunctions (WFOV cameras)**
 
 - Malfunctions come from the list supplied by the IDF team (unit, date and time, type) and are not derived from the portal data. Only WFOV malfunctions are assessed, through the WFOV camera recorded in each track of the unit: the share of tracks per camera before and after the reported date and time, within the windows stated for each event. The tracks are those of the TrackReport files provided, which must cover both windows; when they do not, the comparison is stated as partial.
+- Benchmark: neighbouring IDF units (the nearest ones with at least `r pv(round(100 * params$wfov_benchmark_min_completeness))`% of the expected heartbeats in the whole window, and without a reported malfunction of their own in the window) give the change in the number of tracks per day over the same period; the unit is compared with them through the ratio after / before. The result is relative: a fall that also occurs in the benchmark units is attributed to the bird activity. The per-camera figure compares the ratio of each camera of the unit with the ratio of the benchmark total, since the cameras of different units point to different sectors.
 - The comparison is indirect evidence: it depends on the birds that crossed the area in each window, on the number of tracks (few tracks give unstable shares) and on the accuracy of the reported date.
 
 **Alerts**

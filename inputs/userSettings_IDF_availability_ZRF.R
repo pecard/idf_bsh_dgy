@@ -121,6 +121,7 @@ calendar_date_breaks      <- "2 days"
 idf_malfunctions <- data.frame(
   unit = "GW89-58", datetime = "2026-05-27 02:30:00", type = "WFOV camera module malfunction",
   turbine = "T94", days_before = 5, days_after = 5,
+  benchmark_units = NA_character_,   # unidades de referencia separadas por virgula; NA = escolha automatica (abaixo)
   stringsAsFactors = FALSE
 )
 
@@ -128,3 +129,13 @@ idf_malfunctions <- data.frame(
 ## tamanho (h) dos blocos de tempo que se permutam (0/NA = permutar tracks).
 wfov_n_perm      <- 10000
 wfov_block_hours <- 6
+
+## Benchmark: unidades vizinhas a funcionar normalmente no mesmo periodo (a
+## atividade das aves nao se conhece; so' a variacao RELATIVA a uma referencia
+## permite atribuir a queda de tracks a unidade). Escolha automatica: as k
+## unidades mais proximas (ate' max_dist_m) com heartbeats completos
+## (>= min_completeness do esperado) em toda a janela, excluindo outras com falha
+## reportada nessa janela.
+wfov_benchmark_k                 <- 3
+wfov_benchmark_max_dist_m        <- 15000
+wfov_benchmark_min_completeness  <- 0.9

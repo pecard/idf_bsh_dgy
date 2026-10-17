@@ -32,4 +32,25 @@ r0b <- wfov_camera_compare(ctl_test, "GW89-58", ev, 5, 5, n_perm = 2000)
 stopifnot(identical(r0$summary$p_perm, r0b$summary$p_perm))
 r1 <- wfov_camera_compare(ctl_test, "GW89-58", ev, 5, 5, n_perm = 500, block_hours = NA)
 stopifnot(all(!is.na(r1$summary$p_perm)))
+# benchmark: queda GERAL de atividade (todas as unidades) nao e' falha da unidade; queda so' na unidade e'
+mku <- function(u, nb, na) rbind(
+  data.table(track_id = paste0("u", u, "b", seq_len(nb)), timestamp = (ev - 5 * 86400) + runif(nb, 0, 5 * 86400), idf = u, camera = sample(as.character(1:8), nb, TRUE)),
+  data.table(track_id = paste0("u", u, "a", seq_len(na)), timestamp = ev + runif(na, 0, 5 * 86400), idf = u, camera = sample(as.character(1:8), na, TRUE)))
+set.seed(5)
+common_drop <- rbind(mku(58L, 300, 200), mku(59L, 280, 190), mku(60L, 310, 205))
+b1 <- wfov_benchmark(common_drop, "GW89-58", c("GW1-59", "GW1-60"), ev, 5, 5, n_perm = 2000)
+stopifnot(abs(b1$total$unit_ratio - 0.667) < 0.02, b1$total$p_perm > 0.05, abs(b1$total$relative_vs_benchmark_pct) < 15)
+only_unit <- rbind(mku(58L, 300, 200), mku(59L, 280, 285), mku(60L, 310, 300))
+b2 <- wfov_benchmark(only_unit, "GW89-58", c(59L, 60L), ev, 5, 5, n_perm = 2000)
+stopifnot(b2$total$relative_vs_benchmark_pct < -25, b2$total$p_perm < 0.05, nrow(b2$refs) == 2L, nrow(b2$by_camera) == 8L)
+pb <- plot_wfov_benchmark(b2, "GW89-58", c("59" = "GW1-59", "60" = "GW1-60"), "t"); ggsave(tempfile(fileext = ".png"), pb$p, width = 6, height = 3)
+# selecao de unidades de referencia
+library(sf)
+idf_test <- st_as_sf(data.frame(imaging_he = sprintf("IDF%02d", c(58, 59, 60, 61, 70)), x = c(0, 1000, 3000, 2000, 9000), y = 0), coords = c("x", "y"), crs = 32641)
+hb_t <- rbindlist(lapply(c("GW1-59", "GW1-60", "GW1-61", "GW9-70", "GW89-58"), function(n) data.table(idf = n, timestamp = ev - 6 * 86400 + seq(0, 12 * 86400, by = 1800))))
+hb_t <- hb_t[!(idf == "GW1-61" & timestamp > ev & timestamp < ev + 3 * 86400)]   # 61 incompleto
+sel <- select_benchmark_units("GW89-58", ev, 5, 5, idf_test, hb_t, 30, k = 2)
+stopifnot(identical(sel$unit, c("GW1-59", "GW1-60")), sel$dist_m[1] == 1000)
+sel2 <- select_benchmark_units("GW89-58", ev, 5, 5, idf_test, hb_t, 30, k = 5, exclude_units = "GW1-59", max_dist_m = 5000)
+stopifnot(identical(sel2$unit, "GW1-60"))
 cat("test_wfov_camera OK\n")
