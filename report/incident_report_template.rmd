@@ -92,6 +92,15 @@ params:
   shorttrack_min_points: !r NULL
   shorttrack_eval_range: !r NULL
 
+  data_sources: !r NULL
+  timezone_name: ""
+  rotor_radius_m: !r NULL
+  idf_detection_range_m: !r NULL
+  coverage_cylinder_height: !r NULL
+  coverage_cylinder_wider_radius: !r NULL
+  coverage_mesh_step_xy: !r NULL
+  coverage_mesh_step_z: !r NULL
+  coverage_prox_thresh_m: !r NULL
   xlsx_coverage: !r NULL
   xlsx_coverage3d: !r NULL
   xlsx_fatality: !r NULL
@@ -791,7 +800,7 @@ if (!is.null(params$short_track_by_species) && nrow(params$short_track_by_specie
 
 Whether SCADA-recorded RPM dropped as expected in response to curtailment signals, over the full data coverage period (`r params$report_start` to `r params$report_end`) for the incident turbine -- context for the window-specific figures in the Fatality Investigation section. A response is considered to have started once RPM has dropped by at least `r params$curtailment_latency_decline_pct * 100`% from its value at the start of the curtailment order; a turbine is considered stopped once RPM falls below `r params$safe_shutdown_rpm`. `r params$shutdown_time_buffer_sec` s past the end of the curtailment order are allowed for this to happen. `r params$latency_n_no_data` curtailments (`r params$latency_pct_no_data`%) have no SCADA baseline within `r params$curtailment_start_end_gap_sec` s before the signal and are excluded below; of the remainder, `r params$latency_n_below_cutin` (`r params$latency_pct_below_cutin`%) were already below the cut-in speed (`r params$curtailment_cutin_rpm` rpm) at the start of the order and are also excluded, since there is no meaningful response to measure on a turbine that was not operating.
 
-In the tables below, "Curtailments" (Eligible) is the number of curtailment orders left after the two exclusions above -- these are the ones where a response could meaningfully be measured. "Reached `r drop_txt` Drop" is how many of those eligible curtailments had the rotor speed (RPM) actually fall by at least `r drop_txt` below its value at the start of the order within the search window (i.e. the turbine started to respond, however slowly); "% Reached `r drop_txt` Drop" is that count as a percentage of the eligible curtailments. The remainder ("No `r drop_txt` Drop") never showed that fall within the window at all. The latency ("Mean/Median Time to `r drop_txt` Drop") is the time from the start of the curtailment order to the first SCADA RPM reading at least `r drop_txt` below the starting value, and is measured only for the curtailments that reached it -- so the two measures describe the same event, as a share of the curtailments and as a time. The time to stop is a different measure, reported in Shutdown Time.
+In the tables below, "Curtailments" (Eligible) is the number of curtailment orders left after the two exclusions above -- these are the ones where a response could meaningfully be measured. "Reached `r drop_txt` Drop" is how many of those eligible curtailments had the rotor speed (RPM) actually fall by at least `r drop_txt` below its value at the start of the order within the search window (i.e. the turbine started to respond, however slowly); "% Reached `r drop_txt` Drop" is that count as a percentage of the eligible curtailments. The remainder ("No `r drop_txt` Drop") never showed that fall within the window at all. The latency ("Mean/Median Time to `r drop_txt` Drop") is the time from the start of the curtailment order to the first SCADA RPM reading at least `r drop_txt` below the starting value, and is measured only for the curtailments that reached it -- so the two measures describe the same event, as a share of the curtailments and as a time. The time to stop is a different measure, reported in Shutdown Time. The search window for the fall is the duration of each curtailment order plus `r params$shutdown_time_buffer_sec` s: orders shorter than 60 s are not expected, and after an order the turbine typically needs 3 to 5 minutes to recover the speed it had before the order, so the window does not reach a response to a later order and a "No Drop" is not the effect of a following order.
 
 ### Response Latency by Turbine
 
@@ -930,7 +939,7 @@ Investigation of the incident over the window `r params$incident_window_start` t
 
 ## Candidate Tracks by Signal
 
-Count of tracks recorded near the incident turbine during the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), by signal category. "Near the turbine" here means both within the `r params$track_proximity_threshold_m` m horizontal proximity threshold and, where a height reading is available, below `r params$curtailment_trigger_height_m` m above ground -- the height at which a curtailment order would actually be triggered; a track that stayed at or above that height, even if horizontally close, was never in the risk envelope regardless of distance. Each track is classified into one of four categories, from the strongest to the weakest indicator of a possible collision:
+Count of tracks recorded near the incident turbine during the investigation window (`r params$incident_window_start` to `r params$incident_window_end`), by signal category. "Near the turbine" here means both within the `r params$track_proximity_threshold_m` m horizontal proximity threshold and with a height reading below `r params$curtailment_trigger_height_m` m above ground (a position without a height reading does not meet the condition) -- the height at which a curtailment order would actually be triggered; a track that stayed at or above that height, even if horizontally close, was never in the risk envelope regardless of distance. Each track is classified into one of four categories, from the strongest to the weakest indicator of a possible collision:
 
 - **No curtailment - lost near turbine**: no curtailment was triggered for this track, and its last recorded position meets the proximity/height condition above -- the strongest indicator, since the track simply stops being recorded while the bird is already close to the turbine, at collision-risk height.
 - **Curtailment triggered - lost near turbine**: a curtailment was triggered, but the track's last recorded position still meets the proximity/height condition -- the response may not have arrived in time.
@@ -1117,5 +1126,76 @@ if (!is.null(params$min_indiv_plot_daily)) {
 ```
 
 # Annexes
+
+## Methodology, Definitions and Data Notes
+
+This section states how each figure of the report is obtained, so that every number can be traced and read in context. It is descriptive: the report describes what the data show and does not establish the cause of the incident.
+
+```{r annex-helpers, include=FALSE}
+pv <- function(x, default = "not available") if (is.null(x) || length(x) == 0L || all(is.na(x)) || identical(x, "")) default else paste(x, collapse = ", ")
+```
+
+**Data and period**
+
+- All times are local time (`r pv(params$timezone_name)`). Dates are calendar days in that time zone; the incident date is the date the individual was found, not the date of collision.
+- The investigation window is `r pv(params$incident_window_start)` to `r pv(params$incident_window_end)` (`r pv(params$incident_days_before)` days before, and including, the incident date). The overall baseline is the full data coverage period used in this report, `r pv(params$report_start)` to `r pv(params$report_end)`.
+- Duplicate rows in the raw files are removed on loading, and tracks with invalid coordinates are discarded.
+- The period actually covered by each dataset, as available when the report was produced, is:
+
+```{r annex-data-sources, results='asis'}
+x <- params$data_sources
+cat("\n\n&nbsp;\n\n")
+if (!is.null(x) && nrow(x) > 0L) {
+  cat(knitr::knit_print(report_table(as.data.frame(x), max_col_width_cm = 5)))
+} else cat("The data coverage table is not available for this run.\n\n")
+```
+
+- Data that are not part of the period retrieved are treated as unavailable, not as zero. Time for which no data of any IDF unit exist is not counted as downtime.
+- Figures are rounded for display; percentages may not add up to exactly 100.
+
+**IDF unit coverage**
+
+- The detection buffer of each IDF unit and of the turbine has a radius of `r pv(params$idf_detection_range_m)` m. "Coverage (%)" is the part of the area of the turbine buffer that is inside the buffer of the IDF unit.
+- Units are ranked by decreasing coverage: the largest is the primary unit of the turbine, then secondary, tertiary and so on. The ranking is geometric (it does not use bird detections) and ignores terrain.
+- Unit names are the names reported in the heartbeat files.
+
+**IDF unit availability**
+
+- A unit sends a heartbeat about every `r pv(params$heartbeat_interval_min)` minutes when operational. A gap of at least `r pv(params$heartbeat_offline_gap_min)` minutes without a heartbeat is an offline period (two consecutive missed signals).
+- Only daylight hours (sunrise to sunset, computed from the project coordinates) are evaluated; night time is not counted as unavailability.
+- Time between the start of the period and the first heartbeat of a unit, and between its last heartbeat and the end of the period, counts as offline in the same way as any other gap, within the period covered by the heartbeat data of all units. A unit with no heartbeat at all in a period that the data cover is 100% offline in that period; a unit that does not appear in the heartbeat data at all is "Not evaluated".
+- **Net / confirmed offline** is the raw offline time minus the offline time classified as "IDF unit communication failure". "No evidence" time is not subtracted: it is included in the net figure and shown apart because it needs manual review.
+- The evidence classification uses two sources. A curtailment counts only for the IDF unit that recorded the bird track that triggered it, when that track is in the track data; curtailments whose track is not available are not counted as evidence for any unit, so the "communication failure" time is a lower bound. SCADA readings are matched to the turbine, not to a unit.
+
+**Curtailment response**
+
+- The rotor speed at the start of a curtailment is the latest SCADA RPM reading up to `r pv(params$curtailment_start_end_gap_sec)` s before the start of the order. Orders without such a reading are "No data" and are not assessed.
+- Orders whose rotor speed at the start was already below the cut-in speed (`r pv(params$curtailment_cutin_rpm)` rpm) are not assessed: there is no response to measure in a turbine that was not operating.
+- The response is the first SCADA reading with an RPM at least `r drop_txt` below the rotor speed at the start of the order. The latency is the time from the start of the order to that reading, so its resolution is that of the SCADA readings. The mean and median latency include only the orders that reached the fall.
+- The search window is the duration of the order plus `r pv(params$shutdown_time_buffer_sec)` s. Orders shorter than 60 s are not expected, and after an order the turbine typically needs 3 to 5 minutes to recover its speed before the order, so a response to a later order does not fall in the window.
+- The time to stop uses a different criterion: the turbine is considered stopped when the RPM falls below `r pv(params$safe_shutdown_rpm)`, and the time to reach each RPM threshold is reported in the Shutdown Time section.
+- A curtailment is attributed to an IDF unit through the track that triggered it; "Curtailments per IDF Unit" counts only the curtailments of the species of the incident, in the investigation window, attributed to the units listed. Curtailments with no track data, or triggered by other units, are only counted apart.
+
+**Candidate tracks**
+
+- A track is a candidate when its last recorded position is within `r pv(params$track_proximity_threshold_m)` m of the turbine (horizontal distance) and has a height reading below `r pv(params$curtailment_trigger_height_m)` m above ground -- the height under which a curtailment is triggered; a position without a height reading does not meet the condition. The last position is a data-recording event (the track stops being recorded); it is not a confirmation of a collision.
+- Candidates are separated into those with and without a curtailment triggered by the track itself. "Curtailment Already Active" tells whether the turbine was under a curtailment order (from any track) when the species was first identified in the track.
+- The blade tip speed is computed from the nearest SCADA RPM reading to the moment of identification, with a rotor radius of `r pv(params$rotor_radius_m)` m (blade tip speed = RPM x 2 x pi x radius / 60), and is blank when no reading is available.
+- A track recorded by the IDF system can change species during its life; the curtailment decision at each instant reflects the classification at that instant (see "ID Transitions").
+
+**Short tracks and ID transitions**
+
+- A short track has fewer than `r pv(params$shorttrack_min_points)` recorded points; short-track curtailments are those within `r pv(params$shorttrack_eval_range)` m of the turbine. A reclassification to a priority species is "late" when it happens more than `r pv(params$id_transition_late_time_sec)` s after the start of the curtailment or when the track was already within `r pv(params$track_proximity_threshold_m)` m of the turbine.
+
+**3D coverage**
+
+- The airspace around the turbine is a cylinder of radius `r pv(params$coverage_cylinder_wider_radius)` m and height `r pv(params$coverage_cylinder_height)` m, on a mesh of `r pv(params$coverage_mesh_step_xy)` m (horizontal) by `r pv(params$coverage_mesh_step_z)` m (vertical), above the terrain surface (digital elevation model). A mesh node is covered when a bird detection lies within `r pv(params$coverage_prox_thresh_m)` m of it. The coverage therefore depends on the birds that were actually detected in the period and on the sample size, and is not a measure of detection capability by itself.
+
+**Sample size and interpretation**
+
+- Counts in a single investigation window are small: percentages based on few events change a lot with one event. Always read a percentage together with the count next to it.
+- Every result is conditional on the data retrieved (period, units and datasets above). The report is generated automatically from those data, with the code version stated at the top of the report.
+
+## Accompanying Files
 
 The full detail behind each table above (including all rows and columns, not only the summaries shown here) is provided as separate files in the same output folder as this report: ID transitions, IDF unit availability and fatality investigation (full track/window detail), short-track curtailments, curtailment response time & latency, shutdown time, turbine/IDF coverage, and minimum individuals per bin.

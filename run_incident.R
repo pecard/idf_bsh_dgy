@@ -1022,7 +1022,23 @@ write_xlsx_local(
 ## 7. Word report ----
 ##
 
+## Cobertura temporal e linhas de cada dataset lido (anexo "Methodology, Definitions and Data Notes")
+data_sources_df <- data.frame(
+  Dataset = c("TrackReport (tracks)", "Curtailments", "SCADA", "Heartbeats"),
+  First = c(format(min(track_dt_unfilt$timestamp), "%Y-%m-%d %H:%M"), format(min(curtl_dt_unfilt$start), "%Y-%m-%d %H:%M"),
+            format(min(scada_dt_unfilt$datetime), "%Y-%m-%d %H:%M"), format(min(heartb_dt_unfilt$timestamp), "%Y-%m-%d %H:%M")),
+  Last = c(format(max(track_dt_unfilt$timestamp), "%Y-%m-%d %H:%M"), format(max(curtl_dt_unfilt$start), "%Y-%m-%d %H:%M"),
+           format(max(scada_dt_unfilt$datetime), "%Y-%m-%d %H:%M"), format(max(heartb_dt_unfilt$timestamp), "%Y-%m-%d %H:%M")),
+  Rows = format(c(nrow(track_dt_unfilt), nrow(curtl_dt_unfilt), nrow(scada_dt_unfilt), nrow(heartb_dt_unfilt)), big.mark = ","),
+  check.names = FALSE
+)
+
 report_params <- list(
+  data_sources = data_sources_df, timezone_name = proj_timezone,
+  rotor_radius_m = if (exists("rotor_radius_m")) rotor_radius_m else NULL,
+  idf_detection_range_m = idf_op_detection_range,
+  coverage_cylinder_height = coverage_cylinder_height, coverage_cylinder_wider_radius = coverage_cylinder_wider_radius,
+  coverage_mesh_step_xy = coverage_mesh_step_xy, coverage_mesh_step_z = coverage_mesh_step_z, coverage_prox_thresh_m = coverage_prox_thresh_m,
   title         = paste("Incident Report -", project_ref, "-", fatality_incidents$incident_id),
   project_ref   = project_ref,
   incident_id   = fatality_incidents$incident_id,
