@@ -2539,7 +2539,10 @@ xlsx_terrain_weekly_name         <- "terrain_weekly_space_use.xlsx"
 # Janela report_start/report_end (nao SCADA) -- secção "Offline Evidence"
 xlsx_offline_evidence_name <- if (exists("report_start")) paste0("offline_evidence_detail_", report_start, "to", report_end, ".xlsx") else NULL
 
+source("R/methodology_notes.R")
 report_params <- list(
+  data_sources  = build_data_sources_table(track_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, heartb_dt_unfilt),
+  timezone_name = proj_timezone,
   title         = paste("IDF Analysis Report -", project_ref),
   project_ref   = project_ref,
   report_start  = as.character(report_start),

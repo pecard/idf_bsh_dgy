@@ -9,6 +9,8 @@ params:
   analysis_date: ""
   username: ""
   code_version: ""
+  data_sources: !r NULL
+  timezone_name: ""
 
   availability_by_idf: !r NULL
   availability_plot_cal: !r NULL
@@ -1405,6 +1407,66 @@ if (!is.null(params$terrain_weekly_active_table)) {
 ```{r terrain-weekly-annex, results='asis'}
 annex_note(params$xlsx_terrain_weekly)
 ```
+
+
+# Methodology, Definitions and Data Notes
+
+This section states how each figure of the report is obtained, so that every number can be traced and read in context. It is descriptive: the report describes what the data show and does not establish the cause of any event.
+
+```{r annex-helpers, include=FALSE}
+pv <- function(x, default = "not available") if (is.null(x) || length(x) == 0L || all(is.na(x)) || identical(x, "")) default else paste(x, collapse = ", ")
+```
+
+**Data and period**
+
+- All times are local time (`r pv(params$timezone_name)`). Dates are calendar days in that time zone. The reporting period is `r pv(params$report_start)` to `r pv(params$report_end)`.
+- Duplicate rows in the raw files are removed on loading, and tracks with invalid coordinates are discarded.
+- The period actually covered by each dataset, as available when the report was produced (it can be wider than the reporting period), is:
+
+```{r annex-data-sources, results='asis'}
+x <- params$data_sources
+cat("\n\n&nbsp;\n\n")
+if (!is.null(x) && nrow(x) > 0L) {
+  cat(knitr::knit_print(report_table(as.data.frame(x), max_col_width_cm = 5)))
+} else cat("The data coverage table is not available for this run.\n\n")
+```
+
+- Data that are not part of the period retrieved are treated as unavailable, not as zero. Heartbeat files cover all IDF units of the wind farm for the period retrieved.
+- Figures are rounded for display; percentages may not add up to exactly 100. The accompanying workbooks keep the values as calculated.
+
+**System availability (heartbeats)**
+
+- An IDF unit sends a heartbeat about every `r pv(params$heartbeat_interval_min)` minutes when operational. A gap of at least `r pv(params$heartbeat_offline_gap_min)` minutes without a heartbeat is an offline period.
+- Only daylight hours (sunrise to sunset, computed from the project coordinates) are evaluated; night time is not counted as unavailability.
+- Time between the start of the period and the first heartbeat of a unit, and between its last heartbeat and the end of the period, counts as offline like any other gap, within the period covered by the heartbeat data of all units. A unit without any heartbeat in a period covered by the data is 100% offline; a unit that does not appear in the heartbeat data at all is "Not evaluated".
+- Net / confirmed offline time is the raw offline time minus the time classified as "IDF unit communication failure" (a curtailment triggered during the gap by a track of the same unit, when the track is available). "No evidence" time is not subtracted: it is included in the net figure and shown apart because it needs manual review. Communication-failure time is therefore a lower bound when the track of a curtailment is not in the track data. SCADA readings are matched to the turbine, not to an IDF unit.
+- The availability figures depend on the period: a short period amplifies the weight of a single gap, and contractual availability should be read for the contractual reference period.
+
+**Curtailment response**
+
+- The rotor speed at the start of a curtailment is the latest SCADA RPM reading up to `r pv(params$curtailment_start_end_gap_sec)` s before the start of the order. Orders without such a reading are "No data" and are not assessed.
+- Orders whose rotor speed at the start was already below the cut-in speed (`r pv(params$curtailment_cutin_rpm)` rpm) are not assessed: there is no response to measure in a turbine that was not operating.
+- The response is the first SCADA reading with an RPM at least `r pv(params$curtailment_latency_decline_pct)`% below the rotor speed at the start of the order. The latency is the time from the start of the order to that reading, so its resolution is that of the SCADA readings. The mean and median latency include only the orders that reached the fall; orders that did not are counted as "No response".
+- The search window is the duration of the order plus `r pv(params$shutdown_time_buffer_sec)` s. Orders shorter than 60 s are not expected, and after an order the turbine typically needs 3 to 5 minutes to recover its speed before the order, so a response to a later order does not fall in the window.
+- The shutdown time uses a different criterion: the turbine is considered stopped when the RPM falls below `r pv(params$safe_shutdown_rpm)`, and the time to reach each RPM threshold is reported in the Shutdown Time section.
+- Safe distance: the distance between the triggering track and the turbine at the moment of the order is compared with the reference line of `r pv(params$safe_dist_reference_line_m)` m. The reaction time is the time to reach `r pv(params$safe_dist_rpm_threshold)` rpm, and the safe distance is that time multiplied by the speed of the track itself.
+
+**Short tracks, species and bird metrics**
+
+- A track recorded by the IDF system can change species during its life; the curtailment decision at each instant reflects the classification at that instant.
+- Flight speed and height use tracks with at least `r pv(params$flight_min_track_points)` points and a flight speed between `r pv(params$flight_speed_ms_min)` and `r pv(params$flight_speed_ms_max)` m/s. The rotor-swept risk zone is `r pv(params$risk_height_lower)` to `r pv(params$risk_height_upper)` m above ground.
+- The minimum number of individuals counts distinct individuals per `r pv(params$min_individuals_bin_min)`-minute bin; two tracks within `r pv(params$min_individuals_merge_dist_m)` m of each other count as one individual. It is a minimum, not a population estimate.
+
+**3D coverage and fatality investigation**
+
+- The 3D coverage is computed on a mesh above the terrain surface (digital elevation model); a mesh node is covered when a bird detection lies close to it, so the coverage depends on the birds actually detected in the period and on the sample size. It is not a measure of detection capability by itself.
+- A track is a candidate for a fatality investigation when its last recorded position is within `r pv(params$track_proximity_threshold_m)` m of the turbine. The last position is a data-recording event; it is not a confirmation of a collision. The recorded incident date is the date the carcass was found, not the date of death, so the analysis looks at the days before the finding (`r pv(params$fatality_post_incident_days)` days are also compared after it).
+- Turbine clusters group turbines by manual sectors, by distance (at most `r pv(params$cluster_max_dist_m)` m between turbines of the same cluster) and by shared primary IDF unit; the permutation tests use `r pv(params$cluster_perm_n)` permutations. Clusters describe where events concentrate in the data and do not explain why.
+
+**Sample size and interpretation**
+
+- Counts in a single period can be small: percentages based on few events change a lot with one event. Always read a percentage together with the count next to it.
+- Every result is conditional on the data retrieved (period, units and datasets above). The report is generated automatically from those data, with the code version stated at the top of the report.
 
 # Annexes
 

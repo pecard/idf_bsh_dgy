@@ -1267,7 +1267,10 @@ if (exists("monthly_id_risk_summary")) {
 
 source("R/report.R")
 
+source("R/methodology_notes.R")
 monthly_report_params <- list(
+  data_sources  = build_data_sources_table(track_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, heartb_dt_unfilt),
+  timezone_name = proj_timezone,
   title         = report_title_monthly,
   project_ref   = project_ref,
   report_month  = report_month,
