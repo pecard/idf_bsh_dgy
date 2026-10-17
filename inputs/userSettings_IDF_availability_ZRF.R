@@ -59,7 +59,7 @@ end <- as.POSIXct('2026-10-15 23:59:59', tz = proj_timezone)
 
 ## Turbinas a analisar (NULL = todas as turbinas do shapefile com pelo menos
 ## uma unidade IDF a cobri-las)
-turbines_of_interest <- c("T13")
+turbines_of_interest <- c("T105")
 
 ##
 ## 4. Relacao turbina <-> unidade IDF primaria/secundaria ----
@@ -76,7 +76,7 @@ turbines_of_interest <- c("T13")
 
 turbine_idf_matrix_filename <- "IDF_Coverage_Matrix_ZRF.xlsx"   # pode nao existir
 idf_op_detection_range      <- 1000   # m; raio de deteccao do IDF (buffer da turbina e da unidade)
-relation_min_pct_coverage   <- 0      # %; 0 = todas as unidades cujo buffer se sobrepoe ao da turbina
+relation_min_pct_coverage   <- 5      # %; 0 = todas as unidades cujo buffer se sobrepoe ao da turbina
 relation_max_secondary      <- Inf    # n.o maximo de unidades secundarias por turbina (Inf = sem limite)
 
 ## Area em redor da turbina (raio, m) usada na "protecao remanescente": %
