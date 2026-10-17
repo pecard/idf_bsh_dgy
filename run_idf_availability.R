@@ -240,7 +240,7 @@ calendar_figures <- idf_calendar_figures(
 
 
 ##
-## 3b. Falhas reportadas pela equipa IDF: padrao das cameras WFOV antes/depois ----
+## 3b. Falhas reportadas pela equipa IDF: padrao das cameras WFOV em 3 periodos ----
 ##
 
 malfunction_events_df <- NULL
@@ -249,36 +249,20 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   source("R/idf_malfunction_wfov.R")
   mf <- as.data.frame(idf_malfunctions, stringsAsFactors = FALSE)
   if (!"turbine" %in% names(mf)) mf$turbine <- NA_character_
-  if (!"days_before" %in% names(mf)) mf$days_before <- 5
+  if (!"days_before" %in% names(mf)) mf$days_before <- 7
+  if (!"days_after" %in% names(mf)) mf$days_after <- 7
   if (!"days_pre" %in% names(mf)) mf$days_pre <- 0
   mf$days_pre[is.na(mf$days_pre)] <- 0
-  if (!"days_after" %in% names(mf)) mf$days_after <- 5
   if (!exists("wfov_n_perm")) wfov_n_perm <- 10000L
   if (!exists("wfov_block_hours")) wfov_block_hours <- 6
   mf$event_time <- as.POSIXct(as.character(mf$datetime), tz = proj_timezone)
   mf$is_wfov <- grepl("WFOV", mf$type, ignore.case = TRUE)
   wf <- mf[mf$is_wfov, , drop = FALSE]
 
-  ## Unidades de referencia (benchmark): coluna benchmark_units (separadas por virgula)
-  ## ou, se vazia, as wfov_benchmark_k mais proximas com heartbeats completos na janela
-  if (!exists("wfov_benchmark_k")) wfov_benchmark_k <- 3L
-  if (!exists("wfov_benchmark_max_dist_m")) wfov_benchmark_max_dist_m <- Inf
-  if (!exists("wfov_benchmark_min_completeness")) wfov_benchmark_min_completeness <- 0.9
-  if (!"benchmark_units" %in% names(wf)) wf$benchmark_units <- NA_character_
-  bm_refs <- lapply(seq_len(nrow(wf)), function(i) {
-    others <- mf$unit[!(mf$unit == wf$unit[i]) & abs(as.numeric(difftime(mf$event_time, wf$event_time[i], units = "days"))) <= wf$days_before[i] + wf$days_after[i]]
-    man <- if (!is.na(wf$benchmark_units[i]) && nzchar(wf$benchmark_units[i])) trimws(strsplit(wf$benchmark_units[i], ",")[[1]]) else NULL
-    if (!is.null(man)) data.table::data.table(unit_number = idf_unit_number(man), unit = man, dist_m = NA_real_, completeness = NA_real_)
-    else select_benchmark_units(wf$unit[i], wf$event_time[i], wf$days_before[i], wf$days_after[i], idf, heartb_dt_unfilt,
-                                interval_min = heartbeat_interval_min, k = wfov_benchmark_k, max_dist_m = wfov_benchmark_max_dist_m,
-                                min_completeness = wfov_benchmark_min_completeness, exclude_units = others)
-  })
-
   wfov_dt <- NULL
   if (nrow(wf) > 0L) {
     wfov_dt <- tryCatch(
-      read_track_wfov(databases_dirs, trackreport_pattern, proj_timezone, farm_pattern,
-                      units = c(wf$unit, unlist(lapply(bm_refs, function(r) r$unit))),
+      read_track_wfov(databases_dirs, trackreport_pattern, proj_timezone, farm_pattern, units = wf$unit,
                       from = min(wf$event_time - (wf$days_before + wf$days_pre) * 86400), to = max(wf$event_time + wf$days_after * 86400)),
       error = function(e) { message("Leitura WFOV_camera falhou: ", conditionMessage(e)); NULL })
   }
@@ -288,12 +272,7 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   wfov_results <- lapply(seq_len(nrow(wf)), function(i) {
     ev <- wf$event_time[i]; d_b <- wf$days_before[i]; d_a <- wf$days_after[i]; d_p <- wf$days_pre[i]
     label <- sprintf("%s -- %s", wf$unit[i], format(ev, "%Y-%m-%d %H:%M"))
-    refs <- bm_refs[[i]]
-    bm <- if (is.null(wfov_dt) || nrow(refs) == 0L) NULL else tryCatch(
-      wfov_benchmark(wfov_dt, wf$unit[i], refs$unit, ev, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours),
-      error = function(e) { message("Benchmark WFOV falhou: ", conditionMessage(e)); NULL })
-    ref_labels <- stats::setNames(refs$unit, as.character(refs$unit_number))
-    res <- if (is.null(wfov_dt)) NULL else wfov_camera_compare(wfov_dt, wf$unit[i], ev, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours, days_pre = d_p)
+    res <- if (is.null(wfov_dt)) NULL else wfov_three_period(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours)
     tb <- if (!is.na(wf$turbine[i]) && nzchar(wf$turbine[i])) trimws(strsplit(wf$turbine[i], ",")[[1]]) else NULL
     ctx <- wfov_event_context(wf$unit[i], ev, d_b, d_a, heartb_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, tb, days_pre = d_p)
     covered <- !is.null(wfov_range) && wfov_range[1L] <= ev - (d_b + d_p) * 86400 && wfov_range[2L] >= ev + d_a * 86400
@@ -303,22 +282,19 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
       sprintf("The TrackReport files cover %s to %s, which does not include the whole comparison window; the comparison is partial.",
               format(wfov_range[1L], "%Y-%m-%d"), format(wfov_range[2L], "%Y-%m-%d"))
     } else ""
-    list(label = label, omnibus = if (is.null(res)) NA_real_ else res$omnibus, unit = wf$unit[i], event_time = format(ev, "%Y-%m-%d %H:%M"), type = wf$type[i],
-         days_before = d_b, days_after = d_a, days_pre = d_p, has_pre = !is.null(res) && isTRUE(res$has_pre),
-         omnibus_placebo = if (is.null(res)) NULL else res$omnibus_placebo, omnibus_pooled = if (is.null(res)) NULL else res$omnibus_pooled, summary = if (is.null(res)) NULL else res$summary, totals = if (is.null(res)) NULL else res$totals,
+    list(label = label, unit = wf$unit[i], event_time = format(ev, "%Y-%m-%d %H:%M"), type = wf$type[i],
+         days_pre = d_p, days_before = d_b, days_after = d_a, has_pre = !is.null(res) && isTRUE(res$has_pre),
+         rates = if (is.null(res)) NULL else res$rates, shares = if (is.null(res)) NULL else res$shares, totals = if (is.null(res)) NULL else res$totals,
+         p_total = if (is.null(res)) NA_real_ else res$p_total, p_any_camera = if (is.null(res)) NA_real_ else res$p_any_camera,
+         p_any_share = if (is.null(res)) NA_real_ else res$p_any_share, p_natural_total = if (is.null(res)) NA_real_ else res$p_natural_total,
          context = ctx, note = note,
-         benchmark = if (is.null(bm)) NULL else list(
-           refs = merge(as.data.frame(bm$refs), as.data.frame(refs)[, c("unit_number", "unit", "dist_m", "completeness")], by = "unit_number", sort = FALSE),
-           total = as.data.frame(bm$total), by_camera = as.data.frame(bm$by_camera), manual = !is.na(wf$benchmark_units[i]) && nzchar(wf$benchmark_units[i])),
-         fig_benchmark = if (is.null(bm)) NULL else plot_wfov_benchmark(bm, wf$unit[i], ref_labels, label),
-         n_benchmark_units = nrow(refs),
-         fig_share = if (is.null(res)) NULL else plot_wfov_share(res, label),
+         fig_rates = if (is.null(res)) NULL else plot_wfov_rates(res, label),
          fig_daily = if (is.null(res)) NULL else plot_wfov_daily(res, label))
   })
 
   malfunction_events_df <- data.frame(
     `IDF Unit` = mf$unit, `Reported date/time` = format(mf$event_time, "%Y-%m-%d %H:%M"), `Reported malfunction` = mf$type,
-    Assessment = ifelse(mf$is_wfov, "WFOV camera pattern before/after (this report)", "Not assessable from the portal data"),
+    Assessment = ifelse(mf$is_wfov, "WFOV camera pattern, 3 periods (this report)", "Not assessable from the portal data"),
     check.names = FALSE
   )
   message(sprintf("Falhas reportadas: %d (%d WFOV avaliadas).", nrow(mf), nrow(wf)))
@@ -340,10 +316,9 @@ write_xlsx_tagged(
   ) |> c(
     if (!is.null(malfunction_events_df)) list(Reported_malfunctions = malfunction_events_df),
     if (!is.null(wfov_results)) list(
-      WFOV_camera_before_after = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$summary)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$summary)), fill = TRUE),
-      WFOV_benchmark_units = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$benchmark)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$benchmark$refs)), fill = TRUE),
-      WFOV_benchmark_total = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$benchmark)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$benchmark$total)), fill = TRUE),
-      WFOV_benchmark_camera = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$benchmark)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$benchmark$by_camera)), fill = TRUE),
+      WFOV_camera_rates = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$rates)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$rates)), fill = TRUE),
+      WFOV_camera_shares = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$shares)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$shares)), fill = TRUE),
+      WFOV_periods = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$totals)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$totals)), fill = TRUE),
       WFOV_event_context = data.table::rbindlist(lapply(wfov_results, function(r) cbind(`IDF Unit` = r$unit, Event = r$event_time, r$context)), fill = TRUE)
     )
   ),
@@ -390,7 +365,7 @@ report_params <- list(
   net_overall = if (is.null(analysis$net_overall)) NULL else as.data.frame(analysis$net_overall),
   calendar_figures = calendar_figures,
   malfunction_events = malfunction_events_df,
-  wfov_n_perm = if (exists("wfov_n_perm")) wfov_n_perm else NULL, wfov_benchmark_min_completeness = if (exists("wfov_benchmark_min_completeness")) wfov_benchmark_min_completeness else 0.9, wfov_block_hours = if (exists("wfov_block_hours")) wfov_block_hours else NULL,
+  wfov_n_perm = if (exists("wfov_n_perm")) wfov_n_perm else NULL, wfov_block_hours = if (exists("wfov_block_hours")) wfov_block_hours else NULL,
   wfov_results = wfov_results,
   xlsx_name = out_name("idf_availability", "xlsx", avail_tag, run_date)
 )

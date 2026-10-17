@@ -41,7 +41,6 @@ params:
   data_sources: !r NULL
   malfunction_events: !r NULL
   wfov_n_perm: !r NULL
-  wfov_benchmark_min_completeness: !r NULL
   wfov_block_hours: !r NULL
   wfov_results: !r NULL
   timezone_name: ""
@@ -51,7 +50,7 @@ params:
 knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
 # Helpers identicos aos restantes relatorios do projeto (mesma convencao visual)
-report_table <- function(x, max_col_width_cm = NULL, font_size = 9) {
+report_table <- function(x, max_col_width_cm = NULL, font_size = 9, fixed_col_width_cm = NULL, col_widths_cm = NULL) {
   ft <- flextable::flextable(x) |>
     flextable::theme_box() |>
     flextable::bg(part = "header", bg = "gray85") |>
@@ -64,6 +63,17 @@ report_table <- function(x, max_col_width_cm = NULL, font_size = 9) {
   if (!is.null(max_col_width_cm)) {
     widths_in <- dim(ft)$widths
     ft <- flextable::width(ft, j = seq_along(widths_in), width = pmin(widths_in * 2.54, max_col_width_cm), unit = "cm")
+  }
+  # Largura exacta de todas as colunas (as de texto longo podem ter largura propria: col_widths_cm
+  # = vetor nomeado para colunas de texto longo)
+  if (!is.null(fixed_col_width_cm)) {
+    ft <- flextable::width(ft, j = seq_len(flextable::ncol_keys(ft)), width = fixed_col_width_cm, unit = "cm")
+    # col_widths_cm: vetor NOMEADO c("Coluna" = largura_cm) para colunas de texto longo
+    if (!is.null(col_widths_cm)) {
+      for (nm in intersect(names(col_widths_cm), names(x))) {
+        ft <- flextable::width(ft, j = match(nm, names(x)), width = col_widths_cm[[nm]], unit = "cm")
+      }
+    }
   }
   ft
 }
@@ -80,12 +90,13 @@ fmt_p <- function(v) ifelse(is.na(v), "-", ifelse(v < 0.001, "<0.001", sprintf("
 
 gap <- function() cat("\n\n&nbsp;\n\n")
 
-show_table <- function(df, max_col_width_cm = 3, font_size = 9) {
+show_table <- function(df, max_col_width_cm = 3, font_size = 9, fixed_col_width_cm = NULL, col_widths_cm = NULL) {
   if (is.null(df) || nrow(df) == 0L) {
     cat("None.\n\n")
     return(invisible(NULL))
   }
-  cat(knitr::knit_print(report_table(df, max_col_width_cm = max_col_width_cm, font_size = font_size)))
+  cat(knitr::knit_print(report_table(df, max_col_width_cm = max_col_width_cm, font_size = font_size,
+                                     fixed_col_width_cm = fixed_col_width_cm, col_widths_cm = col_widths_cm)))
   invisible(NULL)
 }
 
@@ -275,81 +286,90 @@ x <- params$malfunction_events
 if (is.null(x) || nrow(x) == 0L) {
   cat("No malfunctions reported by the IDF team were provided for this report.\n\n")
 } else {
-  cat("The IDF team reported the malfunctions below. They are not directly available in, or computable from, the portal data (heartbeats, SCADA, curtailments). For WFOV camera malfunctions, the tracks recorded by the unit are compared before and after the reported date; the other types are listed without assessment.\n\n")
+  cat("The IDF team reported the malfunctions below. They are not directly available in, or computable from, the portal data (heartbeats, SCADA, curtailments). For WFOV camera malfunctions, the tracks recorded by the unit are compared across three consecutive periods of the same unit (an earlier period, the period before and the period after the reported date); the other types are listed without assessment.\n\n")
   gap()
-  show_table(as.data.frame(x), max_col_width_cm = 5)
+  show_table(as.data.frame(x), fixed_col_width_cm = 1.5, col_widths_cm = c("Reported malfunction" = 4, Assessment = 4))
 }
 ```
 
 ```{r wfov-method, results='asis'}
 if (length(params$wfov_results) > 0L) {
-  cat("\n\n**WFOV camera pattern.** The WFOV module is the set of eight monocular cameras that make the first detection of objects in the visible space; the objects are then followed by the binocular stereo camera. Every track in the TrackReport records the WFOV camera that captured it. For each reported WFOV malfunction, the share of the tracks of the unit captured by each camera is compared between the window before and the window after the reported date and time. A camera that stopped capturing objects shows as a share that falls to, or close to, zero. The windows are counted from the reported date and time and each track is counted once per camera (at its first record). Significance is assessed with a Monte Carlo permutation test: the window blocks (`r pv(params$wfov_block_hours)` h each, aligned with the reported time) are randomly re-labelled \"before\" or 'after' `r pv(params$wfov_n_perm)` times, keeping the number of blocks of each window, and the change in the share of every camera is recomputed. Blocks, not single tracks, are permuted because tracks that are close in time (the same flock, the same hour) are not independent. The p-value of a camera is the proportion of permutations with a change at least as large as the observed one (in absolute value); the adjusted p-value compares it with the largest change among all cameras in each permutation, so it accounts for looking at eight cameras at once. The overall p-value is the adjusted p-value of the camera with the largest change. All are descriptive and depend on the number of tracks and on the random seed (the Monte Carlo error is about 0.005 near p = 0.05). When an earlier period is configured, it covers the days before the 'before' window, in the same unit and therefore in the same airspace. Comparing the earlier period with the 'before' window (no failure) shows how much the unit varies by itself from one period to the next: a change after the reported date that is not larger than this natural change is not evidence of a failure. The report gives the same tests for the earlier period against the 'before' window, for the earlier period and the 'before' window pooled against the 'after' window (a longer baseline), and for the number of tracks of the unit. The camera shares compare the composition of the tracks of the unit and do not show a change in their number. The number of tracks of a unit depends on the bird activity, which is not known: a lower number of tracks after the reported date can reflect the unit or fewer birds. For this reason the change of the unit is compared with a benchmark, the same ratio (tracks per day after / before) in neighbouring IDF units that operated normally in the same period (heartbeats complete in the whole window); the benchmark units are listed for each event. The relative change versus the benchmark is the ratio of the unit divided by the ratio of the pooled benchmark units, and its p-value uses the same block permutation, with the same blocks re-labelled for the unit and for the benchmark so that the activity common to the birds is kept. The benchmark is not a control in the experimental sense: neighbouring units see different parts of the airspace, so the individual ratios of the benchmark units show how much the ratio varies between units that did not fail. The reported date may be earlier than the date of the record, and a change in the bird traffic of the period alone can change the shares. The comparison complements, and does not replace, the heartbeat, SCADA and curtailment evidence in the previous sections.\n\n")
+  cat("\n\n**WFOV camera pattern.** The WFOV module is the set of eight monocular cameras that make the first detection of objects in the visible space; the objects are then followed by the binocular stereo camera. Every track in the TrackReport records the WFOV camera that captured it. For each reported WFOV malfunction, the tracks of the unit are counted by camera in three consecutive periods of the same unit, and therefore of the same airspace: an earlier period, the period before and the period after the reported date and time. Each track is counted once per camera, at its first record. The earlier period and the period before give the natural variation of the unit when no failure is reported; the comparison of interest is the period after against the baseline formed by the earlier period and the period before.\n\n")
+  cat("Two measures are given for each camera and for all cameras together: the number of tracks per day, and the share of each camera in the tracks of the unit. The number of tracks depends on the bird activity, which is not known: a fall in all cameras can reflect fewer birds, and the share of each camera shows whether one camera lost weight within the unit.\n\n")
+  cat(sprintf("Significance is assessed with a Monte Carlo permutation test between the three periods: the periods are divided into blocks of %s h, the labels of the periods are randomly reassigned to the blocks %s times, keeping the number of blocks of each period, and the statistics are recalculated. Blocks, not single tracks, are permuted because tracks close in time (the same flock, the same hour) are not independent. The test of degradation is one-sided, since the question is whether the detection fell after the reported date: the p-value is the proportion of permutations with a fall at least as large as the observed one, and the adjusted p-value compares each camera with the largest fall among all cameras in each permutation, so it accounts for looking at eight cameras at once. The natural variation is the change between the period before and the earlier period; its p-value (two-sided, adjusted) tells whether that change is itself unusual. A camera is marked as degraded when its adjusted p-value is below 0.05 and the fall after the reported date is larger than the natural variation. All values are descriptive, depend on the number of tracks and on the random seed (the Monte Carlo error is about 0.005 near p = 0.05), and a change in the bird traffic of the period alone can produce them. The reported date may be earlier than the date of the record. The comparison complements, and does not replace, the heartbeat, SCADA and curtailment evidence in the previous sections.\n\n",
+    pv(params$wfov_block_hours), pv(params$wfov_n_perm)))
 }
 ```
 
 ```{r wfov-events, results='asis'}
+w15 <- 1.5
 for (r in params$wfov_results) {
   cat(sprintf("\n\n## %s -- %s\n\n", r$label, r$type))
-  cat(sprintf("Reported date and time: %s. Windows: %s days before and %s days after%s.\n\n", r$event_time, r$days_before, r$days_after,
-              if (isTRUE(r$has_pre)) sprintf(", plus an earlier period of %s days before the \"before\" window", r$days_pre) else ""))
+  cat(sprintf("Reported date and time: %s. Periods: %s%s days before and %s days after.\n\n", r$event_time,
+              if (isTRUE(r$has_pre)) sprintf("%s days (earlier period), ", r$days_pre) else "", r$days_before, r$days_after))
   if (nzchar(r$note)) cat(r$note, "\n\n")
+
   x <- r$totals
   if (!is.null(x) && nrow(x) > 0L) {
     gap()
-    d <- data.frame(Window = x$period, From = format(x$from, "%Y-%m-%d %H:%M"), To = format(x$to, "%Y-%m-%d %H:%M"),
-                    `Tracks (n)` = x$tracks, `Tracks per day` = sprintf("%.1f", x$tracks_per_day),
-                    `Active cameras (n)` = x$cameras_active,
-                    `Ratio vs previous window` = if ("ratio_vs_previous" %in% names(x)) ifelse(is.na(x$ratio_vs_previous), "-", sprintf("%.2f", x$ratio_vs_previous)) else "-",
-                    `p (perm.)` = if ("p_vs_previous" %in% names(x)) fmt_p(x$p_vs_previous) else "-", check.names = FALSE)
-    show_table(d, max_col_width_cm = 4)
+    d <- data.frame(Period = x$period, From = format(x$from, "%Y-%m-%d %H:%M"), To = format(x$to, "%Y-%m-%d %H:%M"),
+                    `Days` = x$days, `Tracks (n)` = x$tracks, `Tracks per day` = sprintf("%.1f", x$tracks_per_day),
+                    `Active cameras (n)` = x$cameras_active, check.names = FALSE)
+    show_table(d, fixed_col_width_cm = w15)
   }
-  bm <- r$benchmark
-  if (!is.null(bm)) {
-    t <- bm$total
-    cat(sprintf("\n\n**Benchmark.** %d reference unit(s)%s. Tracks per day after / before: %s for the unit and %s for the pooled benchmark; the unit changed %s%% relative to the benchmark (permutation p = %s).\n\n",
-      nrow(bm$refs), if (isTRUE(bm$manual)) " (chosen manually)" else " (nearest units with complete heartbeats in the window)",
-      ifelse(is.na(t$unit_ratio), "not available", sprintf("%.2f", t$unit_ratio)), ifelse(is.na(t$ref_ratio), "not available", sprintf("%.2f", t$ref_ratio)),
-      ifelse(is.na(t$relative_vs_benchmark_pct), "not available", sprintf("%+.1f", t$relative_vs_benchmark_pct)), fmt_p(t$p_perm)))
-    gap()
-    d <- data.frame(`IDF Unit` = bm$refs$unit, `Distance (m)` = ifelse(is.na(bm$refs$dist_m), "-", sprintf("%.0f", bm$refs$dist_m)),
-                    `Heartbeats complete (%)` = ifelse(is.na(bm$refs$completeness), "-", sprintf("%.0f", 100 * bm$refs$completeness)),
-                    `Tracks before (n)` = bm$refs$tracks_before, `Tracks after (n)` = bm$refs$tracks_after,
-                    `Ratio after / before` = ifelse(is.na(bm$refs$ratio), "-", sprintf("%.2f", bm$refs$ratio)), check.names = FALSE)
-    show_table(d, max_col_width_cm = 4, font_size = 8)
-    if (!is.null(r$fig_benchmark)) { gap(); show_plot(r$fig_benchmark) }
-  } else if (isTRUE(r$n_benchmark_units == 0L)) {
-    cat("\n\nNo benchmark could be computed: no neighbouring IDF unit had complete heartbeats in the whole window (or none was provided), so the change in the number of tracks cannot be separated from a change in the bird activity.\n\n")
-  }
-  x <- r$summary
+
+  x <- r$rates
   if (!is.null(x) && nrow(x) > 0L) {
-    if (!is.null(r$omnibus) && !is.na(r$omnibus)) cat(sprintf("Overall permutation p-value (camera with the largest change, adjusted for the eight cameras): %s for before vs after%s.\n\n", fmt_p(r$omnibus),
-      if (isTRUE(r$has_pre)) sprintf(", %s for earlier period vs before (no failure, natural variation of the unit) and %s for earlier period + before vs after", fmt_p(r$omnibus_placebo), fmt_p(r$omnibus_pooled)) else ""))
+    a <- x[x$camera == "All cameras", ]
+    cat(sprintf("\n\nTracks of the unit per day: %s after the reported date against %s in the baseline (%s%%); one-sided permutation p = %s for the fall of all cameras together, adjusted p = %s for the camera with the largest fall (tracks per day) and %s for the camera with the largest fall in share.\n\n",
+      sprintf("%.1f", a$per_day_after),
+      if (isTRUE(r$has_pre)) sprintf("%.1f", (a$n_earlier + a$n_before) / (r$days_pre + r$days_before)) else sprintf("%.1f", a$per_day_before),
+      ifelse(is.na(a$change_vs_baseline_pct), "-", sprintf("%+.1f", a$change_vs_baseline_pct)),
+      fmt_p(a$p_degradation), fmt_p(r$p_any_camera), fmt_p(r$p_any_share)))
+    cat("**Tracks per day by camera**\n\n")
     gap()
-    has_pre <- isTRUE(r$has_pre) && "delta_placebo_pp" %in% names(x)
+    pre <- isTRUE(r$has_pre)
     d <- data.frame(Camera = x$camera,
-                    `Earlier (%)` = if (has_pre) fmt_pct(x$pct_pre) else "-",
-                    `Before (n)` = x$n_before, `Before (%)` = fmt_pct(x$pct_before),
-                    `After (n)` = x$n_after, `After (%)` = fmt_pct(x$pct_after),
-                    `Change after-before (pp)` = ifelse(is.na(x$delta_pp), "-", sprintf("%+.1f", x$delta_pp)),
-                    `Change before-earlier (pp)` = if (has_pre) ifelse(is.na(x$delta_placebo_pp), "-", sprintf("%+.1f", x$delta_placebo_pp)) else "-",
-                    `p adj.` = fmt_p(x$p_adj),
-                    `p adj. before vs earlier` = if (has_pre) fmt_p(x$p_adj_placebo) else "-",
-                    `p adj. vs earlier + before` = if (has_pre) fmt_p(x$p_adj_pooled) else "-",
-                    `Larger than before-earlier change` = if (has_pre) ifelse(x$exceeds_placebo, "Yes", "No") else "-",
-                    `Tracks vs benchmark (%)` = if (!is.null(bm)) { v <- bm$by_camera$relative_vs_benchmark_pct[match(x$camera, bm$by_camera$camera)]; ifelse(is.na(v), "-", sprintf("%+.1f", v)) } else "-",
-                    `p vs benchmark (adj.)` = if (!is.null(bm)) fmt_p(bm$by_camera$p_adj[match(x$camera, bm$by_camera$camera)]) else "-",
-                    Status = x$status, check.names = FALSE)
-    show_table(d, max_col_width_cm = 4, font_size = 8)
-    if (!is.null(r$fig_share)) { gap(); show_plot(r$fig_share) }
-    if (!is.null(r$fig_daily)) { gap(); show_plot(r$fig_daily) }
-  } else if (!nzchar(r$note)) cat("No tracks of this unit were recorded in the comparison windows.\n\n")
+                    `Earlier (n/day)` = if (pre) sprintf("%.1f", x$per_day_earlier) else "-",
+                    `Before (n/day)` = sprintf("%.1f", x$per_day_before), `After (n/day)` = sprintf("%.1f", x$per_day_after),
+                    `Change after vs baseline (%)` = ifelse(is.na(x$change_vs_baseline_pct), "-", sprintf("%+.0f", x$change_vs_baseline_pct)),
+                    `p adj. (fall)` = fmt_p(x$p_degradation_adj),
+                    `Change before vs earlier (%)` = if (pre) ifelse(is.na(x$change_before_vs_earlier_pct), "-", sprintf("%+.0f", x$change_before_vs_earlier_pct)) else "-",
+                    `p adj. (natural)` = if (pre) fmt_p(x$p_natural_adj) else "-",
+                    `Fall > natural change` = if (pre) ifelse(is.na(x$exceeds_natural), "-", ifelse(x$exceeds_natural, "Yes", "No")) else "-",
+                    Degraded = ifelse(!is.na(x$p_degradation_adj) & x$p_degradation_adj < 0.05 & (!pre | x$exceeds_natural %in% TRUE), "Yes", "No"),
+                    check.names = FALSE)
+    show_table(d, fixed_col_width_cm = w15, font_size = 8)
+    if (!is.null(r$fig_rates)) { gap(); show_plot(r$fig_rates) }
+  } else if (!nzchar(r$note)) cat("No tracks of this unit were recorded in the comparison periods.\n\n")
+
+  x <- r$shares
+  if (!is.null(x) && nrow(x) > 0L) {
+    cat("\n\n**Share of each camera in the tracks of the unit**\n\n")
+    gap()
+    pre <- isTRUE(r$has_pre)
+    d <- data.frame(Camera = x$camera,
+                    `Earlier (%)` = if (pre) fmt_pct(x$pct_earlier) else "-",
+                    `Before (%)` = fmt_pct(x$pct_before), `After (%)` = fmt_pct(x$pct_after),
+                    `Change after vs baseline (pp)` = ifelse(is.na(x$change_vs_baseline_pp), "-", sprintf("%+.1f", x$change_vs_baseline_pp)),
+                    `p adj. (fall)` = fmt_p(x$p_degradation_adj),
+                    `Change before vs earlier (pp)` = if (pre) ifelse(is.na(x$change_before_vs_earlier_pp), "-", sprintf("%+.1f", x$change_before_vs_earlier_pp)) else "-",
+                    `p adj. (natural)` = if (pre) fmt_p(x$p_natural_adj) else "-",
+                    `Fall > natural change` = if (pre) ifelse(is.na(x$exceeds_natural), "-", ifelse(x$exceeds_natural, "Yes", "No")) else "-",
+                    Degraded = ifelse(!is.na(x$p_degradation_adj) & x$p_degradation_adj < 0.05 & (!pre | x$exceeds_natural %in% TRUE), "Yes", "No"),
+                    check.names = FALSE)
+    show_table(d, fixed_col_width_cm = w15, font_size = 8)
+  }
+  if (!is.null(r$fig_daily)) { gap(); show_plot(r$fig_daily) }
+
   x <- r$context
   if (!is.null(x) && nrow(x) > 0L) {
-    cat("\n\nOther evidence in the same windows (rates per day covered by each dataset; \"Not available\" when the dataset does not cover the window):\n\n")
+    cat("\n\nOther evidence in the same periods (rates per day covered by each dataset; \"Not available\" when the dataset does not cover the period):\n\n")
     gap()
-    d <- data.frame(Metric = x$metric, Before = fmt_pct(x$before), After = fmt_pct(x$after),
-                    `Change (%)` = ifelse(is.na(x$change_pct), "-", sprintf("%+.1f", x$change_pct)), check.names = FALSE)
-    show_table(d, max_col_width_cm = 8)
+    pre <- isTRUE(r$has_pre)
+    d <- data.frame(Metric = x$metric, Earlier = if (pre) fmt_pct(x$earlier) else "-", Before = fmt_pct(x$before), After = fmt_pct(x$after),
+                    `Change after vs before (%)` = ifelse(is.na(x$change_pct), "-", sprintf("%+.1f", x$change_pct)), check.names = FALSE)
+    show_table(d, fixed_col_width_cm = w15, col_widths_cm = c(Metric = 5))
   }
 }
 ```
@@ -431,8 +451,7 @@ if (!is.null(x) && nrow(x) > 0L) {
 **Reported malfunctions (WFOV cameras)**
 
 - Malfunctions come from the list supplied by the IDF team (unit, date and time, type) and are not derived from the portal data. Only WFOV malfunctions are assessed, through the WFOV camera recorded in each track of the unit: the share of tracks per camera before and after the reported date and time, within the windows stated for each event. The tracks are those of the TrackReport files provided, which must cover both windows; when they do not, the comparison is stated as partial.
-- Earlier period: when configured, the days before the 'before' window are analysed in the same unit. The change between the earlier period and the 'before' window (no reported failure) is the natural variation of the unit, in the same airspace, and the change after the reported date is read against it. The earlier period and the 'before' window pooled are also compared with the 'after' window.
-- Benchmark: neighbouring IDF units (the nearest ones with at least `r pv(round(100 * params$wfov_benchmark_min_completeness))`% of the expected heartbeats in the whole window, and without a reported malfunction of their own in the window) give the change in the number of tracks per day over the same period; the unit is compared with them through the ratio after / before. The result is relative: a fall that also occurs in the benchmark units is attributed to the bird activity. The per-camera figure compares the ratio of each camera of the unit with the ratio of the benchmark total, since the cameras of different units point to different sectors.
+- Three periods of the same unit (same airspace): an earlier period, the period before and the period after the reported date and time. The change between the earlier period and the period before (no reported failure) is the natural variation of the unit; the change after the reported date is read against the baseline formed by the two earlier periods. Tracks per day and the share of each camera are given, with one-sided Monte Carlo permutation p-values for the fall after the reported date (permuting time blocks between the three periods), adjusted for the number of cameras by the maximum statistic, and a two-sided adjusted p-value for the natural variation.
 - The comparison is indirect evidence: it depends on the birds that crossed the area in each window, on the number of tracks (few tracks give unstable shares) and on the accuracy of the reported date.
 
 **Alerts**
