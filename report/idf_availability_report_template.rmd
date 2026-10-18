@@ -343,6 +343,7 @@ for (r in params$wfov_results) {
                     check.names = FALSE)
     d[[sprintf("P(fall >= %.0f%%) (%%)", thr)]] <- sprintf("%.0f", 100 * sn$p_fall_threshold)
     show_table(d, fixed_col_width_cm = w15, font_size = 8)
+    if (!is.null(b$plain) && nzchar(b$plain)) cat("\n\n**In plain terms.** ", b$plain, "\n\n", sep = "")
   } else if (!nzchar(r$note)) cat("\n\nThe assessment of the unit total could not be made: there are not enough days with data in the baseline and in the period after the reported date.\n\n")
 
   x <- r$rates

@@ -221,6 +221,53 @@ wfov_bayes_total <- function(wfov_dt, unit, event_time, days_pre = 21, days_befo
   res
 }
 
+## Frase NAO tecnica (em ingles, para o relatorio) que resume o resultado bayesiano e se
+## adapta aos valores obtidos: forca da evidencia pela P(queda), clareza da dimensao pelo
+## intervalo credivel, probabilidade da queda de pelo menos o limiar, robustez ao prior
+## (amplitude de P(queda) entre os priors da tabela de sensibilidade) e n.o de dias.
+## Faixas de P (evidencia): >= 99% "very strong", >= 95% "strong", >= 80% "moderate",
+## >= 60% "weak", abaixo: sem evidencia clara. Faixas da probabilidade do limiar:
+## >= 90% "very likely", >= 66% "likely", >= 55% "somewhat more likely than not", >= 45%
+## "about as likely as not", >= 33% "somewhat less likely than not", >= 10% "unlikely", abaixo "very unlikely".
+wfov_plain_summary <- function(summary, sensitivity = NULL) {
+  s <- as.data.frame(summary)[1L, ]
+  p_fall <- s$p_fall; p_thr <- s$p_fall_threshold; thr <- s$threshold_pct
+  strength <- function(p) if (p >= 0.99) "very strong" else if (p >= 0.95) "strong" else if (p >= 0.80) "moderate" else if (p >= 0.60) "weak" else NA_character_
+  pct <- function(p) sprintf("%.0f%%", 100 * p)
+  chg <- function(v) sprintf("%+.0f%%", v)
+
+  if (p_fall >= 0.60) {
+    first <- sprintf("There is %s evidence that the number of tracks per day fell after the reported date (probability %s).", strength(p_fall), pct(p_fall))
+  } else if (1 - p_fall >= 0.80) {
+    first <- sprintf("There is %s evidence that the number of tracks per day rose, not fell, after the reported date (probability %s of a rise).", strength(1 - p_fall), pct(1 - p_fall))
+  } else {
+    first <- sprintf("There is no clear evidence of a change in the number of tracks per day after the reported date (probability of a fall %s).", pct(p_fall))
+  }
+
+  width <- s$ci_high_pct - s$ci_low_pct
+  uncertain <- (s$ci_low_pct < 0 && s$ci_high_pct > 0) || width > 40
+  size <- if (uncertain) {
+    sprintf("The size of the change is uncertain: the best estimate is %s, with a plausible range from %s to %s", chg(s$median_change_pct), chg(s$ci_low_pct), chg(s$ci_high_pct))
+  } else {
+    sprintf("The size of the change is reasonably well defined: the best estimate is %s, with a plausible range from %s to %s", chg(s$median_change_pct), chg(s$ci_low_pct), chg(s$ci_high_pct))
+  }
+  qual <- if (p_thr >= 0.90) "very likely" else if (p_thr >= 0.66) "likely" else if (p_thr >= 0.55) "somewhat more likely than not" else if (p_thr >= 0.45) "about as likely as not" else if (p_thr >= 0.33) "somewhat less likely than not" else if (p_thr >= 0.10) "unlikely" else "very unlikely"
+  thr_txt <- if (p_fall >= 0.5) sprintf(", and the probability of a fall of at least %.0f%% is %s (%s)", thr, pct(p_thr), qual) else ""
+  second <- paste0(size, thr_txt, ".")
+
+  robust <- ""
+  if (!is.null(sensitivity) && nrow(sensitivity) > 1L) {
+    rg <- diff(range(sensitivity$p_fall))
+    robust <- if (rg < 0.05) " This does not depend on the choice of prior."
+              else if (rg < 0.15) " This changes little with the choice of prior."
+              else " This depends on the choice of prior, so it should be read with caution."
+  }
+  days <- sprintf(" It is based on %d day(s) after the reported date and %d day(s) of baseline%s.", as.integer(s$n_after_days), as.integer(s$n_base_days),
+                  if (s$n_after_days < 10) ", which is few" else "")
+  caveat <- " A fall in tracks can also reflect lower bird activity; this assessment does not separate the two."
+  paste0(first, " ", second, robust, days, caveat)
+}
+
 ## Contexto da mesma janela com as outras fontes: heartbeats por dia da
 ## unidade, curtailments e leituras SCADA das turbinas indicadas, antes/depois.
 ## Taxas por dia COBERTO pelos dados de cada fonte (NA se a janela nao tem dados).

@@ -59,6 +59,29 @@ cover <- mean(replicate(30, { x <- sim(0.33); sm <- wfov_bayes_total(x, "GW89-58
   sm$ci_low_pct <= -33 && -33 <= sm$ci_high_pct }))
 stopifnot(cover >= 0.8)
 
+## frase nao tecnica: adapta-se aos resultados
+mk_s <- function(pf, pt, med, lo, hi, nb = 28, na = 7) data.table(p_fall = pf, p_fall_threshold = pt, threshold_pct = 33, median_change_pct = med,
+                                                              ci_low_pct = lo, ci_high_pct = hi, n_base_days = nb, n_after_days = na)
+sens3 <- function(a, b, c) data.table(prior_theta_sd = c(0.5, 1, 2), p_fall = c(a, b, c))
+t1 <- wfov_plain_summary(mk_s(0.95, 0.45, -31, -54, 8), sens3(0.94, 0.95, 0.96))      # exemplo discutido
+stopifnot(grepl("strong evidence", t1), grepl("probability 95%", t1), grepl("uncertain", t1), grepl("-31%", t1), grepl("-54% to \\+8%", t1),
+          grepl("at least 33% is 45% \\(about as likely as not\\)", t1), grepl("does not depend on the choice of prior", t1), grepl("few", t1), grepl("bird activity", t1))
+t2 <- wfov_plain_summary(mk_s(0.999, 0.97, -52, -63, -38, 28, 14), sens3(0.998, 0.999, 0.999))
+stopifnot(grepl("very strong evidence", t2), grepl("reasonably well defined", t2), grepl("\\(very likely\\)", t2), !grepl("which is few", t2))
+t3 <- wfov_plain_summary(mk_s(0.55, 0.10, -5, -30, 25), sens3(0.5, 0.55, 0.6))
+stopifnot(grepl("no clear evidence", t3), grepl("depends on the choice of prior|changes little", t3))
+t4 <- wfov_plain_summary(mk_s(0.03, 0, 25, 5, 45), sens3(0.03, 0.03, 0.03))
+stopifnot(grepl("rose, not fell", t4), !grepl("fall of at least", t4))
+t5 <- wfov_plain_summary(mk_s(0.85, 0.2, -20, -45, 10), sens3(0.7, 0.85, 0.9))
+stopifnot(grepl("moderate evidence", t5), grepl("\\(unlikely\\)", t5), grepl("depends on the choice of prior", t5))
+
+## parametrizacao 5 / 5 / 10 dias e limiar 25%
+set.seed(7)
+w5 <- sim(0.4, npre = 10, nafter = 10)
+b5 <- wfov_bayes_total(w5, "GW89-58", ev, 5, 5, 10, fall_threshold = 0.25, n_iter = 2000, n_warmup = 600)
+stopifnot(b5$summary$n_base_days == 10L, b5$summary$n_after_days == 10L, b5$summary$threshold_pct == 25, b5$summary$rhat < 1.1)
+cat(wfov_plain_summary(b5$summary, b5$sensitivity), "\n")
+
 ## graficos
 ggsave(tempfile(fileext = ".png"), plot_wfov_rates(res, "t")$p, width = 6, height = 3)
 pd <- plot_wfov_daily(res, "t"); ggsave(tempfile(fileext = ".png"), pd$p, width = 6, height = pd$h)

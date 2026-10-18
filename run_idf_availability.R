@@ -288,8 +288,9 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
     list(label = label, unit = wf$unit[i], event_time = format(ev, "%Y-%m-%d %H:%M"), type = wf$type[i],
          days_pre = d_p, days_before = d_b, days_after = d_a, has_pre = !is.null(res) && isTRUE(res$has_pre),
          rates = if (is.null(res)) NULL else res$rates, totals = if (is.null(res)) NULL else res$totals,
-         bayes = if (is.null(bayes)) NULL else list(summary = as.data.frame(bayes$summary), sensitivity = as.data.frame(bayes$sensitivity),
-                                                    n_days_excluded = bayes$n_days_excluded),
+         bayes = if (is.null(bayes) || is.null(bayes$summary)) NULL else list(summary = as.data.frame(bayes$summary), sensitivity = as.data.frame(bayes$sensitivity),
+                                                    n_days_excluded = bayes$n_days_excluded,
+                                                    plain = wfov_plain_summary(bayes$summary, bayes$sensitivity)),
          context = ctx, note = note,
          fig_rates = if (is.null(res)) NULL else plot_wfov_rates(res, label),
          fig_posterior = if (is.null(bayes) || is.null(bayes$summary)) NULL else plot_wfov_posterior(bayes, label),
@@ -322,7 +323,7 @@ write_xlsx_tagged(
     if (!is.null(wfov_results)) list(
       WFOV_camera_rates = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$rates)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$rates)), fill = TRUE),
       WFOV_periods = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$totals)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$totals)), fill = TRUE),
-      WFOV_bayes_total = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$bayes)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$bayes$summary)), fill = TRUE),
+      WFOV_bayes_total = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$bayes)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$bayes$summary, plain_language = r$bayes$plain)), fill = TRUE),
       WFOV_bayes_sensitivity = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$bayes)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$bayes$sensitivity)), fill = TRUE),
       WFOV_event_context = data.table::rbindlist(lapply(wfov_results, function(r) cbind(`IDF Unit` = r$unit, Event = r$event_time, r$context)), fill = TRUE)
     )
