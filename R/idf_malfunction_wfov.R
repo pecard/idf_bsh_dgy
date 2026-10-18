@@ -233,7 +233,7 @@ wfov_plain_summary <- function(summary, sensitivity = NULL) {
   s <- as.data.frame(summary)[1L, ]
   p_fall <- s$p_fall; p_thr <- s$p_fall_threshold; thr <- s$threshold_pct
   strength <- function(p) if (p >= 0.99) "very strong" else if (p >= 0.95) "strong" else if (p >= 0.80) "moderate" else if (p >= 0.60) "weak" else NA_character_
-  pct <- function(p) sprintf("%.0f%%", 100 * p)
+  pct <- function(p) if (p >= 0.995) ">99%" else if (p <= 0.005) "<1%" else sprintf("%.0f%%", 100 * p)
   chg <- function(v) sprintf("%+.0f%%", v)
 
   if (p_fall >= 0.60) {
@@ -266,6 +266,120 @@ wfov_plain_summary <- function(summary, sensitivity = NULL) {
                   if (s$n_after_days < 10) ", which is few" else "")
   caveat <- " A fall in tracks can also reflect lower bird activity; this assessment does not separate the two."
   paste0(first, " ", second, robust, days, caveat)
+}
+
+## Rhat (cadeias divididas) e ESS de uma coluna de uma lista de cadeias (matrizes n x p)
+.mcmc_rhat <- function(chains, col) {
+  h <- floor(nrow(chains[[1L]]) / 2)
+  parts <- do.call(c, lapply(chains, function(m) list(m[seq_len(h), col], m[h + seq_len(h), col])))
+  mu <- vapply(parts, mean, numeric(1)); s2 <- vapply(parts, stats::var, numeric(1))
+  W <- mean(s2); B <- h * stats::var(mu)
+  sqrt(((h - 1) / h * W + B / h) / W)
+}
+.mcmc_ess <- function(chains, col) {
+  n <- nrow(chains[[1L]])
+  rho <- rowMeans(vapply(chains, function(m) stats::acf(m[, col], lag.max = 100L, plot = FALSE)$acf[-1L], numeric(100L)))
+  cut <- which(rho < 0.05)[1L]; if (is.na(cut)) cut <- 100L
+  n * length(chains) / (1 + 2 * sum(rho[seq_len(cut - 1L)]))
+}
+
+## CONTROLO COM OS PERIODOS ANTERIORES A' FALHA (placebo)
+## Mesmo modelo do total (binomial negativa sobre contagens diarias), agora com os 3
+## periodos consecutivos num so' modelo: Earlier -> Before (sem falha reportada, "data
+## arbitraria") e Before -> After (data reportada).
+##   log mu_earlier = alpha;  log mu_before = alpha + theta1;  log mu_after = alpha + theta1 + theta2
+##   theta1 = variacao natural entre periodos sem falha; theta2 = variacao na data reportada.
+## Priors: theta1, theta2 ~ N(0, prior_theta_sd^2); alpha e log k como em wfov_bayes_total().
+## Resultado: para cada passagem a mediana e o intervalo credivel (%), P(queda) e
+## P(queda >= limiar); e P(a queda na data reportada ser maior que no controlo) = P(theta2 < theta1).
+## Se o controlo nao mostra queda e a data reportada mostra, a queda e' especifica dessa data.
+## So' dias cobertos pelos TrackReport (data_range). Precisa de >= 2 dias em cada periodo.
+wfov_bayes_consecutive <- function(wfov_dt, unit, event_time, days_pre = 21, days_before = 7, days_after = 7,
+                                   fall_threshold = 0.33, n_iter = 10000L, n_warmup = 2000L, n_chains = 4L,
+                                   seed = 1L, prior_theta_sd = 1, data_range = NULL) {
+  u <- idf_unit_number(unit)
+  if (is.null(days_pre) || is.na(days_pre) || days_pre < 2) return(NULL)
+  x <- data.table::as.data.table(wfov_dt)[idf == u]
+  trk <- x[, .(timestamp = min(timestamp)), by = track_id]
+  days <- seq.int(-(days_pre + days_before), days_after - 1L)
+  d0 <- event_time + days * 86400
+  keep <- rep(TRUE, length(days))
+  if (!is.null(data_range)) keep <- d0 >= data_range[1L] & (d0 + 86400) <= (data_range[2L] + 3600)
+  idx <- floor(as.numeric(difftime(trk$timestamp, event_time, units = "days")))
+  y <- vapply(days, function(d) sum(idx == d), numeric(1))
+  grp <- ifelse(days >= 0, 3L, ifelse(days >= -days_before, 2L, 1L))
+  yl <- lapply(1:3, function(g) y[keep & grp == g])
+  if (any(vapply(yl, length, integer(1)) < 2L) || sum(y) == 0) return(NULL)
+
+  a0 <- log(mean(yl[[1L]]) + 0.5)
+  logpost <- function(par) {
+    a <- par[1L]; t1 <- par[2L]; t2 <- par[3L]; k <- exp(par[4L])
+    sum(stats::dnbinom(yl[[1L]], size = k, mu = exp(a), log = TRUE)) +
+      sum(stats::dnbinom(yl[[2L]], size = k, mu = exp(a + t1), log = TRUE)) +
+      sum(stats::dnbinom(yl[[3L]], size = k, mu = exp(a + t1 + t2), log = TRUE)) +
+      stats::dnorm(a, a0, 2.5, log = TRUE) + stats::dnorm(t1, 0, prior_theta_sd, log = TRUE) +
+      stats::dnorm(t2, 0, prior_theta_sd, log = TRUE) + stats::dnorm(par[4L], log(5), 1.5, log = TRUE)
+  }
+  run_chain <- function() {
+    par <- c(a0 + stats::rnorm(1, 0, 0.3), stats::rnorm(2, 0, 0.3), log(5) + stats::rnorm(1, 0, 0.5))
+    lp <- logpost(par); step <- c(0.1, 0.2, 0.2, 0.3); acc <- 0L
+    out <- matrix(NA_real_, n_iter, 4L)
+    for (i in seq_len(n_warmup + n_iter)) {
+      prop <- par + stats::rnorm(4L, 0, step)
+      lp2 <- logpost(prop)
+      if (is.finite(lp2) && log(stats::runif(1L)) < lp2 - lp) { par <- prop; lp <- lp2; acc <- acc + 1L }
+      if (i <= n_warmup && i %% 100L == 0L) { step <- step * if (acc / 100 > 0.35) 1.3 else if (acc / 100 < 0.15) 0.7 else 1; acc <- 0L }
+      if (i > n_warmup) out[i - n_warmup, ] <- par
+    }
+    out
+  }
+  old <- NULL; has_seed <- !is.null(seed)
+  if (has_seed) { old <- if (exists(".Random.seed", envir = globalenv())) get(".Random.seed", envir = globalenv()) else NULL; set.seed(seed) }
+  ch <- lapply(seq_len(n_chains), function(i) run_chain())
+  if (has_seed && !is.null(old)) assign(".Random.seed", old, envir = globalenv())
+
+  t1 <- unlist(lapply(ch, function(m) m[, 2L])); t2 <- unlist(lapply(ch, function(m) m[, 3L]))
+  one <- function(th, label, n_from, n_to) {
+    chg <- 100 * (exp(th) - 1)
+    data.table::data.table(comparison = label, median_change_pct = stats::median(chg),
+      ci_low_pct = unname(stats::quantile(chg, 0.025)), ci_high_pct = unname(stats::quantile(chg, 0.975)),
+      p_fall = mean(th < 0), p_fall_threshold = mean(th <= log(1 - fall_threshold)), threshold_pct = 100 * fall_threshold)
+  }
+  summ <- rbind(one(t1, "Earlier period to Before (no failure reported)"), one(t2, "Before to After (reported date)"))
+  summ[, `:=`(rhat = c(.mcmc_rhat(ch, 2L), .mcmc_rhat(ch, 3L)), ess = c(.mcmc_ess(ch, 2L), .mcmc_ess(ch, 3L)),
+              n_days = c(length(yl[[2L]]), length(yl[[3L]])), n_days_from = c(length(yl[[1L]]), length(yl[[2L]])))]
+  list(summary = summ[], p_larger_at_event = mean(t2 < t1),
+       median_difference_pct = stats::median(100 * (exp(t2 - t1) - 1)),
+       draws = list(placebo = 100 * (exp(t1[round(seq(1, length(t1), length.out = min(4000L, length(t1))))]) - 1),
+                    event = 100 * (exp(t2[round(seq(1, length(t2), length.out = min(4000L, length(t2))))]) - 1)),
+       threshold = fall_threshold)
+}
+
+## Frase NAO tecnica sobre o controlo (ingles, para o relatorio), adaptada aos resultados.
+wfov_plain_placebo <- function(cons) {
+  if (is.null(cons)) return("")
+  s <- cons$summary; pl <- s[1L, ]; ev <- s[2L, ]
+  pct <- function(p) if (p >= 0.995) ">99%" else if (p <= 0.005) "<1%" else sprintf("%.0f%%", 100 * p)
+  first <- if (pl$p_fall < 0.60) {
+    sprintf("Between the two periods before the reported date the number of tracks per day did not fall clearly (probability of a fall %s, median change %+.0f%%).", pct(pl$p_fall), pl$median_change_pct)
+  } else if (pl$p_fall < 0.80) {
+    sprintf("Between the two periods before the reported date the number of tracks per day showed a weak tendency to fall (probability of a fall %s, median change %+.0f%%).", pct(pl$p_fall), pl$median_change_pct)
+  } else {
+    sprintf("Between the two periods before the reported date the number of tracks per day also fell (probability of a fall %s, median change %+.0f%%), so falls of this kind occur without a reported failure.", pct(pl$p_fall), pl$median_change_pct)
+  }
+  p <- cons$p_larger_at_event
+  second <- if (ev$p_fall < 0.60) {
+    " At the reported date the number of tracks per day did not fall clearly either, so this check does not add support to the reported malfunction."
+  } else if (p >= 0.95) {
+    sprintf(" The probability that the fall at the reported date is larger than that change is %s, which strongly supports a change specific to the reported date.", pct(p))
+  } else if (p >= 0.80) {
+    sprintf(" The probability that the fall at the reported date is larger than that change is %s, which supports a change specific to the reported date.", pct(p))
+  } else if (p >= 0.60) {
+    sprintf(" The probability that the fall at the reported date is larger than that change is %s, which supports a change specific to the reported date only weakly.", pct(p))
+  } else {
+    sprintf(" The probability that the fall at the reported date is larger than that change is %s, so the data do not show that the fall is specific to the reported date.", pct(p))
+  }
+  paste0(first, second, " One comparison between two earlier periods is a limited measure of the natural variation, so this supports, but does not prove, the link with the reported malfunction.")
 }
 
 ## Contexto da mesma janela com as outras fontes: heartbeats por dia da
@@ -366,4 +480,21 @@ plot_wfov_posterior <- function(bayes, title) {
                   x = "Change in tracks per day, after vs baseline (%)", y = "Posterior density") +
     ggplot2::theme_minimal(base_size = 9) + ggplot2::theme(axis.text.y = ggplot2::element_blank())
   list(p = p, h = 2.8)
+}
+
+## Posterior das duas variacoes: controlo (Earlier -> Before) e data reportada (Before -> After)
+plot_wfov_consecutive <- function(cons, title) {
+  if (is.null(cons)) return(NULL)
+  dens <- function(v, lab) { dd <- stats::density(v, n = 512); data.frame(x = dd$x, y = dd$y, comparison = lab) }
+  d <- rbind(dens(cons$draws$placebo, "Earlier to Before (no failure reported)"), dens(cons$draws$event, "Before to After (reported date)"))
+  p <- ggplot2::ggplot(d, ggplot2::aes(x, y, colour = comparison, fill = comparison)) +
+    ggplot2::geom_area(alpha = 0.25, position = "identity") +
+    ggplot2::geom_line() +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed", colour = "grey40") +
+    ggplot2::scale_colour_manual(values = c("Earlier to Before (no failure reported)" = "#7F7F7F", "Before to After (reported date)" = "#DD8452"), name = NULL) +
+    ggplot2::scale_fill_manual(values = c("Earlier to Before (no failure reported)" = "#7F7F7F", "Before to After (reported date)" = "#DD8452"), name = NULL) +
+    ggplot2::labs(title = title, subtitle = "Posterior of the change in tracks per day between consecutive periods",
+                  x = "Change in tracks per day (%)", y = "Posterior density") +
+    ggplot2::theme_minimal(base_size = 9) + ggplot2::theme(axis.text.y = ggplot2::element_blank(), legend.position = "bottom")
+  list(p = p, h = 3.0)
 }

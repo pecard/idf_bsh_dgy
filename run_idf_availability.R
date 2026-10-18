@@ -276,6 +276,9 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
     bayes <- if (is.null(wfov_dt)) NULL else tryCatch(
       wfov_bayes_total(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a, fall_threshold = wfov_fall_threshold, prior_theta_sd = wfov_prior_theta_sd, data_range = wfov_range),
       error = function(e) { message("Modelo bayesiano WFOV falhou: ", conditionMessage(e)); NULL })
+    cons <- if (is.null(wfov_dt) || d_p < 2) NULL else tryCatch(
+      wfov_bayes_consecutive(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a, fall_threshold = wfov_fall_threshold, prior_theta_sd = wfov_prior_theta_sd, data_range = wfov_range),
+      error = function(e) { message("Controlo bayesiano WFOV falhou: ", conditionMessage(e)); NULL })
     tb <- if (!is.na(wf$turbine[i]) && nzchar(wf$turbine[i])) trimws(strsplit(wf$turbine[i], ",")[[1]]) else NULL
     ctx <- wfov_event_context(wf$unit[i], ev, d_b, d_a, heartb_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, tb, days_pre = d_p)
     covered <- !is.null(wfov_range) && wfov_range[1L] <= ev - (d_b + d_p) * 86400 && wfov_range[2L] >= ev + d_a * 86400
@@ -292,6 +295,9 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
                                                     n_days_excluded = bayes$n_days_excluded,
                                                     plain = wfov_plain_summary(bayes$summary, bayes$sensitivity)),
          context = ctx, note = note,
+         consecutive = if (is.null(cons)) NULL else list(summary = as.data.frame(cons$summary), p_larger_at_event = cons$p_larger_at_event,
+                                                         median_difference_pct = cons$median_difference_pct, plain = wfov_plain_placebo(cons)),
+         fig_consecutive = if (is.null(cons)) NULL else plot_wfov_consecutive(cons, label),
          fig_rates = if (is.null(res)) NULL else plot_wfov_rates(res, label),
          fig_posterior = if (is.null(bayes) || is.null(bayes$summary)) NULL else plot_wfov_posterior(bayes, label),
          fig_daily = if (is.null(res)) NULL else plot_wfov_daily(res, label))
@@ -325,6 +331,8 @@ write_xlsx_tagged(
       WFOV_periods = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$totals)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$totals)), fill = TRUE),
       WFOV_bayes_total = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$bayes)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$bayes$summary, plain_language = r$bayes$plain)), fill = TRUE),
       WFOV_bayes_sensitivity = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$bayes)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$bayes$sensitivity)), fill = TRUE),
+      WFOV_bayes_consecutive = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$consecutive)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$consecutive$summary,
+                                   p_fall_larger_at_reported_date = r$consecutive$p_larger_at_event, plain_language = r$consecutive$plain)), fill = TRUE),
       WFOV_event_context = data.table::rbindlist(lapply(wfov_results, function(r) cbind(`IDF Unit` = r$unit, Event = r$event_time, r$context)), fill = TRUE)
     )
   ),

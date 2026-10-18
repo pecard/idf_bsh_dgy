@@ -82,6 +82,26 @@ b5 <- wfov_bayes_total(w5, "GW89-58", ev, 5, 5, 10, fall_threshold = 0.25, n_ite
 stopifnot(b5$summary$n_base_days == 10L, b5$summary$n_after_days == 10L, b5$summary$threshold_pct == 25, b5$summary$rhat < 1.1)
 cat(wfov_plain_summary(b5$summary, b5$sensitivity), "\n")
 
+## controlo com os periodos anteriores (placebo): queda so' na data reportada vs queda ja' antes
+simc <- function(mult, npre = 14, nbefore = 7, nafter = 7) rbindlist(lapply(seq.int(-(npre + nbefore), nafter - 1L), function(d) {
+  m <- if (d >= 0) mult[3] else if (d >= -nbefore) mult[2] else mult[1]
+  n <- rpois(1, 92 * rgamma(1, 4, 4) * m); hr <- sample(0:23, n, TRUE, prob = dnorm(0:23, 12, 3.5) + 0.01)
+  data.table(track_id = paste0(d, "_", seq_len(n)), timestamp = ev + d * 86400 + hr * 3600 + runif(n, 0, 3600), idf = 58L, camera = sample(cams8, n, TRUE)) }))
+set.seed(22)
+cs <- wfov_bayes_consecutive(simc(c(1, 1, 0.5)), "GW89-58", ev, 14, 7, 7, n_iter = 2500, n_warmup = 800)
+stopifnot(nrow(cs$summary) == 2L, cs$summary$p_fall[1] < 0.8, cs$summary$p_fall[2] > 0.9, cs$p_larger_at_event > 0.85,
+          all(cs$summary$rhat < 1.05), all(cs$summary$ess > 200), cs$summary$n_days == c(7L, 7L), cs$summary$n_days_from == c(14L, 7L))
+tp1 <- wfov_plain_placebo(cs)
+stopifnot(grepl("before the reported date", tp1), grepl("supports|strongly supports", tp1), grepl("does not prove", tp1))
+set.seed(1)
+cs_trend <- wfov_bayes_consecutive(simc(c(1, 0.5, 0.5)), "GW89-58", ev, 14, 7, 7, n_iter = 2500, n_warmup = 800)    # a queda ja' acontecia antes
+stopifnot(cs_trend$summary$p_fall[1] > 0.9, cs_trend$p_larger_at_event < 0.5)
+stopifnot(grepl("also fell", wfov_plain_placebo(cs_trend)))
+stopifnot(is.null(wfov_bayes_consecutive(simc(c(1, 1, 1)), "GW89-58", ev, 0, 7, 7, n_iter = 500, n_warmup = 200)))
+stopifnot(wfov_bayes_consecutive(simc(c(1, 1, 1)), "GW89-58", ev, 14, 7, 7, n_iter = 800, n_warmup = 300, data_range = c(ev - 12 * 86400, ev + 7 * 86400))$summary$n_days_from[1] == 5L)
+pc <- plot_wfov_consecutive(cs, "t"); ggsave(tempfile(fileext = ".png"), pc$p, width = 6, height = pc$h)
+cat(tp1, "\n")
+
 ## graficos
 ggsave(tempfile(fileext = ".png"), plot_wfov_rates(res, "t")$p, width = 6, height = 3)
 pd <- plot_wfov_daily(res, "t"); ggsave(tempfile(fileext = ".png"), pd$p, width = 6, height = pd$h)

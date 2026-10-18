@@ -344,6 +344,22 @@ for (r in params$wfov_results) {
     d[[sprintf("P(fall >= %.0f%%) (%%)", thr)]] <- sprintf("%.0f", 100 * sn$p_fall_threshold)
     show_table(d, fixed_col_width_cm = w15, font_size = 8)
     if (!is.null(b$plain) && nzchar(b$plain)) cat("\n\n**In plain terms.** ", b$plain, "\n\n", sep = "")
+    cn <- r$consecutive
+    if (!is.null(cn) && !is.null(cn$summary) && nrow(cn$summary) > 0L) {
+      cat("\n\n**Check with the periods before the reported date.** The same model is applied, in a single fit, to the change between the earlier period and the period before (no failure reported) and to the change between the period before and the period after (reported date). If the number of tracks per day does not fall between the two earlier periods and falls at the reported date, the fall is more strongly linked to that date than to the natural variation of the unit.\n\n")
+      gap()
+      cs <- cn$summary
+      d <- data.frame(Comparison = cs$comparison, `Median change (%)` = sprintf("%+.0f", cs$median_change_pct),
+                      `95% interval (%)` = sprintf("%+.0f to %+.0f", cs$ci_low_pct, cs$ci_high_pct),
+                      `P(fall) (%)` = sprintf("%.0f", 100 * cs$p_fall), check.names = FALSE)
+      d[[sprintf("P(fall >= %.0f%%) (%%)", cs$threshold_pct[1])]] <- sprintf("%.0f", 100 * cs$p_fall_threshold)
+      d[["Days (n)"]] <- cs$n_days
+      show_table(d, fixed_col_width_cm = w15, font_size = 8, col_widths_cm = c(Comparison = 5))
+      cat(sprintf("\n\nProbability that the fall at the reported date is larger than the change in the earlier comparison: %.0f%%. Convergence: Rhat %.3f and %.3f, effective sample size %.0f and %.0f.\n\n",
+                  100 * cn$p_larger_at_event, cs$rhat[1], cs$rhat[2], cs$ess[1], cs$ess[2]))
+      if (!is.null(r$fig_consecutive)) { gap(); show_plot(r$fig_consecutive) }
+      if (!is.null(cn$plain) && nzchar(cn$plain)) cat("**In plain terms.** ", cn$plain, "\n\n", sep = "")
+    }
   } else if (!nzchar(r$note)) cat("\n\nThe assessment of the unit total could not be made: there are not enough days with data in the baseline and in the period after the reported date.\n\n")
 
   x <- r$rates
@@ -451,8 +467,7 @@ if (!is.null(x) && nrow(x) > 0L) {
 **Reported malfunctions (WFOV cameras)**
 
 - Malfunctions come from the list supplied by the IDF team (unit, date and time, type) and are not derived from the portal data. Only WFOV malfunctions are assessed, through the WFOV camera recorded in each track of the unit: the share of tracks per camera before and after the reported date and time, within the windows stated for each event. The tracks are those of the TrackReport files provided, which must cover both windows; when they do not, the comparison is stated as partial.
-- Three periods of the same unit (same airspace): an earlier period, the period before and the period after the reported date and time. The tracks per day by camera are descriptive. The assessment uses only the total number of tracks of the unit, in days of 24 h counted from the reported time, and only days covered by the TrackReport files. The model is a negative binomial with one mean for the baseline (earlier period and period before) and one for the period after; the prior for the log of the ratio is normal, centred on no change; the posterior is obtained with a random-walk Metropolis sampler (four chains, convergence checked with Rhat and the effective sample size). The report gives the probability of a fall and of a fall of at least the threshold (33% in the ZRF settings), the median change with a 95% credible interval, and the result with a narrower and a wider prior. The probabilities are conditional on the model and the prior, and with few days the credible interval is wide.
-- The comparison is indirect evidence: it depends on the birds that crossed the area in each window, on the number of days with data and on the accuracy of the reported date.
+- Three periods of the same unit (same airspace): an earlier period, the period before and the period after the reported date and time. The tracks per day by camera are descriptive. The assessment uses only the total number of tracks of the unit, in days of 24 h counted from the reported time, and only days covered by the TrackReport files. The model is a negative binomial with one mean for the baseline (earlier period and period before) and one for the period after; the prior for the log of the ratio is normal, centred on no change; the posterior is obtained with a random-walk Metropolis sampler (four chains, convergence checked with Rhat and the effective sample size). The report gives the probability of a fall and of a fall of at least the threshold (33% in the ZRF settings), the median change with a 95% credible interval, and the result with a narrower and a wider prior. The probabilities are conditional on the model and the prior, and with few days the credible interval is wide. When the earlier period has at least two days, the same model is also fitted to the three periods together, to compare the change between the earlier period and the period before (no failure reported) with the change at the reported date: the report gives the probability that the fall at the reported date is larger than the change in that earlier comparison. One earlier comparison is a limited measure of the natural variation, so this supports, but does not prove, a change specific to the reported date.\n- The comparison is indirect evidence: it depends on the birds that crossed the area in each window, on the number of days with data and on the accuracy of the reported date.
 
 **Alerts**
 
