@@ -128,9 +128,10 @@ idf_malfunctions <- data.frame(
   stringsAsFactors = FALSE
 )
 
-## Teste de permutacao Monte Carlo das cameras WFOV: n.o de permutacoes e
-## tamanho (h) dos blocos de tempo que se permutam. 24 = o dia e' a unidade independente
-## (recomendado; blocos curtos dao p-values demasiado otimistas).
-wfov_n_perm      <- 10000
-wfov_block_hours <- 24
-
+## Inferencia bayesiana (MCMC) sobre o TOTAL de tracks da unidade avariada:
+## probabilidade de a taxa de tracks por dia ter descido depois da falha, e de ter
+## descido pelo menos wfov_fall_threshold (0.33 = 33%). wfov_prior_theta_sd = desvio
+## padrao do prior (normal, centrado em 0, no log da razao depois/antes); a sensibilidade
+## a 0.5 e a 2 aparece no relatorio.
+wfov_fall_threshold <- 0.33
+wfov_prior_theta_sd <- 1

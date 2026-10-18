@@ -253,8 +253,8 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   if (!"days_after" %in% names(mf)) mf$days_after <- 7
   if (!"days_pre" %in% names(mf)) mf$days_pre <- 0
   mf$days_pre[is.na(mf$days_pre)] <- 0
-  if (!exists("wfov_n_perm")) wfov_n_perm <- 10000L
-  if (!exists("wfov_block_hours")) wfov_block_hours <- 24
+  if (!exists("wfov_fall_threshold")) wfov_fall_threshold <- 0.33
+  if (!exists("wfov_prior_theta_sd")) wfov_prior_theta_sd <- 1
   mf$event_time <- as.POSIXct(as.character(mf$datetime), tz = proj_timezone)
   mf$is_wfov <- grepl("WFOV", mf$type, ignore.case = TRUE)
   wf <- mf[mf$is_wfov, , drop = FALSE]
@@ -272,7 +272,10 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   wfov_results <- lapply(seq_len(nrow(wf)), function(i) {
     ev <- wf$event_time[i]; d_b <- wf$days_before[i]; d_a <- wf$days_after[i]; d_p <- wf$days_pre[i]
     label <- sprintf("%s -- %s", wf$unit[i], format(ev, "%Y-%m-%d %H:%M"))
-    res <- if (is.null(wfov_dt)) NULL else wfov_three_period(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a, n_perm = wfov_n_perm, block_hours = wfov_block_hours)
+    res <- if (is.null(wfov_dt)) NULL else wfov_three_period(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a)
+    bayes <- if (is.null(wfov_dt)) NULL else tryCatch(
+      wfov_bayes_total(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a, fall_threshold = wfov_fall_threshold, prior_theta_sd = wfov_prior_theta_sd, data_range = wfov_range),
+      error = function(e) { message("Modelo bayesiano WFOV falhou: ", conditionMessage(e)); NULL })
     tb <- if (!is.na(wf$turbine[i]) && nzchar(wf$turbine[i])) trimws(strsplit(wf$turbine[i], ",")[[1]]) else NULL
     ctx <- wfov_event_context(wf$unit[i], ev, d_b, d_a, heartb_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, tb, days_pre = d_p)
     covered <- !is.null(wfov_range) && wfov_range[1L] <= ev - (d_b + d_p) * 86400 && wfov_range[2L] >= ev + d_a * 86400
@@ -284,17 +287,18 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
     } else ""
     list(label = label, unit = wf$unit[i], event_time = format(ev, "%Y-%m-%d %H:%M"), type = wf$type[i],
          days_pre = d_p, days_before = d_b, days_after = d_a, has_pre = !is.null(res) && isTRUE(res$has_pre),
-         rates = if (is.null(res)) NULL else res$rates, shares = if (is.null(res)) NULL else res$shares, totals = if (is.null(res)) NULL else res$totals,
-         p_total = if (is.null(res)) NA_real_ else res$p_total, p_any_camera = if (is.null(res)) NA_real_ else res$p_any_camera,
-         p_any_share = if (is.null(res)) NA_real_ else res$p_any_share,
+         rates = if (is.null(res)) NULL else res$rates, totals = if (is.null(res)) NULL else res$totals,
+         bayes = if (is.null(bayes)) NULL else list(summary = as.data.frame(bayes$summary), sensitivity = as.data.frame(bayes$sensitivity),
+                                                    n_days_excluded = bayes$n_days_excluded),
          context = ctx, note = note,
          fig_rates = if (is.null(res)) NULL else plot_wfov_rates(res, label),
+         fig_posterior = if (is.null(bayes) || is.null(bayes$summary)) NULL else plot_wfov_posterior(bayes, label),
          fig_daily = if (is.null(res)) NULL else plot_wfov_daily(res, label))
   })
 
   malfunction_events_df <- data.frame(
     `IDF Unit` = mf$unit, `Reported date/time` = format(mf$event_time, "%Y-%m-%d %H:%M"), `Reported malfunction` = mf$type,
-    Assessment = ifelse(mf$is_wfov, "WFOV camera pattern, 3 periods (this report)", "Not assessable from the portal data"),
+    Assessment = ifelse(mf$is_wfov, "WFOV tracks, 3 periods; Bayesian assessment of the unit total (this report)", "Not assessable from the portal data"),
     check.names = FALSE
   )
   message(sprintf("Falhas reportadas: %d (%d WFOV avaliadas).", nrow(mf), nrow(wf)))
@@ -317,8 +321,9 @@ write_xlsx_tagged(
     if (!is.null(malfunction_events_df)) list(Reported_malfunctions = malfunction_events_df),
     if (!is.null(wfov_results)) list(
       WFOV_camera_rates = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$rates)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$rates)), fill = TRUE),
-      WFOV_camera_shares = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$shares)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$shares)), fill = TRUE),
       WFOV_periods = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$totals)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$totals)), fill = TRUE),
+      WFOV_bayes_total = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$bayes)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$bayes$summary)), fill = TRUE),
+      WFOV_bayes_sensitivity = data.table::rbindlist(lapply(wfov_results, function(r) if (is.null(r$bayes)) NULL else cbind(`IDF Unit` = r$unit, Event = r$event_time, r$bayes$sensitivity)), fill = TRUE),
       WFOV_event_context = data.table::rbindlist(lapply(wfov_results, function(r) cbind(`IDF Unit` = r$unit, Event = r$event_time, r$context)), fill = TRUE)
     )
   ),
@@ -365,7 +370,7 @@ report_params <- list(
   net_overall = if (is.null(analysis$net_overall)) NULL else as.data.frame(analysis$net_overall),
   calendar_figures = calendar_figures,
   malfunction_events = malfunction_events_df,
-  wfov_n_perm = if (exists("wfov_n_perm")) wfov_n_perm else NULL, wfov_n_boot = 5000, wfov_block_hours = if (exists("wfov_block_hours")) wfov_block_hours else NULL,
+  wfov_fall_threshold = if (exists("wfov_fall_threshold")) wfov_fall_threshold else 0.33, wfov_prior_theta_sd = if (exists("wfov_prior_theta_sd")) wfov_prior_theta_sd else 1,
   wfov_results = wfov_results,
   xlsx_name = out_name("idf_availability", "xlsx", avail_tag, run_date)
 )

@@ -1,66 +1,69 @@
-## Teste sintetico: R/idf_malfunction_wfov.R (3 periodos, permutacao entre periodos)
+## Teste sintetico: R/idf_malfunction_wfov.R (descricao em 3 periodos + inferencia bayesiana do total)
 suppressMessages({library(data.table); library(ggplot2)})
 source("R/read_utils.R"); source("R/idf_malfunction_wfov.R")
 tz <- "Asia/Samarkand"
 ev <- as.POSIXct("2026-05-27 02:30:00", tz = tz)
-mk <- function(n, from, cams, prefix, d = 7) data.table(track_id = paste0(prefix, seq_len(n)),
-  timestamp = from + runif(n, 0, d * 86400), idf = 58L, camera = sample(cams, n, TRUE))
-cams8 <- as.character(1:8)
+cams8 <- as.character(0:7)
+## tracks com ritmo diurno e dias sobredispersos (multiplicador diario gama, CV 0.5)
+sim <- function(drop, base = 92, npre = 21, nafter = 7, drop_cam = NULL) {
+  rbindlist(lapply(seq.int(-(npre + 7), nafter - 1L), function(d) {
+    n <- rpois(1, base * rgamma(1, 4, 4) * (if (d >= 0) 1 - drop else 1))
+    hr <- sample(0:23, n, TRUE, prob = dnorm(0:23, 12, 3.5) + 0.01)
+    cm <- sample(cams8, n, TRUE)
+    if (!is.null(drop_cam) && d >= 0) cm <- sample(setdiff(cams8, drop_cam), n, TRUE)
+    data.table(track_id = paste0(d, "_", seq_len(n)), timestamp = ev + d * 86400 + hr * 3600 + runif(n, 0, 3600), idf = 58L, camera = cm)
+  }))
+}
 
-## degradacao: camara 3 deixa de capturar e o volume cai
+## descricao: 3 periodos, tracks por dia e variacao
 set.seed(1)
-w <- rbind(mk(300, ev - 14 * 86400, cams8, "p"), mk(310, ev - 7 * 86400, cams8, "b"), mk(180, ev, as.character(c(1:2, 4:8)), "a"),
-           data.table(track_id = "x", timestamp = ev, idf = 99L, camera = "1"))
-res <- wfov_three_period(w, "GW89-58", ev, 7, 7, 7, n_perm = 3000)
-r <- res$rates; sh <- res$shares
+w <- rbind(sim(0.6, drop_cam = "3"), data.table(track_id = "x", timestamp = ev, idf = 99L, camera = "1"))
+res <- wfov_three_period(w, "GW89-58", ev, 21, 7, 7)
+r <- res$rates
 stopifnot(isTRUE(res$has_pre), nrow(res$totals) == 3L, res$totals$period[1] == "Earlier period",
-          identical(res$totals$tracks, c(300L, 310L, 180L)), nrow(r) == 9L, r$camera[9] == "All cameras",
-          r[camera == "3", n_after] == 0L, r[camera == "3", p_degradation_adj] < 0.05,
-          r[camera == "All cameras", p_degradation] < 0.05,
-          r[camera == "1", p_degradation_adj] > 0.05, sh[camera == "3", p_degradation_adj] < 0.05,
-          res$p_any_camera < 0.05, abs(r[camera == "All cameras", change_vs_baseline_pct] - (100 * (180 / 7) / (610 / 14) - 100)) < 3)
+          sum(res$totals$tracks) == w[idf == 58L, uniqueN(track_id)], nrow(r) == 9L, r$camera[9] == "All cameras",
+          r[camera == "3", n_after] == 0L, r[camera == "3", change_vs_baseline_pct] == -100,
+          r[camera == "All cameras", change_vs_baseline_pct] < -20,
+          !any(grepl("^p_|^ci_", names(r))))
+r2 <- wfov_three_period(w, "GW89-58", ev, 0, 7, 7)
+stopifnot(!r2$has_pre, nrow(r2$totals) == 2L)
 
-## sem mudanca: sem degradacao significativa; variacao natural coerente
+## bayesiano: queda clara -> P(queda) ~ 1; sem mudanca -> P(queda >= 33%) baixa
+b <- wfov_bayes_total(w, "GW89-58", ev, 21, 7, 7, n_iter = 4000, n_warmup = 1000)
+s <- b$summary
+stopifnot(s$p_fall > 0.9, s$p_fall_threshold > 0.3, s$ci_high_pct < 0, s$ci_low_pct < s$median_change_pct, s$median_change_pct < s$ci_high_pct,
+          s$rhat < 1.05, s$ess > 200, s$n_base_days == 28L, s$n_after_days == 7L, nrow(b$sensitivity) == 3L,
+          s$threshold_pct == 33, length(b$draws) > 0)
 set.seed(2)
-ctl <- rbind(mk(300, ev - 14 * 86400, cams8, "p"), mk(300, ev - 7 * 86400, cams8, "b"), mk(300, ev, cams8, "a"))
-r0 <- wfov_three_period(ctl, "GW89-58", ev, 7, 7, 7, n_perm = 2000)
-stopifnot(r0$p_total > 0.05, r0$p_any_camera > 0.05, r0$p_any_share > 0.05)
+w0 <- sim(0)
+b0 <- wfov_bayes_total(w0, "GW89-58", ev, 21, 7, 7, n_iter = 4000, n_warmup = 1000)$summary
+stopifnot(b0$p_fall_threshold < 0.2, b0$ci_low_pct < 0, b0$ci_high_pct > 0)
 
-## efeito com intervalo: a variacao % observada esta dentro do intervalo de 95% e o intervalo exclui 0 quando ha queda clara
-a_all <- r[camera == "All cameras"]
-stopifnot(a_all$ci_low_pct <= a_all$change_vs_baseline_pct, a_all$change_vs_baseline_pct <= a_all$ci_high_pct, a_all$ci_high_pct < 0,
-          abs(a_all$change_before_vs_earlier_pct - (100 * (310 / 7) / (300 / 7) - 100)) < 1e-9)
-c0 <- r0$rates[camera == "All cameras"]
-stopifnot(c0$ci_low_pct < 0, c0$ci_high_pct > 0)     # sem mudanca: o intervalo inclui 0
+## dias fora da cobertura dos TrackReport sao excluidos (nao contam como zero)
+rng <- c(ev - 10 * 86400, ev + 7 * 86400)
+bc <- wfov_bayes_total(w, "GW89-58", ev, 21, 7, 7, n_iter = 1500, n_warmup = 500, data_range = rng)
+stopifnot(bc$summary$n_base_days == 10L, bc$n_days_excluded > 0)
+## poucos dias -> sem resultado, sem erro
+stopifnot(is.null(wfov_bayes_total(w, "GW89-58", ev, 0, 0, 7, n_iter = 500, n_warmup = 200)$summary))
 
-## calibracao: com ritmo diurno + dias sobredispersos, blocos de 24 h nao dao falsos positivos a mais
-set.seed(11)
-sim_null <- function() rbindlist(lapply(-14:6, function(d) { n <- rpois(1, 92 * rgamma(1, 4, 4))
-  hr <- sample(0:23, n, TRUE, prob = dnorm(0:23, 12, 3.5) + 0.01)
-  data.table(track_id = paste0(d, "_", seq_len(n)), timestamp = ev + d * 86400 + hr * 3600 + runif(n, 0, 3600), idf = 58L, camera = sample(cams8, n, TRUE)) }))
-fp <- mean(replicate(60, wfov_three_period(sim_null(), "GW89-58", ev, 7, 7, 7, n_perm = 300, seed = NULL, n_boot = 0)$p_total < 0.05))
-stopifnot(fp <= 0.12)
-
-## reprodutivel e a seed nao altera o RNG global
+## reprodutivel, e a seed nao altera o RNG global
 set.seed(42); a <- runif(1); set.seed(42)
-r0a <- wfov_three_period(ctl, "GW89-58", ev, 7, 7, 7, n_perm = 500)
+ba <- wfov_bayes_total(w0, "GW89-58", ev, 21, 7, 7, n_iter = 1000, n_warmup = 300, seed = 5)
 stopifnot(identical(runif(1), a))
-r0b <- wfov_three_period(ctl, "GW89-58", ev, 7, 7, 7, n_perm = 500)
-stopifnot(identical(r0a$rates$p_degradation, r0b$rates$p_degradation))
+bb <- wfov_bayes_total(w0, "GW89-58", ev, 21, 7, 7, n_iter = 1000, n_warmup = 300, seed = 5)
+stopifnot(identical(ba$summary$median_change_pct, bb$summary$median_change_pct))
 
-## sem periodo adicional: so' Before/After
-r2 <- wfov_three_period(w, "GW89-58", ev, 0, 7, 7, n_perm = 500)
-stopifnot(!r2$has_pre, nrow(r2$totals) == 2L, is.na(r2$rates$change_before_vs_earlier_pct[1]), r2$rates[camera == "3", p_degradation_adj] < 0.05)
-
-## unilateral: um AUMENTO de volume nao e' degradacao
-up <- rbind(mk(200, ev - 14 * 86400, cams8, "p"), mk(200, ev - 7 * 86400, cams8, "b"), mk(400, ev, cams8, "a"))
-ru <- wfov_three_period(up, "GW89-58", ev, 7, 7, 7, n_perm = 1000)
-stopifnot(ru$p_total > 0.9)
+## cobertura do intervalo credivel (modelo bem especificado, queda de 33%): >= ~85% nas simulacoes
+set.seed(3)
+cover <- mean(replicate(30, { x <- sim(0.33); sm <- wfov_bayes_total(x, "GW89-58", ev, 21, 7, 7, n_iter = 1500, n_warmup = 500, seed = NULL, sens_sd = numeric(0))$summary
+  sm$ci_low_pct <= -33 && -33 <= sm$ci_high_pct }))
+stopifnot(cover >= 0.8)
 
 ## graficos
 ggsave(tempfile(fileext = ".png"), plot_wfov_rates(res, "t")$p, width = 6, height = 3)
 pd <- plot_wfov_daily(res, "t"); ggsave(tempfile(fileext = ".png"), pd$p, width = 6, height = pd$h)
 stopifnot(identical(pd$p$theme$axis.text.x$angle, 90))
+pp <- plot_wfov_posterior(b, "t"); ggsave(tempfile(fileext = ".png"), pp$p, width = 6, height = pp$h)
 
 ## contexto
 hb <- data.table(idf = "GW89-58", timestamp = ev - 8 * 86400 + seq(0, 12.9 * 86400, by = 1800))
