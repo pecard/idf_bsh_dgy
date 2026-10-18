@@ -122,9 +122,9 @@ idf_malfunctions <- data.frame(
   unit = "GW89-58", datetime = "2026-05-27 02:30:00", 
   type = "WFOV camera module malfunction",
   turbine = "T94", 
-  days_before = 7, 
-  days_after = 7,
-  days_pre = 21,                      # periodo adicional ANTES do "antes", mesma unidade (0 = sem); com a linha de base (earlier + before) compara-se o 'after'; 21 dias da' mais poder que 7
+  days_before = 5, 
+  days_after = 10,
+  days_pre = 5,                      # periodo adicional ANTES do "antes", mesma unidade (0 = sem); com a linha de base (earlier + before) compara-se o 'after'; 21 dias da' mais poder que 7
   stringsAsFactors = FALSE
 )
 
@@ -133,5 +133,5 @@ idf_malfunctions <- data.frame(
 ## descido pelo menos wfov_fall_threshold (0.33 = 33%). wfov_prior_theta_sd = desvio
 ## padrao do prior (normal, centrado em 0, no log da razao depois/antes); a sensibilidade
 ## a 0.5 e a 2 aparece no relatorio.
-wfov_fall_threshold <- 0.33
+wfov_fall_threshold <- 0.25
 wfov_prior_theta_sd <- 1
