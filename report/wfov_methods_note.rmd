@@ -1,0 +1,185 @@
+---
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(ggplot2)
+invisible(suppressWarnings(Sys.setlocale("LC_ALL", "C.UTF-8")))
+
+tbl <- function(x, widths_cm = NULL, font_size = 9) {
+  ft <- flextable::flextable(x) |>
+    flextable::theme_box() |>
+    flextable::bg(part = "header", bg = "gray85") |>
+    flextable::bold(part = "header") |>
+    flextable::fontsize(size = font_size, part = "all") |>
+    flextable::valign(valign = "center", part = "all") |>
+    flextable::autofit()
+  if (!is.null(widths_cm)) ft <- flextable::width(ft, j = seq_along(widths_cm), width = widths_cm, unit = "cm")
+  ft
+}
+```
+
+# Methods: assessing degraded detection of an IDF unit after a reported malfunction
+
+*Bayesian assessment of the number of tracks per day (WFOV camera module malfunction). Paulo Cardoso; Sandra Rodrigues.*
+
+## Objective and hypotheses
+
+IdentiFlight (IDF) units record bird tracks that trigger turbine curtailment. When the IDF team reports a malfunction of a unit that cannot be observed directly in the portal data (heartbeats, SCADA, curtailments), the question addressed here is whether the detection performance of that unit degraded after the reported date. The tracks recorded by the unit are used as an indirect indicator: a unit that detects less records fewer tracks per day.
+
+Let μ~baseline~ and μ~after~ be the expected number of tracks per day of the unit in the baseline period and in the period after the reported date, and let
+
+> θ = log(μ~after~ / μ~baseline~),
+
+so that 100 × (exp(θ) − 1) is the percentage change in tracks per day. The hypotheses are:
+
+- H~0~: no fall in the number of tracks per day, θ ≥ 0.
+- H~1~: a fall, θ < 0.
+- H~1~(τ): a fall of at least a relevant magnitude τ, θ ≤ log(1 − τ). The magnitude τ is a setting of the analysis (0.25 in the application below).
+
+The hypotheses are evaluated through posterior probabilities, Pr(θ < 0 | data) and Pr(θ ≤ log(1 − τ) | data), and not through a p-value. A second question is whether the change at the reported date is larger than the change observed between two periods without a reported failure (Section 4.2).
+
+## Study design
+
+The design is an interrupted time series on a single unit, with three consecutive periods of the same unit (and therefore of the same airspace). Using the same unit in all periods avoids comparing airspaces that differ in bird use.
+
+```{r timeline, fig.width=6.3, fig.height=1.9}
+d <- data.frame(
+  period = c("Earlier period", "Before", "After"),
+  from = c(-10, -5, 0), to = c(-5, 0, 10),
+  fill = c("#9DB4D0", "#4C72B0", "#DD8452"))
+d$period <- factor(d$period, levels = d$period)
+ggplot(d) +
+  geom_rect(aes(xmin = from, xmax = to, ymin = 0, ymax = 1, fill = period), colour = "white") +
+  geom_text(aes(x = (from + to) / 2, y = 0.5, label = period), size = 3) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "red") +
+  annotate("text", x = 0, y = 1.18, label = "reported date and time", colour = "red", size = 3) +
+  annotate("text", x = -7.5, y = -0.22, label = "no failure reported", size = 2.8, colour = "grey30") +
+  scale_fill_manual(values = setNames(d$fill, d$period), guide = "none") +
+  scale_x_continuous(breaks = c(-10, -5, 0, 5, 10), name = "Days from the reported date and time") +
+  scale_y_continuous(limits = c(-0.35, 1.3)) +
+  theme_minimal(base_size = 9) + theme(axis.text.y = element_blank(), axis.title.y = element_blank(), panel.grid = element_blank())
+```
+
+- **Earlier period** and **Before**: consecutive periods preceding the reported date. Together they form the baseline of the main model. Compared with each other, they describe the natural variation of the unit when no failure is reported.
+- **After**: the period following the reported date and time.
+- **Day**: an interval of 24 h counted from the reported date and time (day 0 starts at that time). The reported date is the date given by the IDF team; when only the day is known, a time of day is assumed and stated.
+
+The lengths of the periods are settings (`days_pre`, `days_before`, `days_after`). For the unit used as application (GW89-58, malfunction of the WFOV camera module reported for 27 May 2026) they are:
+
+```{r design-table}
+tbl(data.frame(
+  Period = c("Earlier period", "Before", "After"),
+  From = c("2026-05-17 02:30", "2026-05-22 02:30", "2026-05-27 02:30"),
+  To = c("2026-05-22 02:30", "2026-05-27 02:30", "2026-06-06 02:30"),
+  `Days (n)` = c(5, 5, 10), check.names = FALSE), widths_cm = c(4, 4, 4, 2.5))
+```
+
+## Data
+
+- **Tracks.** TrackReport files exported from the IDF portal (fields `TrackId`, `DateTimeStamp`, `TowerNumber` and `WFOV_camera`). The records of a unit are selected by the number of the unit (`TowerNumber`). Times are local time of the project (Asia/Samarkand). Duplicate rows are removed.
+- **Outcome.** The number of distinct tracks of the unit in each day. A track is counted once, in the day of its first record.
+- **Days with data.** Only days entirely covered by the TrackReport files read are used. A day without file is not a day with zero tracks and is excluded.
+- **Complementary data** (descriptive, not used in the model): heartbeats of the unit, SCADA readings and curtailments of the turbines it protects, as rates per day of each period.
+- **Cameras.** The WFOV module is the set of eight monocular cameras that make the first detection of objects; each track records the camera that captured it. Tracks per day by camera are given as description, with no statistical test.
+
+## Statistical model
+
+### Main model: total of the unit
+
+Let y~d~ be the number of tracks of the unit in day d. The counts of a day depend on flocks and on good and bad days of bird passage, so they vary more than a Poisson distribution allows. A negative binomial distribution is used, with mean μ~d~ and size k (variance μ~d~ + μ~d~² / k):
+
+> y~d~ ~ NegBin(μ~d~, k)
+>
+> log μ~d~ = α, for the days of the baseline (Earlier period and Before)
+>
+> log μ~d~ = α + θ, for the days of the period After
+
+The parameters are α (log of the mean per day in the baseline), θ (log of the ratio after/baseline) and log k.
+
+### Placebo model: periods before the reported date
+
+To check whether a change of the size observed at the reported date also occurs at an arbitrary date, the three periods are fitted in a single model, with one mean per period:
+
+> log μ~Earlier~ = α
+>
+> log μ~Before~ = α + θ~1~
+>
+> log μ~After~ = α + θ~1~ + θ~2~
+
+where θ~1~ is the change between the Earlier period and Before (no failure reported) and θ~2~ is the change at the reported date. The quantity of interest is the probability that the fall at the reported date is larger than the change in the earlier comparison, Pr(θ~2~ < θ~1~ | data). The model requires at least two days with data in each period.
+
+### Priors
+
+```{r priors-table}
+tbl(data.frame(
+  Parameter = c("α", "θ, θ1, θ2", "log k"),
+  Prior = c("Normal(log(mean baseline count + 0.5), 2.5²)", "Normal(0, s²), s = 1", "Normal(log 5, 1.5²)"),
+  Meaning = c("wide, centred on the observed baseline mean",
+              "centred on no change; does not assume a fall; a ratio of exp(±1), 0.37 to 2.7, is one standard deviation",
+              "size from about 0.2 to about 100, from strong overdispersion to nearly Poisson")),
+  widths_cm = c(2.5, 5.5, 7.5))
+```
+
+The sensitivity of the result to the prior of θ is assessed with s = 0.5 and s = 2.
+
+## Inference: Markov chain Monte Carlo
+
+The posterior distribution has no closed form (negative binomial with unknown size) and is sampled by Markov chain Monte Carlo, with a random-walk Metropolis algorithm written in base R (no Stan or JAGS).
+
+- **Chains:** four chains per model, with random starting values (α near the log of the observed baseline mean, plus a normal deviation with standard deviation 0.3; θ drawn from Normal(0, 0.3²); log k near log 5, plus a normal deviation with standard deviation 0.5).
+- **Proposal:** independent normal random walk for each parameter. The step sizes start at 0.1, 0.2 and 0.3 (0.1, 0.2, 0.2 and 0.3 for the placebo model) and are adapted during the warm-up every 100 iterations (multiplied by 1.3 if the acceptance rate is above 35% and by 0.7 if below 15%), so that the acceptance stays near 25% [Roberts et al. 1997].
+- **Warm-up and draws:** 2000 warm-up iterations, discarded, and 10 000 draws per chain (40 000 in total). The step sizes are fixed after the warm-up.
+- **Seed:** a fixed seed (1) makes the result reproducible; the state of the random number generator of the session is restored afterwards.
+- **Convergence diagnostics:** split R-hat [Gelman et al. 2013] of θ (the chains are split in two halves, comparing the variation between and within them): below 1.01 is excellent, up to 1.05 acceptable and above 1.05 indicates that the chains do not agree. The effective sample size (ESS) is computed from the autocorrelation of the chains, ESS = N / (1 + 2 × Σ ρ~l~), where ρ~l~ is the autocorrelation at lag l, truncated at the first lag with autocorrelation below 0.05 (at most 100 lags). Values above 400 are acceptable and above 1000 good. Both are reported with the results.
+
+## Metrics and interpretation
+
+Posterior summaries are calculated from the draws of θ:
+
+- **Change in tracks per day (%):** 100 × (exp(θ) − 1), given as the median and the 95% credible interval (2.5% and 97.5% quantiles).
+- **P(fall):** the proportion of draws with θ < 0.
+- **P(fall ≥ τ):** the proportion of draws with θ ≤ log(1 − τ).
+- **Contrast with the placebo:** the proportion of draws with θ~2~ < θ~1~.
+- **Sensitivity:** P(fall) and P(fall ≥ τ) for each prior standard deviation (0.5, 1 and 2). The result does not depend on the prior when P(fall) varies by less than 5 percentage points.
+
+For the report, the probabilities are translated into words with fixed bands:
+
+```{r bands-table}
+tbl(data.frame(
+  Quantity = c(rep("P(fall)", 4), rep("P(fall ≥ τ)", 6), rep("Contrast with the placebo", 3)),
+  `Value` = c("≥ 99%", "≥ 95%", "≥ 80%", "≥ 60%",
+              "≥ 90%", "≥ 66%", "≥ 55%", "≥ 45%", "≥ 33%", "≥ 10%",
+              "≥ 95%", "≥ 80%", "≥ 60%"),
+  Wording = c("very strong evidence of a fall", "strong evidence", "moderate evidence", "weak evidence (below 60%: no clear evidence)",
+              "very likely", "likely", "somewhat more likely than not", "about as likely as not", "somewhat less likely than not", "unlikely (below 10%: very unlikely)",
+              "strongly supports a change specific to the reported date", "supports it", "supports it weakly (below 60%: does not support it)")),
+  widths_cm = c(4.5, 2.5, 9))
+```
+
+The size of the change is described as uncertain when the credible interval includes 0 or is wider than 40 percentage points.
+
+## Assumptions and limitations
+
+- **Bird activity is not observed.** A fall in tracks can reflect fewer birds and not a degraded unit. The use of the same unit in all periods avoids comparing airspaces, but not changes of bird activity in time. The comparison with the placebo reduces, but does not remove, this limitation.
+- **Independence of days.** The model has no trend, seasonality or autocorrelation between days. A migration trend along the periods would be included in the effect.
+- **Few days.** With periods of a few days, the credible intervals are wide and the placebo comparison is a limited measure of the natural variation.
+- **Reported date.** The date and time are those reported by the IDF team; the malfunction may have started earlier or the effect may be gradual.
+- **Indirect indicator.** The number of tracks is not the probability of detection of a bird; it depends on the birds present.
+- **Conditional results.** The probabilities are conditional on the model and on the priors. They do not prove a cause.
+- **Cameras.** Tracks per day by camera are descriptive only; no tests are made by camera, to avoid multiple comparisons.
+- **Verification.** The implementation was checked with synthetic data (scenarios with a known fall and with no change; coverage of the 95% credible interval in repeated simulations).
+
+## Software and reproducibility
+
+- **Language and packages:** R; `data.table` (data handling), `lubridate` (time zones), `ggplot2` (figures), base `stats` (negative binomial density `dnbinom`, quantiles, autocorrelation `acf`). The report uses `rmarkdown` and `flextable`. The sampler is implemented in the project code, without external MCMC software.
+- **Code:** functions `wfov_bayes_total()` (main model), `wfov_bayes_consecutive()` (placebo model), `wfov_plain_summary()` and `wfov_plain_placebo()` (wording) in `R/idf_malfunction_wfov.R`; tests with synthetic data in `tests/test_wfov_camera.R`. The code version used appears in the header of each report.
+- **Settings:** `idf_malfunctions` (unit, reported date and time, type, `days_pre`, `days_before`, `days_after`), `wfov_fall_threshold` (τ) and `wfov_prior_theta_sd` (s).
+- **Outputs:** the tables and the figures of the availability report, and the workbook sheets `WFOV_bayes_total`, `WFOV_bayes_sensitivity`, `WFOV_bayes_consecutive`, `WFOV_camera_rates` and `WFOV_periods`.
+
+## References
+
+- Gelman A, Carlin JB, Stern HS, Dunson DB, Vehtari A, Rubin DB (2013). *Bayesian Data Analysis*, 3rd ed. Chapman and Hall/CRC.
+- Metropolis N, Rosenbluth AW, Rosenbluth MN, Teller AH, Teller E (1953). Equation of state calculations by fast computing machines. *Journal of Chemical Physics* 21: 1087–1092.
+- Roberts GO, Gelman A, Gilks WR (1997). Weak convergence and optimal scaling of random walk Metropolis algorithms. *Annals of Applied Probability* 7: 110–120.
