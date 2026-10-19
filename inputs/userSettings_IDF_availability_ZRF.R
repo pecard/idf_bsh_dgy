@@ -135,3 +135,8 @@ idf_malfunctions <- data.frame(
 ## a 0.5 e a 2 aparece no relatorio.
 wfov_fall_threshold <- 0.25
 wfov_prior_theta_sd <- 1
+
+## Motor MCMC: "metropolis" (R base, sem dependencias) ou "rstanarm" (Stan; precisa do
+## pacote rstanarm; se nao estiver instalado, usa o metropolis). Ver
+## check_wfov_bayes_engines.R para comparar os dois motores nos mesmos dados.
+wfov_bayes_engine <- "metropolis"

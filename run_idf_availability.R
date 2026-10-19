@@ -255,6 +255,7 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
   mf$days_pre[is.na(mf$days_pre)] <- 0
   if (!exists("wfov_fall_threshold")) wfov_fall_threshold <- 0.33
   if (!exists("wfov_prior_theta_sd")) wfov_prior_theta_sd <- 1
+  if (!exists("wfov_bayes_engine")) wfov_bayes_engine <- "metropolis"
   mf$event_time <- as.POSIXct(as.character(mf$datetime), tz = proj_timezone)
   mf$is_wfov <- grepl("WFOV", mf$type, ignore.case = TRUE)
   wf <- mf[mf$is_wfov, , drop = FALSE]
@@ -274,10 +275,10 @@ if (exists("idf_malfunctions") && !is.null(idf_malfunctions) && nrow(idf_malfunc
     label <- sprintf("%s -- %s", wf$unit[i], format(ev, "%Y-%m-%d %H:%M"))
     res <- if (is.null(wfov_dt)) NULL else wfov_three_period(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a)
     bayes <- if (is.null(wfov_dt)) NULL else tryCatch(
-      wfov_bayes_total(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a, fall_threshold = wfov_fall_threshold, prior_theta_sd = wfov_prior_theta_sd, data_range = wfov_range),
+      wfov_bayes_total(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a, fall_threshold = wfov_fall_threshold, prior_theta_sd = wfov_prior_theta_sd, data_range = wfov_range, engine = wfov_bayes_engine),
       error = function(e) { message("Modelo bayesiano WFOV falhou: ", conditionMessage(e)); NULL })
     cons <- if (is.null(wfov_dt) || d_p < 2) NULL else tryCatch(
-      wfov_bayes_consecutive(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a, fall_threshold = wfov_fall_threshold, prior_theta_sd = wfov_prior_theta_sd, data_range = wfov_range),
+      wfov_bayes_consecutive(wfov_dt, wf$unit[i], ev, d_p, d_b, d_a, fall_threshold = wfov_fall_threshold, prior_theta_sd = wfov_prior_theta_sd, data_range = wfov_range, engine = wfov_bayes_engine),
       error = function(e) { message("Controlo bayesiano WFOV falhou: ", conditionMessage(e)); NULL })
     tb <- if (!is.na(wf$turbine[i]) && nzchar(wf$turbine[i])) trimws(strsplit(wf$turbine[i], ",")[[1]]) else NULL
     ctx <- wfov_event_context(wf$unit[i], ev, d_b, d_a, heartb_dt_unfilt, curtl_dt_unfilt, scada_dt_unfilt, tb, days_pre = d_p)

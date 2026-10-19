@@ -102,6 +102,23 @@ stopifnot(wfov_bayes_consecutive(simc(c(1, 1, 1)), "GW89-58", ev, 14, 7, 7, n_it
 pc <- plot_wfov_consecutive(cs, "t"); ggsave(tempfile(fileext = ".png"), pc$p, width = 6, height = pc$h)
 cat(tp1, "\n")
 
+## motor: sem rstanarm recua para o Metropolis; com rstanarm instalado, concorda com o Metropolis
+set.seed(5)
+wm <- sim(0.4, npre = 21, nafter = 10)
+bm <- wfov_bayes_total(wm, "GW89-58", ev, 5, 5, 10, n_iter = 2000, n_warmup = 600, sens_sd = numeric(0))
+stopifnot(bm$summary$engine == "metropolis")
+if (requireNamespace("rstanarm", quietly = TRUE)) {
+  bs <- wfov_bayes_total(wm, "GW89-58", ev, 5, 5, 10, engine = "rstanarm", sens_sd = numeric(0))
+  stopifnot(bs$summary$engine == "rstanarm", abs(bs$summary$p_fall - bm$summary$p_fall) < 0.03,
+            abs(bs$summary$median_change_pct - bm$summary$median_change_pct) < 5, isTRUE(bs$summary$n_divergent == 0))
+  cat("engine check (rstanarm) OK\n")
+} else {
+  msg <- character(); bs <- withCallingHandlers(wfov_bayes_total(wm, "GW89-58", ev, 5, 5, 10, engine = "rstanarm", n_iter = 500, n_warmup = 200, sens_sd = numeric(0)),
+                                                message = function(m) { msg <<- c(msg, conditionMessage(m)); invokeRestart("muffleMessage") })
+  stopifnot(bs$summary$engine == "metropolis", any(grepl("rstanarm nao instalado", msg)))
+  cat("engine fallback OK (rstanarm not installed)\n")
+}
+
 ## graficos
 ggsave(tempfile(fileext = ".png"), plot_wfov_rates(res, "t")$p, width = 6, height = 3)
 pd <- plot_wfov_daily(res, "t"); ggsave(tempfile(fileext = ".png"), pd$p, width = 6, height = pd$h)

@@ -173,7 +173,7 @@ The size of the change is described as uncertain when the credible interval incl
 
 ## Software and reproducibility
 
-- **Language and packages:** R; `data.table` (data handling), `lubridate` (time zones), `ggplot2` (figures), base `stats` (negative binomial density `dnbinom`, quantiles, autocorrelation `acf`). The report uses `rmarkdown` and `flextable`. The sampler is implemented in the project code, without external MCMC software.
+- **Language and packages:** R; `data.table` (data handling), `lubridate` (time zones), `ggplot2` (figures), base `stats` (negative binomial density `dnbinom`, quantiles, autocorrelation `acf`). The report uses `rmarkdown` and `flextable`. The default sampler is implemented in the project code, without external MCMC software. An alternative engine (`rstanarm`, Hamiltonian Monte Carlo with the No-U-Turn sampler of Stan, with the same model and priors except for the prior of the size parameter, an exponential with rate 0.1) can be selected with `wfov_bayes_engine`; the script `check_wfov_bayes_engines.R` compares both engines on the same data.
 - **Code:** functions `wfov_bayes_total()` (main model), `wfov_bayes_consecutive()` (placebo model), `wfov_plain_summary()` and `wfov_plain_placebo()` (wording) in `R/idf_malfunction_wfov.R`; tests with synthetic data in `tests/test_wfov_camera.R`. The code version used appears in the header of each report.
 - **Settings:** `idf_malfunctions` (unit, reported date and time, type, `days_pre`, `days_before`, `days_after`), `wfov_fall_threshold` (τ) and `wfov_prior_theta_sd` (s).
 - **Outputs:** the tables and the figures of the availability report, and the workbook sheets `WFOV_bayes_total`, `WFOV_bayes_sensitivity`, `WFOV_bayes_consecutive`, `WFOV_camera_rates` and `WFOV_periods`.

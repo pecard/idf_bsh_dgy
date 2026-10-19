@@ -124,6 +124,37 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
        windows = list(from = tp, event = event_time, to = t1), has_pre = has_pre)
 }
 
+## MOTOR rstanarm (Stan, HMC/NUTS) -- alternativa ao Metropolis proprio
+## Modelo equivalente ao do Metropolis: binomial negativa (link log), y ~ predictors,
+## priors normais (media 0, desvio sd_theta) nos coeficientes das mudancas (theta), prior
+## normal no intercept (media a0, desvio 2.5, sem autoescala) e, para a dispersao, uma
+## exponencial(0.1) na `reciprocal_dispersion` (o tamanho k da binomial negativa; media 10)
+## -- aproximacao do prior log-normal de log k do Metropolis (rstanarm so' admite
+## normal/t/cauchy/exponencial neste parametro). NOTA: o prior do intercept do rstanarm
+## aplica-se ao intercept com os preditores centrados (largo, sem efeito pratico).
+## Devolve uma lista de matrizes (1 por cadeia, n.o de amostras x 4) com a mesma disposicao
+## das do Metropolis: coluna 2 = 1.o coeficiente de mudanca, coluna 3 = 2.o (se existir).
+## Atributo "n_divergent": transicoes divergentes (diagnostico do HMC).
+.wfov_stan_chains <- function(df, predictors, a0, sd_theta, n_chains = 4L, iter = 2000L, warmup = 1000L, seed = 1L) {
+  fml <- stats::as.formula(paste("y ~", paste(predictors, collapse = " + ")))
+  fit <- rstanarm::stan_glm.nb(
+    fml, data = df, link = "log",
+    prior_intercept = rstanarm::normal(location = a0, scale = 2.5, autoscale = FALSE),
+    prior = rstanarm::normal(location = 0, scale = sd_theta, autoscale = FALSE),
+    prior_aux = rstanarm::exponential(rate = 0.1, autoscale = FALSE),
+    chains = n_chains, iter = warmup + iter, warmup = warmup, seed = as.integer(seed), refresh = 0, cores = 1L)
+  arr <- as.array(fit)                                   # amostras x cadeias x parametros
+  chains <- lapply(seq_len(dim(arr)[2L]), function(c) {
+    m <- matrix(NA_real_, dim(arr)[1L], 4L)
+    m[, 1L] <- arr[, c, "(Intercept)"]
+    for (j in seq_along(predictors)) m[, 1L + j] <- arr[, c, predictors[j]]
+    m[, 4L] <- arr[, c, "reciprocal_dispersion"]
+    m
+  })
+  attr(chains, "n_divergent") <- tryCatch(sum(rstan::get_divergent_iterations(fit$stanfit)), error = function(e) NA_integer_)
+  chains
+}
+
 ## Inferencia BAYESIANA sobre o TOTAL de tracks da unidade (taxa por dia depois vs linha de base)
 ##
 ## Dados: contagem diaria de tracks da unidade (dias de 24 h alinhados com a hora da falha),
@@ -142,7 +173,13 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
 ## condicional ao modelo e aos priors; nao separa degradacao da unidade de menos aves.
 wfov_bayes_total <- function(wfov_dt, unit, event_time, days_pre = 21, days_before = 7, days_after = 7,
                              fall_threshold = 0.33, n_iter = 10000L, n_warmup = 2000L, n_chains = 4L,
-                             seed = 1L, prior_theta_sd = 1, sens_sd = c(0.5, 2), data_range = NULL) {
+                             seed = 1L, prior_theta_sd = 1, sens_sd = c(0.5, 2), data_range = NULL,
+                             engine = c("metropolis", "rstanarm"), stan_iter = 2000L, stan_warmup = 1000L) {
+  engine <- match.arg(engine)
+  if (engine == "rstanarm" && !requireNamespace("rstanarm", quietly = TRUE)) {
+    message("Pacote rstanarm nao instalado: a usar o motor 'metropolis'.")
+    engine <- "metropolis"
+  }
   u <- idf_unit_number(unit)
   if (is.null(days_pre) || is.na(days_pre)) days_pre <- 0
   x <- data.table::as.data.table(wfov_dt)[idf == u]
@@ -182,11 +219,20 @@ wfov_bayes_total <- function(wfov_dt, unit, event_time, days_pre = 21, days_befo
   }
   run_all <- function(sd_theta) lapply(seq_len(n_chains), function(ch) run_chain(sd_theta))
 
-  old <- NULL; has_seed <- !is.null(seed)
-  if (has_seed) { old <- if (exists(".Random.seed", envir = globalenv())) get(".Random.seed", envir = globalenv()) else NULL; set.seed(seed) }
-  main <- run_all(prior_theta_sd)
-  sens <- lapply(sens_sd, function(s) run_all(s))
-  if (has_seed && !is.null(old)) assign(".Random.seed", old, envir = globalenv())
+  n_div <- NA_integer_
+  if (engine == "rstanarm") {
+    df <- data.frame(y = c(yb, ya), after = c(rep(0, length(yb)), rep(1, length(ya))))
+    stan_fit <- function(s) .wfov_stan_chains(df, "after", a0, s, n_chains, stan_iter, stan_warmup, seed)
+    main <- stan_fit(prior_theta_sd)
+    n_div <- attr(main, "n_divergent")
+    sens <- lapply(sens_sd, stan_fit)
+  } else {
+    old <- NULL; has_seed <- !is.null(seed)
+    if (has_seed) { old <- if (exists(".Random.seed", envir = globalenv())) get(".Random.seed", envir = globalenv()) else NULL; set.seed(seed) }
+    main <- run_all(prior_theta_sd)
+    sens <- lapply(sens_sd, function(s) run_all(s))
+    if (has_seed && !is.null(old)) assign(".Random.seed", old, envir = globalenv())
+  }
 
   rhat <- function(ch) {                                 # Rhat de cadeias divididas
     h <- floor(nrow(ch[[1L]]) / 2)
@@ -211,7 +257,7 @@ wfov_bayes_total <- function(wfov_dt, unit, event_time, days_pre = 21, days_befo
   s_main <- summ(main)
   s_main[, `:=`(threshold_pct = 100 * fall_threshold, base_per_day = mean(yb), after_per_day = mean(ya),
                 n_base_days = length(yb), n_after_days = length(ya), rhat = rhat(main), ess = ess(main),
-                prior_theta_sd = prior_theta_sd)]
+                prior_theta_sd = prior_theta_sd, engine = engine, n_divergent = n_div)]
   sens_dt <- data.table::rbindlist(c(list(cbind(data.table::data.table(prior_theta_sd = prior_theta_sd), s_main[, .(p_fall, p_fall_threshold)])),
     Map(function(s, ch) cbind(data.table::data.table(prior_theta_sd = s), summ(ch)[, .(p_fall, p_fall_threshold)]), sens_sd, sens)))
   data.table::setorder(sens_dt, prior_theta_sd)
@@ -296,7 +342,13 @@ wfov_plain_summary <- function(summary, sensitivity = NULL) {
 ## So' dias cobertos pelos TrackReport (data_range). Precisa de >= 2 dias em cada periodo.
 wfov_bayes_consecutive <- function(wfov_dt, unit, event_time, days_pre = 21, days_before = 7, days_after = 7,
                                    fall_threshold = 0.33, n_iter = 10000L, n_warmup = 2000L, n_chains = 4L,
-                                   seed = 1L, prior_theta_sd = 1, data_range = NULL) {
+                                   seed = 1L, prior_theta_sd = 1, data_range = NULL,
+                                   engine = c("metropolis", "rstanarm"), stan_iter = 2000L, stan_warmup = 1000L) {
+  engine <- match.arg(engine)
+  if (engine == "rstanarm" && !requireNamespace("rstanarm", quietly = TRUE)) {
+    message("Pacote rstanarm nao instalado: a usar o motor 'metropolis'.")
+    engine <- "metropolis"
+  }
   u <- idf_unit_number(unit)
   if (is.null(days_pre) || is.na(days_pre) || days_pre < 2) return(NULL)
   x <- data.table::as.data.table(wfov_dt)[idf == u]
@@ -333,10 +385,18 @@ wfov_bayes_consecutive <- function(wfov_dt, unit, event_time, days_pre = 21, day
     }
     out
   }
-  old <- NULL; has_seed <- !is.null(seed)
-  if (has_seed) { old <- if (exists(".Random.seed", envir = globalenv())) get(".Random.seed", envir = globalenv()) else NULL; set.seed(seed) }
-  ch <- lapply(seq_len(n_chains), function(i) run_chain())
-  if (has_seed && !is.null(old)) assign(".Random.seed", old, envir = globalenv())
+  n_div <- NA_integer_
+  if (engine == "rstanarm") {
+    # theta1 = x1 (Before e After), theta2 = x2 (so' After): log mu = alpha + theta1 * x1 + theta2 * x2
+    df <- data.frame(y = unlist(yl), x1 = rep(c(0, 1, 1), vapply(yl, length, integer(1))), x2 = rep(c(0, 0, 1), vapply(yl, length, integer(1))))
+    ch <- .wfov_stan_chains(df, c("x1", "x2"), a0, prior_theta_sd, n_chains, stan_iter, stan_warmup, seed)
+    n_div <- attr(ch, "n_divergent")
+  } else {
+    old <- NULL; has_seed <- !is.null(seed)
+    if (has_seed) { old <- if (exists(".Random.seed", envir = globalenv())) get(".Random.seed", envir = globalenv()) else NULL; set.seed(seed) }
+    ch <- lapply(seq_len(n_chains), function(i) run_chain())
+    if (has_seed && !is.null(old)) assign(".Random.seed", old, envir = globalenv())
+  }
 
   t1 <- unlist(lapply(ch, function(m) m[, 2L])); t2 <- unlist(lapply(ch, function(m) m[, 3L]))
   one <- function(th, label, n_from, n_to) {
@@ -347,7 +407,8 @@ wfov_bayes_consecutive <- function(wfov_dt, unit, event_time, days_pre = 21, day
   }
   summ <- rbind(one(t1, "Earlier period to Before (no failure reported)"), one(t2, "Before to After (reported date)"))
   summ[, `:=`(rhat = c(.mcmc_rhat(ch, 2L), .mcmc_rhat(ch, 3L)), ess = c(.mcmc_ess(ch, 2L), .mcmc_ess(ch, 3L)),
-              n_days = c(length(yl[[2L]]), length(yl[[3L]])), n_days_from = c(length(yl[[1L]]), length(yl[[2L]])))]
+              n_days = c(length(yl[[2L]]), length(yl[[3L]])), n_days_from = c(length(yl[[1L]]), length(yl[[2L]])),
+              engine = engine, n_divergent = n_div)]
   list(summary = summ[], p_larger_at_event = mean(t2 < t1),
        median_difference_pct = stats::median(100 * (exp(t2 - t1) - 1)),
        draws = list(placebo = 100 * (exp(t1[round(seq(1, length(t1), length.out = min(4000L, length(t1))))]) - 1),
