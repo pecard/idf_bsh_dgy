@@ -229,11 +229,13 @@ message(sprintf(
   as.numeric(difftime(compare_end, compare_start, units = "weeks"))
 ))
 
-## Uniao das 2 listas de especies prioritarias -- praticamente identicas
-## (mesma regiao/taxonomia), DGY acrescenta so' Greater-Spotted-Eagle
-## (userSettings_DGY.R, comentario "Mesmas listas do Bash"; confirmar se a
-## composicao real de especies do DGY justifica mais alguma diferenca).
-priority_species_compare <- sort(union(bsh$prioritysp, dgy$prioritysp))
+## Especies selecionadas para a comparacao (Paulo, 2026-11): so' estas 7,
+## na ordem indicada (e' a ordem de apresentacao nos graficos/tabela).
+priority_species_compare <- c(
+  'White-Tailed-Eagle', 'Steppe-Eagle', 'Golden-Eagle', 'Egyptian-Vulture',
+  'Cinereous-Vulture', 'Bearded-Vulture', 'Saker-Falcon'
+)
+species_label <- function(x) gsub("-", " ", x)
 
 ## tz TEM de ser passado explicitamente e usado em TODO as.Date(POSIXct)
 ## abaixo -- as.Date() sem tz= assume UTC, o que desloca a data 1 dia para
@@ -276,33 +278,113 @@ summarise_species_presence_comparison <- function(weekly_species_both) {
   out <- weekly_species_both[, .(n_weeks_present = sum(present), n_weeks_total = .N), by = .(species, farm)]
   out[, pct_weeks_present := round(100 * n_weeks_present / n_weeks_total, 1)]
   wide <- data.table::dcast(out, species ~ farm, value.var = c("n_weeks_present", "n_weeks_total", "pct_weeks_present"))
-  data.table::setorder(wide, species)
+  wide <- wide[match(priority_species_compare, species)][!is.na(species)]
+  wide[, species := species_label(species)]
   wide[]
 }
 
 species_presence_summary <- summarise_species_presence_comparison(weekly_species_both)
 
-## Grafico: 1 tile por especie x semana, Presente/Ausente, facetado por
-## parque (2 paineis empilhados) -- mesma paleta 2 cores de
-## plot_offline_evidence_slots() (R/availability_daylight.R) para "Online"/
-## fundo, mantendo o estilo visual do resto do projeto.
-plot_species_presence_heatmap <- function(weekly_species_both, date_breaks = "4 weeks") {
-  ggplot(weekly_species_both, aes(x = week_start, y = species, fill = present_lbl)) +
+## Grafico: 1 painel por especie, com 2 linhas (BSH em cima, DGY em baixo),
+## 1 tile por semana. Presente = cor do parque (2 cores distintas); Ausente =
+## cinzento claro. Serie anual alinhada (mesmo eixo x nos 2 parques).
+farm_colours <- c(BSH = "#2a78d6", DGY = "#e8830c")
+
+plot_species_presence_paired <- function(weekly_species_both, date_breaks = "4 weeks") {
+  dt <- data.table::copy(weekly_species_both)[species %in% priority_species_compare]
+  dt[, species_f := factor(species_label(species), levels = species_label(priority_species_compare))]
+  dt[, farm_f := factor(farm, levels = c("DGY", "BSH"))]  # DGY primeiro => BSH fica por cima
+  dt[, fill_key := factor(ifelse(present == 1L, farm, "Absent"), levels = c("BSH", "DGY", "Absent"))]
+  ggplot(dt, aes(x = week_start, y = farm_f, fill = fill_key)) +
     geom_tile(colour = "white", linewidth = 0.3) +
-    facet_wrap(~farm, ncol = 1) +
-    scale_fill_manual(name = NULL, values = c(Absent = "#e8e8e8", Present = "#2a78d6"), drop = FALSE) +
+    facet_grid(species_f ~ ., switch = "y") +
+    scale_fill_manual(name = NULL, values = c(farm_colours, Absent = "#e8e8e8"),
+                      breaks = c("BSH", "DGY", "Absent"),
+                      labels = c("BSH present", "DGY present", "Absent"), drop = FALSE) +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
     labs(x = "Week starting", y = NULL, title = "Weekly presence of priority species") +
     theme_minimal(base_size = 9) +
     theme(
       axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
       axis.text.y = element_text(size = 7),
+      strip.text.y.left = element_text(angle = 0, hjust = 1, size = 7.5, face = "bold"),
+      strip.placement = "outside",
       legend.position = "bottom",
-      panel.grid = element_blank()
+      panel.grid = element_blank(),
+      panel.spacing.y = unit(4, "pt")
     )
 }
 
-p_species_presence <- plot_species_presence_heatmap(weekly_species_both)
+p_species_presence <- plot_species_presence_paired(weekly_species_both)
+
+## Intensidade: media de tracks/dia por IDF, Egyptian Vulture e Steppe Eagle.
+## Por semana (mesmos bins de 7 dias de cima): n tracks distintos (track_id)
+## / n dias da semana dentro da janela / n unidades IDF do parque -- a divisao
+## pelo n de IDF controla a diferenca de esforco de deteccao (DGY 4 vs BSH).
+## n_idf_total vem de heartbeat_idf_units (ver nota em import_farm_data()).
+intensity_species <- c('Egyptian-Vulture', 'Steppe-Eagle')
+
+weekly_species_intensity <- function(track_dt, species_list, compare_start, compare_end, farm_label, tz, n_idf) {
+  compare_start_date <- as.Date(compare_start, tz = tz)
+  compare_end_date <- as.Date(compare_end, tz = tz)
+  week_start_dates <- seq(compare_start_date, compare_end_date, by = 7)
+  grid <- data.table::CJ(species = species_list, week_start = week_start_dates)
+  grid[, n_days := pmin(7L, as.integer(compare_end_date - week_start) + 1L)]
+
+  dt <- track_dt[spec %in% species_list & timestamp >= compare_start & timestamp <= compare_end, .(spec, track_id, timestamp)]
+  if (nrow(dt) > 0) {
+    dt[, week_start := compare_start_date + (as.integer(as.Date(timestamp, tz = tz) - compare_start_date) %/% 7L) * 7L]
+    cnt <- dt[, .(n_tracks = data.table::uniqueN(track_id)), by = .(species = spec, week_start)]
+  } else {
+    cnt <- data.table::data.table(species = character(), week_start = as.Date(character()), n_tracks = integer())
+  }
+  out <- merge(grid, cnt, by = c("species", "week_start"), all.x = TRUE)
+  out[is.na(n_tracks), n_tracks := 0L]
+  out[, tracks_per_day := n_tracks / n_days]
+  out[, tracks_per_day_per_idf := tracks_per_day / n_idf]
+  out[, farm := farm_label]
+  out[, n_idf_ref := n_idf]
+  data.table::setorder(out, species, week_start)
+  out[]
+}
+
+bsh_weekly_intensity <- weekly_species_intensity(bsh$track_dt, intensity_species, compare_start, compare_end, "BSH", bsh$tz, bsh$n_idf_total)
+dgy_weekly_intensity <- weekly_species_intensity(dgy$track_dt, intensity_species, compare_start, compare_end, "DGY", dgy$tz, dgy$n_idf_total)
+weekly_intensity_both <- data.table::rbindlist(list(bsh_weekly_intensity, dgy_weekly_intensity))
+
+## Mesma organizacao do grafico de presenca: 1 painel por especie, BSH e DGY
+## (2 cores) uma sobre a outra, eixo x semanal comum.
+plot_species_intensity_paired <- function(weekly_intensity_both, date_breaks = "4 weeks") {
+  dt <- data.table::copy(weekly_intensity_both)
+  dt[, species_f := factor(species_label(species), levels = species_label(intensity_species))]
+  dt[, farm := factor(farm, levels = c("BSH", "DGY"))]
+  ggplot(dt, aes(x = week_start, y = tracks_per_day_per_idf, fill = farm)) +
+    geom_col(width = 6, position = "identity") +
+    facet_grid(species_f + farm ~ ., scales = "free_y", switch = "y") +
+    scale_fill_manual(name = NULL, values = farm_colours) +
+    scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
+    labs(x = "Week starting", y = "Mean tracks per day per IDF unit",
+         title = "Weekly track intensity, normalised by number of IDF units") +
+    theme_minimal(base_size = 9) +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
+      axis.text.y = element_text(size = 6.5),
+      strip.text.y.left = element_text(angle = 0, hjust = 1, size = 7.5),
+      strip.placement = "outside",
+      legend.position = "bottom",
+      panel.grid.minor = element_blank()
+    )
+}
+
+p_species_intensity <- plot_species_intensity_paired(weekly_intensity_both)
+
+## Resumo por especie/parque (media sobre a janela) para a tabela do relatorio.
+species_intensity_summary <- weekly_intensity_both[, .(
+  n_tracks = sum(n_tracks),
+  mean_tracks_per_day = round(sum(n_tracks) / sum(n_days), 3),
+  mean_tracks_per_day_per_idf = round(sum(n_tracks) / sum(n_days) / unique(n_idf_ref), 3)
+), by = .(species, farm)]
+species_intensity_summary[, species := species_label(species)]
 
 
 ##
@@ -339,6 +421,8 @@ comparison_sheets <- list(
   Species_presence_summary  = species_presence_summary,
   Species_weekly_BSH        = bsh_weekly_species[, .(species, week_start, present)],
   Species_weekly_DGY        = dgy_weekly_species[, .(species, week_start, present)],
+  Intensity_summary         = species_intensity_summary,
+  Intensity_weekly          = weekly_intensity_both[, .(species, farm, week_start, n_days, n_tracks, tracks_per_day, tracks_per_day_per_idf)],
   Terrain_class_comparison  = terrain_class_comparison,
   Terrain_class_BSH         = bsh$terrain_dt,
   Terrain_class_DGY         = dgy$terrain_dt,
@@ -367,9 +451,11 @@ if (generate_report) {
     n_turbines_bsh = bsh$n_turbines_total, n_idf_bsh = bsh$n_idf_total,
     n_turbines_dgy = dgy$n_turbines_total, n_idf_dgy = dgy$n_idf_total,
 
-    priority_species_compare = paste(priority_species_compare, collapse = ", "),
+    priority_species_compare = paste(species_label(priority_species_compare), collapse = ", "),
     species_presence_summary = species_presence_summary,
     species_presence_plot = p_species_presence,
+    species_intensity_plot = p_species_intensity,
+    species_intensity_summary = species_intensity_summary,
 
     terrain_class_comparison = terrain_class_comparison,
     terrain_map_plot_bsh = p_terrain_map_bsh,

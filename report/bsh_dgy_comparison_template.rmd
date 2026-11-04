@@ -18,6 +18,8 @@ params:
   priority_species_compare: ""
   species_presence_summary: !r NULL
   species_presence_plot: !r NULL
+  species_intensity_plot: !r NULL
+  species_intensity_summary: !r NULL
 
   terrain_class_comparison: !r NULL
   terrain_map_plot_bsh: !r NULL
@@ -135,10 +137,10 @@ if (!is.null(params$n_turbines_bsh)) {
 
 # Weekly Presence of Priority Species (Track Data)
 
-For each priority species, presence is scored 0/1 per 7-day week over the comparison window above -- 1 if at least one track of that species was detected in that week, 0 otherwise. Week bins are anchored to the same start date in both farms (not to each farm's own start of data), so that week N refers to the same calendar dates in BSH and DGY, and the two rows of the calendar below can be compared directly on a like-for-like seasonal basis. The comparison window itself is bounded by DGY's shorter history (the intersection of both farms' available periods).
+For each priority species, presence is scored 0/1 per 7-day week over the comparison window above -- 1 if at least one track of that species was detected in that week, 0 otherwise. Week bins are anchored to the same start date in both farms (not to each farm's own start of data), so that week N refers to the same calendar dates in BSH and DGY. For each species, the BSH and DGY rows are shown one above the other, in distinct colours, so that the two farms can be compared directly on a like-for-like seasonal basis. The comparison window itself is bounded by DGY's shorter history (the intersection of both farms' available periods).
 
 <!-- Source: plot_species_presence_heatmap(), explore_bsh_dgy_comparison.R -->
-```{r species-presence-plot, fig.width=6.30, fig.height=6.5}
+```{r species-presence-plot, fig.width=6.30, fig.height=7}
 if (!is.null(params$species_presence_plot)) print(params$species_presence_plot)
 ```
 
@@ -160,6 +162,25 @@ if (!is.null(params$species_presence_summary)) {
 ```
 ```{r species-presence-annex, results='asis'}
 annex_note(params$xlsx_comparison)
+```
+
+## Track Intensity per IDF Unit (Egyptian Vulture and Steppe Eagle)
+
+For Egyptian Vulture and Steppe Eagle, the number of distinct tracks per week is divided by the number of days in that week and by the number of IDF units of the farm (`r params$n_idf_bsh` in BSH, `r params$n_idf_dgy` in DGY), giving the mean number of tracks per day per IDF unit. This normalisation controls for the difference in the number of IDF units between the two farms. The layout follows the presence plot: one panel per species, with BSH and DGY in distinct colours, on the same weekly axis.
+
+<!-- Source: plot_species_intensity_paired(), explore_bsh_dgy_comparison.R -->
+```{r species-intensity-plot, fig.width=6.30, fig.height=6}
+if (!is.null(params$species_intensity_plot)) print(params$species_intensity_plot)
+```
+```{r species-intensity-table}
+if (!is.null(params$species_intensity_summary)) {
+  report_table(rename_display(
+    params$species_intensity_summary,
+    c(species = "Species", farm = "Farm", n_tracks = "Tracks (n)",
+      mean_tracks_per_day = "Mean Tracks/Day",
+      mean_tracks_per_day_per_idf = "Mean Tracks/Day per IDF Unit")
+  ))
+}
 ```
 
 # Topography and Seasonal Space-Use Comparison
