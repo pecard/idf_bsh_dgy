@@ -125,6 +125,10 @@ import_farm_data <- function(settings_file, farm_label) {
 
   message(sprintf("\n===== A importar dados: %s (%s) =====", farm_label, settings_file))
 
+  ## Limpa variaveis opcionais de settings anteriores (so' alguns parques as
+  ## definem -- ex: idf_source_id_col/idf_installed_units so' no DGY) para
+  ## nao herdar valores do outro parque ao correr o script 2x na mesma sessao.
+  rm(list = intersect(c("idf_source_id_col", "idf_installed_units", "wtg_source_id_col", "farm_pattern"), ls(globalenv())), envir = globalenv())
   source(file.path(folder_input, settings_file))
 
   databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
@@ -182,24 +186,24 @@ import_farm_data <- function(settings_file, farm_label) {
     ))
   }
 
-  ## n_idf_total = length(heartbeat_idf_units), NAO length(unique(track_dt$idf))
-  ## -- esta ultima so' contaria unidades que produziram pelo menos 1
-  ## deteção na janela filtrada, subestimando o total real se alguma
-  ## unidade ficou sem nenhum track no periodo. heartbeat_idf_units e' a
-  ## lista canonica de unidades do parque (4 no DGY, coincide com o numero
-  ## que o Paulo já' referiu -- "DGY conta com apenas 4 unidades IDF"). Nota
-  ## (ver userSettings_BSH.R): para o BSH esta lista tem um proposito mais
-  ## estreito (fallback de heartbeats/janela de fatalidade) e PODE nao
-  ## cobrir todas as unidades reais do parque -- suficiente para a tabela de
-  ## contexto desta nota comparativa, mas nao usar como fonte definitiva se
-  ## precisares do total exato (esse calculo, em IDF_analysis.R, usa a
-  ## matriz manual turbina<->IDF, nao carregada por este script).
+  ## n_idf_total = unidades IDF do shapefile do parque (idf_filename), pela
+  ## mesma convencao de IDF_analysis.R: coluna idf_source_id_col (por omissao
+  ## "imaging_he") e, se definido, filtrado por idf_installed_units (DGY: o
+  ## shapefile tem 2 registos extra "DZH-23" de cobertura planeada, nao
+  ## instalados). NAO usar heartbeat_idf_units -- no BSH so' lista 8 unidades
+  ## (proposito mais estreito: fallback de heartbeats), enquanto o BSH tem 43.
+  idf_shp <- sf::read_sf(file.path(folder_input, idf_filename))
+  idf_ids <- idf_shp[[if (exists("idf_source_id_col")) idf_source_id_col else "imaging_he"]]
+  if (exists("idf_installed_units")) idf_ids <- idf_ids[idf_ids %in% idf_installed_units]
+  n_idf_total <- length(unique(idf_ids))
+  message(sprintf("%s: %d unidades IDF no shapefile; %d com tracks na janela.", farm_label, n_idf_total, data.table::uniqueN(track_dt$idf)))
+
   list(
     farm_label = farm_label, farm_code = farm_code,
     ini = ini, end = end, tz = proj_timezone,
     prioritysp = prioritysp,
     track_dt = track_dt, wtg = wtg,
-    n_turbines_total = nrow(wtg), n_idf_total = length(heartbeat_idf_units),
+    n_turbines_total = nrow(wtg), n_idf_total = n_idf_total,
     dem_file = dem_file, terrain_dt = terrain_dt,
     track_terrain_dt = track_terrain_dt, weekly_terrain_dt = weekly_terrain_dt
   )
@@ -321,7 +325,7 @@ p_species_presence <- plot_species_presence_paired(weekly_species_both)
 ## Por semana (mesmos bins de 7 dias de cima): n tracks distintos (track_id)
 ## / n dias da semana dentro da janela / n unidades IDF do parque -- a divisao
 ## pelo n de IDF controla a diferenca de esforco de deteccao (DGY 4 vs BSH).
-## n_idf_total vem de heartbeat_idf_units (ver nota em import_farm_data()).
+## n_idf_total vem do shapefile de IDF de cada parque (ver import_farm_data()).
 intensity_species <- c('Egyptian-Vulture', 'Steppe-Eagle')
 
 weekly_species_intensity <- function(track_dt, species_list, compare_start, compare_end, farm_label, tz, n_idf) {
