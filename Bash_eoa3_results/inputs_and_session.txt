@@ -1,0 +1,100 @@
+Bash fixed-g EoA analysis
+Run: 2026-10-30 12:53:12 
+
+STUDY INPUTS
+list(project = "Bash", species = "Falco naumanni", report = "Bash_1st PCFM_Annual Report_20260824.docx", 
+    turbines_searched = 79L, turbines_total = 79L, search_interval_days = 7, 
+    mean_persistence_days = 18.513, persistence_distribution = "exponential", 
+    search_efficiency_mode = "report_weighted", search_efficiency_manual = 0.896742746615087, 
+    se_breeding = 0.938, se_nonbreeding = 0.848, planned_searches_breeding = 2240, 
+    planned_searches_nonbreeding = 1896, spatial_coverage = 0.6, 
+    k = 0, annual_allocation = 12L)
+
+PERIODS
+structure(list(label = c("PCFM Year 1: two detections", "2026: zero-detection scenario"
+), observed_fatalities = c(2L, 0L), monitoring_start = c("2025-04-15", 
+NA), monitoring_end = c("2026-04-15", NA), target_period = c("First PCFM year", 
+"Monitored window; dates unconfirmed"), coverage_of_target_mortality = c(1, 
+1), enabled = c(TRUE, TRUE)), class = "data.frame", row.names = c(NA, 
+-2L))
+
+CONTROLS
+list(install_missing_packages = TRUE, cran_repository = "https://cloud.r-project.org", 
+    expected_eoa3_version = "1.0.0.2", prior = "IbinRef", credible_level = 0.95, 
+    upper_bound_credibility = 0.95, mmax = 1000L, verify_larger_cutoff = TRUE, 
+    cutoff_multiplier = 2L, posterior_tolerance = 1e-09, tail_check_cells = 20L, 
+    tail_mass_tolerance = 1e-10, print_digits = 6L, write_files = TRUE, 
+    output_directory = "C:/Users/pcardoso/R/idf_bsh_dgy/Bash_eoa3_results", 
+    summary_filename = "mortality_summary.csv", posterior_filename = "mortality_posteriors.csv", 
+    audit_filename = "inputs_and_session.txt")
+
+RESULTS
+                         period                       target_period monitoring_start monitoring_end observed
+1   PCFM Year 1: two detections                     First PCFM year       2025-04-15     2026-04-15        2
+2 2026: zero-detection scenario Monitored window; dates unconfirmed             <NA>           <NA>        0
+  detection_probability   prior posterior_median posterior_mean credible_level equal_tailed_lower equal_tailed_upper
+1             0.4480196 IbinRef                5      5.1037010           0.95                  2                 12
+2             0.4480196 IbinRef                0      0.5523172           0.95                  0                  4
+  equal_tailed_actual_mass eoa3_MCI_lower eoa3_MCI_upper eoa3_MCI_actual_mass upper_one_sided_level
+1                0.9834545              2             10            0.9572937                  0.95
+2                0.9841328              0              3            0.9686445                  0.95
+  upper_one_sided_limit annual_allocation probability_at_most_allocation probability_exceeds_allocation
+1                    10                12                      0.9834545                   1.654547e-02
+2                     3                12                      0.9999089                   9.113049e-05
+  probability_reaches_allocation eoa3_version
+1                   0.0267087947      1.0.0.2
+2                   0.0001711062      1.0.0.2
+
+PACKAGE CITATION
+To cite package ‘eoa3’ in publications use:
+
+  Dalthorp D (2024). _eoa3: Wildlife Mortality Estimator for Low Fatality Rates and Imperfect
+  Detection_. doi:10.32614/CRAN.package.eoa3 <https://doi.org/10.32614/CRAN.package.eoa3>. R package
+  version 1.0.0.2, <https://CRAN.R-project.org/package=eoa3>.
+
+A BibTeX entry for LaTeX users is
+
+  @Manual{,
+    title = {eoa3: Wildlife Mortality Estimator for Low Fatality Rates and
+Imperfect Detection},
+    author = {Daniel Dalthorp},
+    year = {2024},
+    note = {R package version 1.0.0.2},
+    url = {https://CRAN.R-project.org/package=eoa3},
+    doi = {10.32614/CRAN.package.eoa3},
+  }
+
+SESSION
+R version 4.6.1 (2026-06-24 ucrt)
+Platform: x86_64-w64-mingw32/x64
+Running under: Windows 11 x64 (build 26300)
+
+Matrix products: default
+  LAPACK version 3.12.1
+
+locale:
+[1] LC_COLLATE=Portuguese_Portugal.utf8  LC_CTYPE=Portuguese_Portugal.utf8    LC_MONETARY=Portuguese_Portugal.utf8
+[4] LC_NUMERIC=C                         LC_TIME=Portuguese_Portugal.utf8    
+
+time zone: Europe/Lisbon
+tzcode source: internal
+
+attached base packages:
+[1] stats     graphics  grDevices utils     datasets  methods   base     
+
+other attached packages:
+ [1] lubridate_1.9.5 forcats_1.0.1   stringr_1.6.0   dplyr_1.2.1     purrr_1.2.2     readr_2.2.0     tidyr_1.3.2    
+ [8] tibble_3.3.1    ggplot2_4.0.3   tidyverse_2.0.0
+
+loaded via a namespace (and not attached):
+ [1] plotly_4.12.1       generics_0.1.4      class_7.3-23        KernSmooth_2.23-26  stringi_1.8.9      
+ [6] eoa3_1.0.0.2        hms_1.1.4           digest_0.6.39       magrittr_2.0.5      timechange_0.4.0   
+[11] grid_4.6.1          RColorBrewer_1.1-3  fastmap_1.2.0       jsonlite_2.0.0      writexl_2.0.1      
+[16] processx_3.9.0      e1071_1.7-17        chromote_0.5.1      DBI_1.3.0           promises_1.5.0     
+[21] httr_1.4.9          viridisLite_0.4.3   scales_1.4.0        codetools_0.2-20    cli_3.6.6          
+[26] rlang_1.3.0         units_1.0-1         withr_3.0.3         RANN_2.6.3          otel_0.2.0         
+[31] tools_4.6.1         tzdb_0.5.0          vctrs_0.7.3         R6_2.6.1            proxy_0.4-29       
+[36] lifecycle_1.0.5     classInt_0.4-11     htmlwidgets_1.6.4   pkgconfig_2.0.3     terra_1.9-50       
+[41] pillar_1.11.1       later_1.4.8         gtable_0.3.6        data.table_1.18.6.1 glue_1.8.1         
+[46] Rcpp_1.1.2          sf_1.1-2            tidyselect_1.2.1    rstudioapi_0.19.0   farver_2.1.2       
+[51] htmltools_0.5.9     websocket_1.4.4     webshot2_0.1.2      compiler_4.6.1      S7_0.2.2           
