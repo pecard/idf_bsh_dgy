@@ -321,12 +321,12 @@ plot_species_presence_paired <- function(weekly_species_both, date_breaks = "4 w
 
 p_species_presence <- plot_species_presence_paired(weekly_species_both)
 
-## Intensidade: media de tracks/dia por IDF, Egyptian Vulture e Steppe Eagle.
+## Intensidade: media de tracks/dia por IDF, mesmas 7 especies do grafico de presenca.
 ## Por semana (mesmos bins de 7 dias de cima): n tracks distintos (track_id)
 ## / n dias da semana dentro da janela / n unidades IDF do parque -- a divisao
 ## pelo n de IDF controla a diferenca de esforco de deteccao (DGY 4 vs BSH).
 ## n_idf_total vem do shapefile de IDF de cada parque (ver import_farm_data()).
-intensity_species <- c('Egyptian-Vulture', 'Steppe-Eagle')
+intensity_species <- priority_species_compare  # mesmas 7 especies do grafico de presenca
 
 weekly_species_intensity <- function(track_dt, species_list, compare_start, compare_end, farm_label, tz, n_idf) {
   compare_start_date <- as.Date(compare_start, tz = tz)
@@ -356,27 +356,40 @@ bsh_weekly_intensity <- weekly_species_intensity(bsh$track_dt, intensity_species
 dgy_weekly_intensity <- weekly_species_intensity(dgy$track_dt, intensity_species, compare_start, compare_end, "DGY", dgy$tz, dgy$n_idf_total)
 weekly_intensity_both <- data.table::rbindlist(list(bsh_weekly_intensity, dgy_weekly_intensity))
 
-## Mesma organizacao do grafico de presenca: 1 painel por especie, BSH e DGY
-## (2 cores) uma sobre a outra, eixo x semanal comum.
+## Mesmo layout do grafico de presenca (plot_species_presence_paired()): 1
+## painel por especie, BSH por cima e DGY por baixo, 1 tile por semana, mesmas
+## cores por parque. A intensidade do tile = tracks/dia/IDF, em escala relativa
+## ao maximo semanal da especie (nos 2 parques em conjunto), para BSH e DGY
+## serem comparaveis dentro de cada especie; semanas sem tracks a cinzento
+## ("No tracks", como "Absent" na presenca). Valores absolutos: tabela/xlsx.
 plot_species_intensity_paired <- function(weekly_intensity_both, date_breaks = "4 weeks") {
-  dt <- data.table::copy(weekly_intensity_both)
+  dt <- data.table::copy(weekly_intensity_both)[species %in% intensity_species]
   dt[, species_f := factor(species_label(species), levels = species_label(intensity_species))]
-  dt[, farm := factor(farm, levels = c("BSH", "DGY"))]
-  ggplot(dt, aes(x = week_start, y = tracks_per_day_per_idf, fill = farm)) +
-    geom_col(width = 6, position = "identity") +
-    facet_grid(species_f + farm ~ ., scales = "free_y", switch = "y") +
-    scale_fill_manual(name = NULL, values = farm_colours) +
+  dt[, farm_f := factor(farm, levels = c("DGY", "BSH"))]  # DGY primeiro => BSH fica por cima
+  dt[, rel := tracks_per_day_per_idf / max(tracks_per_day_per_idf), by = species]
+  dt[is.nan(rel), rel := 0]
+  dt[, tile_alpha := ifelse(rel > 0, 0.2 + 0.8 * rel, 1)]
+  dt[, fill_key := factor(ifelse(rel > 0, farm, "No tracks"), levels = c("BSH", "DGY", "No tracks"))]
+  ggplot(dt, aes(x = week_start, y = farm_f, fill = fill_key, alpha = tile_alpha)) +
+    geom_tile(colour = "white", linewidth = 0.3) +
+    facet_grid(species_f ~ ., switch = "y") +
+    scale_alpha_identity() +
+    scale_fill_manual(name = NULL, values = c(farm_colours, "No tracks" = "#e8e8e8"),
+                      breaks = c("BSH", "DGY", "No tracks"), drop = FALSE) +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
-    labs(x = "Week starting", y = "Mean tracks per day per IDF unit",
-         title = "Weekly track intensity, normalised by number of IDF units") +
+    labs(x = "Week starting", y = NULL,
+         title = "Weekly track intensity per IDF unit (mean tracks/day/IDF unit)",
+         caption = "Colour intensity is proportional to the weekly value, relative to the species maximum across both farms.") +
     theme_minimal(base_size = 9) +
     theme(
       axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
-      axis.text.y = element_text(size = 6.5),
-      strip.text.y.left = element_text(angle = 0, hjust = 1, size = 7.5),
+      axis.text.y = element_text(size = 7),
+      strip.text.y.left = element_text(angle = 0, hjust = 1, size = 7.5, face = "bold"),
       strip.placement = "outside",
       legend.position = "bottom",
-      panel.grid.minor = element_blank()
+      plot.caption = element_text(size = 6.5, hjust = 0),
+      panel.grid = element_blank(),
+      panel.spacing.y = unit(4, "pt")
     )
 }
 
@@ -388,6 +401,9 @@ species_intensity_summary <- weekly_intensity_both[, .(
   mean_tracks_per_day = round(sum(n_tracks) / sum(n_days), 3),
   mean_tracks_per_day_per_idf = round(sum(n_tracks) / sum(n_days) / unique(n_idf_ref), 3)
 ), by = .(species, farm)]
+species_intensity_summary[, species_ord := match(species, intensity_species)]
+data.table::setorder(species_intensity_summary, species_ord, farm)
+species_intensity_summary[, species_ord := NULL]
 species_intensity_summary[, species := species_label(species)]
 
 

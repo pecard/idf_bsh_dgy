@@ -167,12 +167,12 @@ if (!is.null(params$species_presence_summary)) {
 annex_note(params$xlsx_comparison)
 ```
 
-## Track Intensity per IDF Unit (Egyptian Vulture and Steppe Eagle)
+## Track Intensity per IDF Unit
 
-For Egyptian Vulture and Steppe Eagle, the number of distinct tracks per week is divided by the number of days in that week and by the number of IDF units of the farm (`r params$n_idf_bsh` in BSH, `r params$n_idf_dgy` in DGY), giving the mean number of tracks per day per IDF unit. This normalisation controls for the difference in the number of IDF units between the two farms. The layout follows the presence plot: one panel per species, with BSH and DGY in distinct colours, on the same weekly axis.
+For the same species as in the presence plot above, the number of distinct tracks per week is divided by the number of days in that week and by the number of IDF units of the farm (`r params$n_idf_bsh` in BSH, `r params$n_idf_dgy` in DGY), giving the mean number of tracks per day per IDF unit. This normalisation controls for the difference in the number of IDF units between the two farms. The layout follows the presence plot: one panel per species, with BSH and DGY in distinct colours, one above the other, on the same weekly axis. Colour intensity is proportional to the weekly value, relative to the maximum weekly value of that species across both farms; weeks with no tracks are shown in grey. Absolute values are given in the table below.
 
 <!-- Source: plot_species_intensity_paired(), explore_bsh_dgy_comparison.R -->
-```{r species-intensity-plot, fig.width=6.30, fig.height=6}
+```{r species-intensity-plot, fig.width=6.30, fig.height=7}
 if (!is.null(params$species_intensity_plot)) print(params$species_intensity_plot)
 ```
 ```{r species-intensity-table}
