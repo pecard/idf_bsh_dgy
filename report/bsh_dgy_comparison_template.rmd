@@ -208,39 +208,30 @@ annex_note(params$xlsx_comparison)
 ## Terrain Classification Maps
 
 <!-- Source: plot_turbine_terrain_map(), R/turbine_terrain_classification.R -->
-```{r terrain-maps-side-by-side, out.width="14.4cm"}
-# Mapas lado a lado, 7 x 7 cm cada: desenhados com grid num UNICO PNG de
-# 14 x 7 cm e incluido como 1 imagem (em Word, 2 graficos de um chunk ficariam
-# empilhados). Ajustes so' para tamanho reduzido: texto menor, pontos menores
-# (size = 3 por omissao em plot_turbine_terrain_map()), legenda por baixo.
-if (!is.null(params$terrain_map_plot_bsh) && !is.null(params$terrain_map_plot_dgy)) {
-  map_cm <- 7
-  shrink_map <- function(p, title) {
-    for (i in seq_along(p$layers)) {
-      if (identical(p$layers[[i]]$aes_params$size, 3)) p$layers[[i]]$aes_params$size <- 1.2
-    }
-    p + ggplot2::labs(title = title) +
-      ggplot2::theme(
-        text = ggplot2::element_text(size = 6),
-        plot.title = ggplot2::element_text(size = 7, face = "bold"),
-        axis.text = ggplot2::element_text(size = 5),
-        legend.title = ggplot2::element_text(size = 6),
-        legend.text = ggplot2::element_text(size = 6),
-        legend.key.size = grid::unit(0.3, "cm"),
-        legend.margin = ggplot2::margin(0, 0, 0, 0)
-      )
+```{r terrain-map-helper, include=FALSE}
+# Mapas a 7 x 7 cm (2.76 in): texto e pontos reduzidos (size = 3 por omissao em
+# plot_turbine_terrain_map()), legenda por baixo.
+shrink_map <- function(p, title) {
+  for (i in seq_along(p$layers)) {
+    if (identical(p$layers[[i]]$aes_params$size, 3)) p$layers[[i]]$aes_params$size <- 1.2
   }
-  maps_png <- tempfile(pattern = "terrain_maps_", fileext = ".png")
-  grDevices::png(maps_png, width = 2 * map_cm, height = map_cm, units = "cm", res = 300, bg = "white")
-  grid::grid.newpage()
-  grid::pushViewport(grid::viewport(layout = grid::grid.layout(1, 2)))
-  print(shrink_map(params$terrain_map_plot_bsh, "BSH -- Turbine terrain classification"),
-        vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
-  print(shrink_map(params$terrain_map_plot_dgy, "DGY -- Turbine terrain classification"),
-        vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
-  grDevices::dev.off()
-  knitr::include_graphics(maps_png)
+  p + ggplot2::labs(title = title) +
+    ggplot2::theme(
+      text = ggplot2::element_text(size = 6),
+      plot.title = ggplot2::element_text(size = 7, face = "bold"),
+      axis.text = ggplot2::element_text(size = 5),
+      legend.title = ggplot2::element_text(size = 6),
+      legend.text = ggplot2::element_text(size = 6),
+      legend.key.size = grid::unit(0.3, "cm"),
+      legend.margin = ggplot2::margin(0, 0, 0, 0)
+    )
 }
+```
+```{r terrain-map-bsh, fig.width=2.756, fig.height=2.756}
+if (!is.null(params$terrain_map_plot_bsh)) print(shrink_map(params$terrain_map_plot_bsh, "BSH -- Turbine terrain classification"))
+```
+```{r terrain-map-dgy, fig.width=2.756, fig.height=2.756}
+if (!is.null(params$terrain_map_plot_dgy)) print(shrink_map(params$terrain_map_plot_dgy, "DGY -- Turbine terrain classification"))
 ```
 
 ## Weekly Space-Use by Terrain Class
