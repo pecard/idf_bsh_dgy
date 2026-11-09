@@ -359,27 +359,28 @@ weekly_intensity_both <- data.table::rbindlist(list(bsh_weekly_intensity, dgy_we
 ## Mesmo layout do grafico de presenca (plot_species_presence_paired()): 1
 ## painel por especie, BSH por cima e DGY por baixo, 1 tile por semana, mesmas
 ## cores por parque. A intensidade do tile = tracks/dia/IDF, em escala relativa
-## ao maximo semanal da especie (nos 2 parques em conjunto), para BSH e DGY
-## serem comparaveis dentro de cada especie; semanas sem tracks a cinzento
-## ("No tracks", como "Absent" na presenca). Valores absolutos: tabela/xlsx.
+## ao maximo semanal DESSA LINHA (especie x parque) -- realca a dinamica
+## temporal de cada linha, mas as intensidades NAO sao comparaveis entre
+## linhas/parques; semanas sem tracks a cinzento escuro ("No tracks").
+## Valores absolutos: tabela/xlsx.
 plot_species_intensity_paired <- function(weekly_intensity_both, date_breaks = "4 weeks") {
   dt <- data.table::copy(weekly_intensity_both)[species %in% intensity_species]
   dt[, species_f := factor(species_label(species), levels = species_label(intensity_species))]
   dt[, farm_f := factor(farm, levels = c("DGY", "BSH"))]  # DGY primeiro => BSH fica por cima
-  dt[, rel := tracks_per_day_per_idf / max(tracks_per_day_per_idf), by = species]
+  dt[, rel := tracks_per_day_per_idf / max(tracks_per_day_per_idf), by = .(species, farm)]  # escala propria de cada linha (especie x parque)
   dt[is.nan(rel), rel := 0]
-  dt[, tile_alpha := ifelse(rel > 0, 0.2 + 0.8 * rel, 1)]
+  dt[, tile_alpha := ifelse(rel > 0, 0.15 + 0.85 * rel, 1)]
   dt[, fill_key := factor(ifelse(rel > 0, farm, "No tracks"), levels = c("BSH", "DGY", "No tracks"))]
   ggplot(dt, aes(x = week_start, y = farm_f, fill = fill_key, alpha = tile_alpha)) +
     geom_tile(colour = "white", linewidth = 0.3) +
     facet_grid(species_f ~ ., switch = "y") +
     scale_alpha_identity() +
-    scale_fill_manual(name = NULL, values = c(farm_colours, "No tracks" = "#e8e8e8"),
+    scale_fill_manual(name = NULL, values = c(farm_colours, "No tracks" = "#8f8f8f"),
                       breaks = c("BSH", "DGY", "No tracks"), drop = FALSE) +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
     labs(x = "Week starting", y = NULL,
          title = "Weekly track intensity per IDF unit (mean tracks/day/IDF unit)",
-         caption = "Colour intensity is proportional to the weekly value, relative to the species maximum across both farms.") +
+         caption = "Colour intensity is proportional to the weekly value, relative to the maximum of each row (species and farm). Rows are not comparable in absolute terms.") +
     theme_minimal(base_size = 9) +
     theme(
       axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
@@ -394,6 +395,37 @@ plot_species_intensity_paired <- function(weekly_intensity_both, date_breaks = "
 }
 
 p_species_intensity <- plot_species_intensity_paired(weekly_intensity_both)
+
+## Versao alternativa (teste): mini-graficos de barras semanais por especie e
+## parque (BSH por cima de DGY), sem valores no eixo y -- so' a dinamica
+## temporal. Cada linha tem a sua propria escala y (free_y), 0 na base.
+plot_species_intensity_bars <- function(weekly_intensity_both, date_breaks = "4 weeks") {
+  dt <- data.table::copy(weekly_intensity_both)[species %in% intensity_species]
+  dt[, species_f := factor(species_label(species), levels = species_label(intensity_species))]
+  dt[, farm_f := factor(farm, levels = c("BSH", "DGY"))]
+  ggplot(dt, aes(x = week_start, y = tracks_per_day_per_idf, fill = farm_f)) +
+    geom_col(width = 6) +
+    facet_grid(species_f + farm_f ~ ., scales = "free_y", switch = "y") +
+    scale_fill_manual(name = NULL, values = farm_colours) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
+    scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
+    labs(x = "Week starting", y = NULL,
+         title = "Weekly track intensity per IDF unit (mean tracks/day/IDF unit)",
+         caption = "Each row has its own y scale (starting at zero); rows are not comparable in absolute terms.") +
+    theme_minimal(base_size = 9) +
+    theme(
+      axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
+      axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+      strip.text.y.left = element_text(angle = 0, hjust = 1, size = 6.5),
+      strip.placement = "outside",
+      legend.position = "bottom",
+      plot.caption = element_text(size = 6.5, hjust = 0),
+      panel.grid.major.y = element_blank(), panel.grid.minor = element_blank(),
+      panel.spacing.y = unit(2, "pt")
+    )
+}
+
+p_species_intensity_bars <- plot_species_intensity_bars(weekly_intensity_both)
 
 ## Resumo por especie/parque (media sobre a janela) para a tabela do relatorio.
 species_intensity_summary <- weekly_intensity_both[, .(
@@ -552,6 +584,7 @@ if (generate_report) {
     species_presence_summary = species_presence_summary,
     species_presence_plot = p_species_presence,
     species_intensity_plot = p_species_intensity,
+    species_intensity_bars_plot = p_species_intensity_bars,
     species_intensity_summary = species_intensity_summary,
 
     terrain_class_comparison = terrain_class_comparison,
