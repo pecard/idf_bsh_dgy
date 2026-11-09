@@ -356,47 +356,7 @@ bsh_weekly_intensity <- weekly_species_intensity(bsh$track_dt, intensity_species
 dgy_weekly_intensity <- weekly_species_intensity(dgy$track_dt, intensity_species, compare_start, compare_end, "DGY", dgy$tz, dgy$n_idf_total)
 weekly_intensity_both <- data.table::rbindlist(list(bsh_weekly_intensity, dgy_weekly_intensity))
 
-## Mesmo layout do grafico de presenca (plot_species_presence_paired()): 1
-## painel por especie, BSH por cima e DGY por baixo, 1 tile por semana, mesmas
-## cores por parque. A intensidade do tile = tracks/dia/IDF, em escala relativa
-## ao maximo semanal DESSA LINHA (especie x parque) -- realca a dinamica
-## temporal de cada linha, mas as intensidades NAO sao comparaveis entre
-## linhas/parques; semanas sem tracks a cinzento escuro ("No tracks").
-## Valores absolutos: tabela/xlsx.
-plot_species_intensity_paired <- function(weekly_intensity_both, date_breaks = "4 weeks") {
-  dt <- data.table::copy(weekly_intensity_both)[species %in% intensity_species]
-  dt[, species_f := factor(species_label(species), levels = species_label(intensity_species))]
-  dt[, farm_f := factor(farm, levels = c("DGY", "BSH"))]  # DGY primeiro => BSH fica por cima
-  dt[, rel := tracks_per_day_per_idf / max(tracks_per_day_per_idf), by = .(species, farm)]  # escala propria de cada linha (especie x parque)
-  dt[is.nan(rel), rel := 0]
-  dt[, tile_alpha := ifelse(rel > 0, 0.15 + 0.85 * rel, 1)]
-  dt[, fill_key := factor(ifelse(rel > 0, farm, "No tracks"), levels = c("BSH", "DGY", "No tracks"))]
-  ggplot(dt, aes(x = week_start, y = farm_f, fill = fill_key, alpha = tile_alpha)) +
-    geom_tile(colour = "white", linewidth = 0.3) +
-    facet_grid(species_f ~ ., switch = "y") +
-    scale_alpha_identity() +
-    scale_fill_manual(name = NULL, values = c(farm_colours, "No tracks" = "#8f8f8f"),
-                      breaks = c("BSH", "DGY", "No tracks"), drop = FALSE) +
-    scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
-    labs(x = "Week starting", y = NULL,
-         title = "Weekly track intensity per IDF unit (mean tracks/day/IDF unit)",
-         caption = "Colour intensity is proportional to the weekly value, relative to the maximum of each row (species and farm). Rows are not comparable in absolute terms.") +
-    theme_minimal(base_size = 9) +
-    theme(
-      axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
-      axis.text.y = element_text(size = 7),
-      strip.text.y.left = element_text(angle = 0, hjust = 1, size = 7.5, face = "bold"),
-      strip.placement = "outside",
-      legend.position = "bottom",
-      plot.caption = element_text(size = 6.5, hjust = 0),
-      panel.grid = element_blank(),
-      panel.spacing.y = unit(4, "pt")
-    )
-}
-
-p_species_intensity <- plot_species_intensity_paired(weekly_intensity_both)
-
-## Versao alternativa (teste): mini-graficos de barras semanais por especie e
+## Mini-graficos de barras semanais por especie e
 ## parque (BSH por cima de DGY), sem valores no eixo y -- so' a dinamica
 ## temporal. Cada linha tem a sua propria escala y (free_y), 0 na base.
 plot_species_intensity_bars <- function(weekly_intensity_both, date_breaks = "4 weeks") {
@@ -469,29 +429,37 @@ p_terrain_weekly_dgy <- if (!is.null(dgy$weekly_terrain_dt)) plot_tracks_by_week
 ##
 ## Dados extraidos do relatorio "Breeding Raptor Nest Monitoring 2026" por
 ## scripts/extract_breeding_survey.py para inputs/breeding_survey_2026.xlsx
-## (Tabelas 8-16 do relatorio). Inclui TODAS as especies registadas -- ninhos
-## com especie atribuida (activos ou nao) + ninhos de peneireiro em pilares
-## OHTL. So' lido se o ficheiro existir.
+## (Tabelas 8-16 do relatorio). Restrito as 7 especies de priority_species_compare
+## (ninhos com especie atribuida, activos ou nao). So' lido se o ficheiro existir.
 
 breeding_file <- file.path(folder_input, "breeding_survey_2026.xlsx")
 breeding_species_summary <- NULL
 breeding_turbine_distances <- NULL
+breeding_ev_note <- NULL
+breeding_species_listed <- NULL
 breeding_sheets <- list()
 
 if (file.exists(breeding_file)) {
   rd <- function(sh) data.table::as.data.table(readxl::read_xlsx(breeding_file, sheet = sh))
   b_inv  <- rd("Nest_inventory")
   b_succ <- rd("Breeding_success")
-  b_pyl  <- rd("Pylon_kestrel_nests")
   b_tur  <- rd("Nests_vs_turbines")
   b_prev <- rd("Previous_year_comparison")
+
+  ## Foco nas mesmas 7 especies dos graficos (priority_species_compare);
+  ## todas as outras (peneireiro, bufo-real, etc.) sao removidas daqui em
+  ## diante, incluindo os ninhos de peneireiro nos pilares OHTL.
+  keep_species <- species_label(priority_species_compare)
+  b_inv  <- b_inv[species %in% keep_species]
+  b_succ <- b_succ[species %in% keep_species]
+  b_tur  <- b_tur[species %in% keep_species]
+  b_prev <- b_prev[species %in% keep_species]
 
   outcome_class <- function(x) data.table::fifelse(
     grepl("^Successful", x), "Successful",
     data.table::fifelse(x == "Failed", "Failed",
       data.table::fifelse(x == "Not started", "Not started", "Unknown")))
   b_succ[, outcome := outcome_class(breeding_success)]
-  b_pyl[,  outcome := outcome_class(breeding_success)]
 
   ## Ninhos com especie atribuida (inventario), por parque
   sp_inv <- b_inv[!is.na(species), .(
@@ -511,19 +479,15 @@ if (file.exists(breeding_file)) {
     data.table::set(breeding_species_summary, which(is.na(breeding_species_summary[[col]])), col, 0L)
   }
 
-  ## Linha propria para os 50 ninhos de peneireiro-comum em pilares da OHTL
-  ## (BSH) -- fora do inventario por ponto de observacao.
-  pyl_row <- b_pyl[, .(
-    farm = "BSH", species = "Common Kestrel (OHTL pylons)", nests_recorded = .N, nests_active = NA_integer_,
-    successful = sum(outcome == "Successful"), failed = sum(outcome == "Failed"),
-    not_started = sum(outcome == "Not started"), unknown = sum(outcome == "Unknown"),
-    min_distance_m = NA_real_
-  )]
-  breeding_species_summary <- data.table::rbindlist(list(breeding_species_summary, pyl_row), use.names = TRUE)
   breeding_species_summary[, farm := factor(farm, levels = c("DGY", "BSH"))]
   data.table::setorder(breeding_species_summary, farm, -nests_recorded, species)
   breeding_species_summary[, farm := as.character(farm)]
 
+  breeding_ev_note <- {
+    ev <- breeding_species_summary[species == "Egyptian Vulture"]
+    if (nrow(ev) > 0) paste(sprintf("%s: %d nest(s) recorded, %d successful, %d unknown", ev$farm, ev$nests_recorded, ev$successful, ev$unknown), collapse = "; ") else NULL
+  }
+  breeding_species_listed <- paste(unique(breeding_species_summary$species), collapse = ", ")
   breeding_turbine_distances <- data.table::copy(b_tur)[order(farm, distance_m)][
     , .(farm, species, nest_id, nearest_turbine, distance_m, n_turbines_2km)]
 
@@ -531,7 +495,6 @@ if (file.exists(breeding_file)) {
     Breeding_species_summary  = breeding_species_summary,
     Breeding_nest_inventory   = b_inv,
     Breeding_success          = b_succ[, !"outcome"],
-    Breeding_pylon_kestrels   = b_pyl[, !"outcome"],
     Breeding_nests_turbines   = b_tur,
     Breeding_previous_year    = b_prev
   )
@@ -583,7 +546,6 @@ if (generate_report) {
     priority_species_compare = paste(species_label(priority_species_compare), collapse = ", "),
     species_presence_summary = species_presence_summary,
     species_presence_plot = p_species_presence,
-    species_intensity_plot = p_species_intensity,
     species_intensity_bars_plot = p_species_intensity_bars,
     species_intensity_summary = species_intensity_summary,
 
@@ -595,6 +557,8 @@ if (generate_report) {
 
     breeding_species_summary = breeding_species_summary,
     breeding_turbine_distances = breeding_turbine_distances,
+    breeding_ev_note = breeding_ev_note,
+    breeding_species_listed = breeding_species_listed,
 
     xlsx_comparison = xlsx_comparison_name
   )

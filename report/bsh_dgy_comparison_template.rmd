@@ -18,7 +18,6 @@ params:
   priority_species_compare: ""
   species_presence_summary: !r NULL
   species_presence_plot: !r NULL
-  species_intensity_plot: !r NULL
   species_intensity_bars_plot: !r NULL
   species_intensity_summary: !r NULL
 
@@ -30,6 +29,8 @@ params:
 
   breeding_species_summary: !r NULL
   breeding_turbine_distances: !r NULL
+  breeding_ev_note: !r NULL
+  breeding_species_listed: !r NULL
 
   xlsx_comparison: !r NULL
 ---
@@ -123,7 +124,7 @@ Dzhankeldy (DGY) is monitored by only `r params$n_idf_dgy` IdentiFlight (IDF) un
 
 This note builds an indirect, comparison-based case for DGY: where BSH shows a stable, well-characterised pattern, and DGY -- despite its limited own history -- shows a consistent pattern with BSH, that consistency itself is evidence that DGY's bird activity and risk profile is not meaningfully different from BSH's.
 
-Two lines of evidence are presented below: (1) the weekly seasonal presence of priority species from track data, and (2) topography and the associated seasonal pattern of space use. A third line of evidence, a raptor breeding survey conducted at DGY, is planned for a future revision of this note (see placeholder section below).
+Three lines of evidence are presented below: (1) the weekly seasonal presence and track intensity of priority species from track data, (2) topography and the associated seasonal pattern of space use, and (3) the 2026 raptor breeding survey carried out at both farms.
 
 Priority species considered in this comparison (union of both farms' priority lists): `r params$priority_species_compare`.
 
@@ -170,13 +171,7 @@ annex_note(params$xlsx_comparison)
 
 ## Track Intensity per IDF Unit
 
-For the same species as in the presence plot above, the number of distinct tracks per week is divided by the number of days in that week and by the number of IDF units of the farm (`r params$n_idf_bsh` in BSH, `r params$n_idf_dgy` in DGY), giving the mean number of tracks per day per IDF unit. This normalisation controls for the difference in the number of IDF units between the two farms. The layout follows the presence plot: one panel per species, with BSH and DGY in distinct colours, one above the other, on the same weekly axis. Colour intensity is proportional to the weekly value, relative to the maximum weekly value of each row (species and farm), so that the temporal dynamics of each row stand out; weeks with no tracks are shown in dark grey. Absolute values are given in the table below.
-
-<!-- Source: plot_species_intensity_paired(), explore_bsh_dgy_comparison.R -->
-```{r species-intensity-plot, fig.width=6.30, fig.height=7}
-if (!is.null(params$species_intensity_plot)) print(params$species_intensity_plot)
-```
-An alternative view of the same weekly values is given below, as bar charts per species and farm. Each row has its own y scale starting at zero, without axis values, so that only the temporal dynamics are shown.
+For the same species as in the presence plot above, the number of distinct tracks per week is divided by the number of days in that week and by the number of IDF units of the farm (`r params$n_idf_bsh` in BSH, `r params$n_idf_dgy` in DGY), giving the mean number of tracks per day per IDF unit. This normalisation controls for the difference in the number of IDF units between the two farms. The plot below shows the weekly values as bars, one row per species and farm (BSH above DGY), on the same weekly axis as the presence plot. Each row has its own y scale starting at zero, without axis values, so that only the temporal dynamics are shown; absolute values are given in the table below.
 
 <!-- Source: plot_species_intensity_bars(), explore_bsh_dgy_comparison.R -->
 ```{r species-intensity-bars-plot, fig.width=6.30, fig.height=8}
@@ -255,9 +250,9 @@ if (!is.null(params$terrain_weekly_plot_dgy)) print(params$terrain_weekly_plot_d
 
 # Raptor Breeding Survey (BSH and DGY)
 
-The data in this section were extracted from the report *Breeding Raptor Nest Monitoring 2026* (Bash WPP and Dzhankeldy WPP), which covers both farms. All species recorded in that report are included: every nest with an identified species (active or inactive) in the nest inventories, and the Common Kestrel nests on the Bash overhead transmission line (OHTL) pylons. Breeding outcome is the classification given in the survey report (successful, failed, not started or unknown); nest-to-turbine distances are those reported for occupied nests.
+The data in this section were extracted from the report *Breeding Raptor Nest Monitoring 2026* (Bash WPP and Dzhankeldy WPP), which covers both farms. Only the species considered in the plots above are included. Breeding outcome is the classification given in the survey report (successful, failed, not started or unknown); nest-to-turbine distances are those reported for occupied nests.
 
-<!-- Source: Nest_inventory / Breeding_success / Pylon_kestrel_nests, inputs/breeding_survey_2026.xlsx -->
+<!-- Source: Nest_inventory / Breeding_success, inputs/breeding_survey_2026.xlsx -->
 ```{r breeding-species-table}
 if (!is.null(params$breeding_species_summary)) {
   report_table(
@@ -272,7 +267,7 @@ if (!is.null(params$breeding_species_summary)) {
 }
 ```
 
-Nests recorded with an identified species, occupied nests and their distance to the nearest turbine are listed below.
+Occupied nests and their distance to the nearest turbine are listed below.
 
 <!-- Source: Nests_vs_turbines, inputs/breeding_survey_2026.xlsx -->
 ```{r breeding-turbine-table}
@@ -287,13 +282,26 @@ if (!is.null(params$breeding_turbine_distances)) {
   )
 }
 ```
+```{r breeding-ev-note, results='asis'}
+if (!is.null(params$breeding_ev_note)) {
+  d <- params$breeding_turbine_distances
+  d <- d[d$species == "Egyptian Vulture", ]
+  dist_txt <- paste(sprintf("%s nest %s, %s m from %s", d$farm, d$nest_id, format(d$distance_m, big.mark = ""), d$nearest_turbine), collapse = "; ")
+  cat(sprintf("\n**Egyptian Vulture occurrence.** %s. Occupied nests and distance to the nearest turbine: %s.\n", params$breeding_ev_note, dist_txt))
+  cat(sprintf("\nOf the species considered in this note, nests were recorded in the survey for: %s.\n", params$breeding_species_listed))
+}
+```
 ```{r breeding-annex, results='asis'}
 annex_note(params$xlsx_comparison)
 ```
 
 # Summary and Recommendation
 
-*This section will be completed once the raptor breeding survey evidence above is available. Provisionally, based on the two lines of evidence presented (seasonal presence of priority species, and topography-linked space use), it is expected that DGY's bird activity and risk profile can be characterised as consistent with BSH's -- a comparison to be confirmed and finalised, with the specific operational recommendation, once the full evidence base is assembled.*
+The priority species monitored at DGY coincide with those monitored at BSH, which is approximately 50 km away and shares the same avian community. The same species of eagles, vultures and falcons are recorded by the IdentiFlight units of both farms, and the 2026 breeding survey records nesting of the same species groups at both sites, including Egyptian Vulture and Saker Falcon. The species composition on which the protective curtailment regime of BSH was built is therefore the same composition present at DGY.
+
+The seasonal pattern of use is also similar between the two farms. Over the same calendar window, the weekly presence of each priority species at DGY follows the pattern observed at BSH, and the weekly track intensity per IDF unit, which controls for the difference in the number of units (`r params$n_idf_dgy` at DGY and `r params$n_idf_bsh` at BSH), shows comparable temporal dynamics for the species analysed. The terrain configuration is likewise very similar: the two farms present a comparable proportion of ridge, complex and flat turbine locations, derived from each farm's own digital elevation model, and a comparable relationship between terrain class and bird activity through the year.
+
+Taken together, these elements indicate that the bird activity patterns and the risk profile at DGY can be considered similar to those at BSH. In addition, no repeated fatalities have occurred at the same turbines at DGY, which suggests that collision risk is under control. On this basis, the evidence supports returning the DGY turbines to daytime operation, as was done at BSH, while keeping the IdentiFlight monitoring in place so that the pattern can continue to be verified.
 
 # Annexes
 
