@@ -55,7 +55,7 @@
 
 packages <- c(
   'data.table', 'sf', 'terra', 'RANN', 'ggplot2', 'lubridate',
-  'janitor', 'rstudioapi', 'writexl', 'rmarkdown', 'flextable', 'svDialogs'
+  'janitor', 'rstudioapi', 'writexl', 'readxl', 'rmarkdown', 'flextable', 'svDialogs'
 )
 for (p in packages) {
   if (!require(p, character.only = TRUE)) install.packages(p)
@@ -417,6 +417,82 @@ p_terrain_weekly_dgy <- if (!is.null(dgy$weekly_terrain_dt)) plot_tracks_by_week
 
 
 ##
+## 3b. Raptor breeding survey 2026 (BSH + DGY) ----
+##
+## Dados extraidos do relatorio "Breeding Raptor Nest Monitoring 2026" por
+## scripts/extract_breeding_survey.py para inputs/breeding_survey_2026.xlsx
+## (Tabelas 8-16 do relatorio). Inclui TODAS as especies registadas -- ninhos
+## com especie atribuida (activos ou nao) + ninhos de peneireiro em pilares
+## OHTL. So' lido se o ficheiro existir.
+
+breeding_file <- file.path(folder_input, "breeding_survey_2026.xlsx")
+breeding_species_summary <- NULL
+breeding_turbine_distances <- NULL
+breeding_sheets <- list()
+
+if (file.exists(breeding_file)) {
+  rd <- function(sh) data.table::as.data.table(readxl::read_xlsx(breeding_file, sheet = sh))
+  b_inv  <- rd("Nest_inventory")
+  b_succ <- rd("Breeding_success")
+  b_pyl  <- rd("Pylon_kestrel_nests")
+  b_tur  <- rd("Nests_vs_turbines")
+  b_prev <- rd("Previous_year_comparison")
+
+  outcome_class <- function(x) data.table::fifelse(
+    grepl("^Successful", x), "Successful",
+    data.table::fifelse(x == "Failed", "Failed",
+      data.table::fifelse(x == "Not started", "Not started", "Unknown")))
+  b_succ[, outcome := outcome_class(breeding_success)]
+  b_pyl[,  outcome := outcome_class(breeding_success)]
+
+  ## Ninhos com especie atribuida (inventario), por parque
+  sp_inv <- b_inv[!is.na(species), .(
+    nests_recorded = .N, nests_active = sum(active_nest == "Yes")
+  ), by = .(farm, species)]
+  sp_out <- b_succ[, .(
+    successful = sum(outcome == "Successful"), failed = sum(outcome == "Failed"),
+    not_started = sum(outcome == "Not started"), unknown = sum(outcome == "Unknown")
+  ), by = .(farm, species)]
+  ## Distancia minima ao aerogerador mais proximo (Tabela 16 do relatorio --
+  ## so' ninhos ocupados)
+  sp_dist <- b_tur[, .(min_distance_m = min(distance_m, na.rm = TRUE)), by = .(farm, species)]
+
+  breeding_species_summary <- merge(sp_inv, sp_out, by = c("farm", "species"), all.x = TRUE)
+  breeding_species_summary <- merge(breeding_species_summary, sp_dist, by = c("farm", "species"), all.x = TRUE)
+  for (col in c("successful", "failed", "not_started", "unknown")) {
+    data.table::set(breeding_species_summary, which(is.na(breeding_species_summary[[col]])), col, 0L)
+  }
+
+  ## Linha propria para os 50 ninhos de peneireiro-comum em pilares da OHTL
+  ## (BSH) -- fora do inventario por ponto de observacao.
+  pyl_row <- b_pyl[, .(
+    farm = "BSH", species = "Common Kestrel (OHTL pylons)", nests_recorded = .N, nests_active = NA_integer_,
+    successful = sum(outcome == "Successful"), failed = sum(outcome == "Failed"),
+    not_started = sum(outcome == "Not started"), unknown = sum(outcome == "Unknown"),
+    min_distance_m = NA_real_
+  )]
+  breeding_species_summary <- data.table::rbindlist(list(breeding_species_summary, pyl_row), use.names = TRUE)
+  breeding_species_summary[, farm := factor(farm, levels = c("DGY", "BSH"))]
+  data.table::setorder(breeding_species_summary, farm, -nests_recorded, species)
+  breeding_species_summary[, farm := as.character(farm)]
+
+  breeding_turbine_distances <- data.table::copy(b_tur)[order(farm, distance_m)][
+    , .(farm, species, nest_id, nearest_turbine, distance_m, n_turbines_2km)]
+
+  breeding_sheets <- list(
+    Breeding_species_summary  = breeding_species_summary,
+    Breeding_nest_inventory   = b_inv,
+    Breeding_success          = b_succ[, !"outcome"],
+    Breeding_pylon_kestrels   = b_pyl[, !"outcome"],
+    Breeding_nests_turbines   = b_tur,
+    Breeding_previous_year    = b_prev
+  )
+} else {
+  message(sprintf("Aviso: %s nao encontrado -- seccao de breeding survey saltada.", breeding_file))
+}
+
+
+##
 ## 4. Anexo xlsx ----
 ##
 
@@ -433,6 +509,7 @@ comparison_sheets <- list(
   Terrain_weekly_BSH        = bsh$weekly_terrain_dt,
   Terrain_weekly_DGY        = dgy$weekly_terrain_dt
 )
+comparison_sheets <- c(comparison_sheets, breeding_sheets)
 comparison_sheets <- comparison_sheets[!vapply(comparison_sheets, is.null, logical(1))]
 write_xlsx_local(comparison_sheets, file.path(folder_output, xlsx_comparison_name))
 
@@ -466,6 +543,9 @@ if (generate_report) {
     terrain_map_plot_dgy = p_terrain_map_dgy,
     terrain_weekly_plot_bsh = p_terrain_weekly_bsh,
     terrain_weekly_plot_dgy = p_terrain_weekly_dgy,
+
+    breeding_species_summary = breeding_species_summary,
+    breeding_turbine_distances = breeding_turbine_distances,
 
     xlsx_comparison = xlsx_comparison_name
   )

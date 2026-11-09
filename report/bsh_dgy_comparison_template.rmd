@@ -27,6 +27,9 @@ params:
   terrain_weekly_plot_bsh: !r NULL
   terrain_weekly_plot_dgy: !r NULL
 
+  breeding_species_summary: !r NULL
+  breeding_turbine_distances: !r NULL
+
   xlsx_comparison: !r NULL
 ---
 
@@ -258,9 +261,43 @@ if (!is.null(params$terrain_weekly_plot_bsh)) print(params$terrain_weekly_plot_b
 if (!is.null(params$terrain_weekly_plot_dgy)) print(params$terrain_weekly_plot_dgy + ggplot2::labs(title = "DGY -- % turbines active per week, by terrain class"))
 ```
 
-# Raptor Breeding Survey (DGY)
+# Raptor Breeding Survey (BSH and DGY)
 
-*This section is pending. A raptor breeding survey conducted at DGY -- species identified as breeding in the vicinity, and the associated collision risk -- will be added as a third line of evidence in a future revision of this note.*
+The data in this section were extracted from the report *Breeding Raptor Nest Monitoring 2026* (Bash WPP and Dzhankeldy WPP), which covers both farms. All species recorded in that report are included: every nest with an identified species (active or inactive) in the nest inventories, and the Common Kestrel nests on the Bash overhead transmission line (OHTL) pylons. Breeding outcome is the classification given in the survey report (successful, failed, not started or unknown); nest-to-turbine distances are those reported for occupied nests.
+
+<!-- Source: Nest_inventory / Breeding_success / Pylon_kestrel_nests, inputs/breeding_survey_2026.xlsx -->
+```{r breeding-species-table}
+if (!is.null(params$breeding_species_summary)) {
+  report_table(
+    rename_display(
+      params$breeding_species_summary,
+      c(farm = "Farm", species = "Species", nests_recorded = "Nests Recorded", nests_active = "Active Nests",
+        successful = "Successful", failed = "Failed", not_started = "Not Started", unknown = "Unknown",
+        min_distance_m = "Min. Distance to Turbine (m)")
+    ),
+    max_col_width_cm = 3.2
+  )
+}
+```
+
+Nests recorded with an identified species, occupied nests and their distance to the nearest turbine are listed below.
+
+<!-- Source: Nests_vs_turbines, inputs/breeding_survey_2026.xlsx -->
+```{r breeding-turbine-table}
+if (!is.null(params$breeding_turbine_distances)) {
+  report_table(
+    rename_display(
+      params$breeding_turbine_distances,
+      c(farm = "Farm", species = "Species", nest_id = "Nest ID", nearest_turbine = "Nearest Turbine",
+        distance_m = "Distance (m)", n_turbines_2km = "Turbines in 2 km Buffer")
+    ),
+    max_col_width_cm = 3.2
+  )
+}
+```
+```{r breeding-annex, results='asis'}
+annex_note(params$xlsx_comparison)
+```
 
 # Summary and Recommendation
 
