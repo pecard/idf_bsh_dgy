@@ -208,11 +208,11 @@ annex_note(params$xlsx_comparison)
 ## Terrain Classification Maps
 
 <!-- Source: plot_turbine_terrain_map(), R/turbine_terrain_classification.R -->
-```{r terrain-maps-side-by-side, results='asis'}
-# Mapas lado a lado, 7 x 7 cm cada: gravados como PNG e colocados numa tabela
-# flextable de 1 linha x 2 colunas sem bordas (em Word, 2 graficos de um chunk
-# ficariam empilhados). Ajustes so' para tamanho reduzido: texto menor, pontos
-# menores (size = 3 por omissao em plot_turbine_terrain_map()), legenda por baixo.
+```{r terrain-maps-side-by-side, out.width="14.4cm"}
+# Mapas lado a lado, 7 x 7 cm cada: desenhados com grid num UNICO PNG de
+# 14 x 7 cm e incluido como 1 imagem (em Word, 2 graficos de um chunk ficariam
+# empilhados). Ajustes so' para tamanho reduzido: texto menor, pontos menores
+# (size = 3 por omissao em plot_turbine_terrain_map()), legenda por baixo.
 if (!is.null(params$terrain_map_plot_bsh) && !is.null(params$terrain_map_plot_dgy)) {
   map_cm <- 7
   shrink_map <- function(p, title) {
@@ -230,22 +230,16 @@ if (!is.null(params$terrain_map_plot_bsh) && !is.null(params$terrain_map_plot_dg
         legend.margin = ggplot2::margin(0, 0, 0, 0)
       )
   }
-  map_files <- vapply(c("bsh", "dgy"), function(farm) {
-    f <- tempfile(pattern = paste0("terrain_map_", farm, "_"), fileext = ".png")
-    p <- if (farm == "bsh") params$terrain_map_plot_bsh else params$terrain_map_plot_dgy
-    ggplot2::ggsave(f, shrink_map(p, sprintf("%s -- Turbine terrain classification", toupper(farm))),
-                    width = map_cm, height = map_cm, units = "cm", dpi = 300, bg = "white")
-    f
-  }, character(1))
-  maps_df <- data.frame(BSH = "", DGY = "")
-  ft_maps <- flextable::flextable(maps_df) |>
-    flextable::delete_part(part = "header") |>
-    flextable::border_remove() |>
-    flextable::compose(i = 1, j = 1, value = flextable::as_paragraph(flextable::as_image(map_files[["bsh"]], width = map_cm / 2.54, height = map_cm / 2.54))) |>
-    flextable::compose(i = 1, j = 2, value = flextable::as_paragraph(flextable::as_image(map_files[["dgy"]], width = map_cm / 2.54, height = map_cm / 2.54))) |>
-    flextable::align(align = "center", part = "body") |>
-    flextable::width(j = 1:2, width = (map_cm + 0.4) / 2.54, unit = "in")
-  flextable::flextable_to_rmd(ft_maps)
+  maps_png <- tempfile(pattern = "terrain_maps_", fileext = ".png")
+  grDevices::png(maps_png, width = 2 * map_cm, height = map_cm, units = "cm", res = 300, bg = "white")
+  grid::grid.newpage()
+  grid::pushViewport(grid::viewport(layout = grid::grid.layout(1, 2)))
+  print(shrink_map(params$terrain_map_plot_bsh, "BSH -- Turbine terrain classification"),
+        vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 1))
+  print(shrink_map(params$terrain_map_plot_dgy, "DGY -- Turbine terrain classification"),
+        vp = grid::viewport(layout.pos.row = 1, layout.pos.col = 2))
+  grDevices::dev.off()
+  knitr::include_graphics(maps_png)
 }
 ```
 
