@@ -408,29 +408,47 @@ species_intensity_summary[, species := species_label(species)]
 ## para os 2 parques dentro de import_farm_data() acima (bsh$terrain_dt,
 ## dgy$terrain_dt), SE o respetivo dem_file existir.
 
-## --- 3.1 Uso por especie em terreno comparavel (faixa de declive comum) -------
-## As classes ridge/complex/flat sao definidas por quantis do PROPRIO parque
-## (classify_terrain() por omissao) -- as proporcoes sao semelhantes por
-## construcao e nao sao evidencia independente de terreno semelhante. Em vez
-## de ajustar limiares para os parques parecerem semelhantes, restringe
-## as analises de uso por especie as turbinas cujo declive medio envolvente
-## cai na MESMA faixa nos 2 parques (por omissao 2-5 graus: ~46% das turbinas
-## do BSH e ~30% do DGY). Cada track e'
-## atribuido a turbina mais proxima (1o registo, assign_track_terrain_class()).
-## Normalizacao: tracks/dia POR TURBINA da faixa (nao por IDF -- o n de IDF
-## que cobre so' as turbinas da faixa nao esta' disponivel neste script).
+## --- 3.1 Uso por especie em terreno comparavel ---------------------------
+## Restringe as analises de uso por especie as turbinas de um subconjunto de
+## terreno, igual nos 2 parques. Cada track e' atribuido a turbina mais
+## proxima (1o registo, assign_track_terrain_class()).
+## terrain_match_mode:
+##   "class" (por omissao) -- turbinas classificadas em terrain_match_classes
+##           (por omissao complex e ridge). O DGY tem poucas turbinas
+##           monitorizadas (IDF) em terreno plano, por isso a comparacao faz-se
+##           nas classes mais acidentadas. ATENCAO: as classes sao definidas por
+##           quantis do PROPRIO parque (classify_terrain() por omissao), logo
+##           "complex/ridge" = as ~30% turbinas mais acidentadas de CADA parque,
+##           nao o mesmo relevo absoluto -- as medianas de declive das turbinas
+##           selecionadas sao reportadas no relatorio.
+##   "slope" -- turbinas com declive medio em terrain_match_slope_range [min, max).
+## Normalizacao: tracks/dia POR TURBINA selecionada (nao por IDF -- o n de IDF
+## que cobre so' essas turbinas nao esta' disponivel neste script).
+if (!exists("terrain_match_mode")) terrain_match_mode <- "class"
+if (!exists("terrain_match_classes")) terrain_match_classes <- c("complex", "ridge")
 if (!exists("terrain_match_slope_range")) terrain_match_slope_range <- c(2, 5)  # [min, max)
+matched_criterion <- if (terrain_match_mode == "class") {
+  paste(terrain_match_classes, collapse = " or ")
+} else {
+  sprintf("mean slope %g-%g deg", terrain_match_slope_range[1], terrain_match_slope_range[2])
+}
 
 matched_presence_both <- NULL
 matched_intensity_both <- NULL
 matched_n_turbines <- NULL
+matched_median_slope <- NULL
 p_matched_presence <- NULL
 p_matched_intensity_bars <- NULL
 
 if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
 
   match_farm <- function(farm_list, farm_label) {
-    band_ids <- farm_list$terrain_dt[mean_slope_deg >= terrain_match_slope_range[1] & mean_slope_deg < terrain_match_slope_range[2], wtg_id]
+    sel <- if (terrain_match_mode == "class") {
+      farm_list$terrain_dt[as.character(terrain_class) %in% terrain_match_classes]
+    } else {
+      farm_list$terrain_dt[mean_slope_deg >= terrain_match_slope_range[1] & mean_slope_deg < terrain_match_slope_range[2]]
+    }
+    band_ids <- sel$wtg_id
     track_ids <- farm_list$track_terrain_dt[nearest_turbine %in% band_ids, track_id]
 
     ## Diagnostico: o DGY so' tem 4 IDF a cobrir ~15 das 79 turbinas -- se as
@@ -439,14 +457,15 @@ if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
     n_by_turbine <- farm_list$track_terrain_dt[, .(n_tracks = .N), by = nearest_turbine]
     n_by_turbine <- merge(n_by_turbine, farm_list$terrain_dt[, .(nearest_turbine = wtg_id, mean_slope_deg)], by = "nearest_turbine", all.x = TRUE)
     message(sprintf(
-      "%s: %d/%d turbinas na faixa %g-%g deg; %d tracks nearest a essas turbinas (de %d); %d turbinas com tracks, declive medio dessas: %.1f-%.1f deg (mediana %.1f).",
-      farm_label, length(band_ids), nrow(farm_list$terrain_dt), terrain_match_slope_range[1], terrain_match_slope_range[2],
+      "%s: %d/%d turbinas no criterio (%s); %d tracks nearest a essas turbinas (de %d); %d turbinas com tracks, declive medio dessas: %.1f-%.1f deg (mediana %.1f).",
+      farm_label, length(band_ids), nrow(farm_list$terrain_dt), matched_criterion,
       length(track_ids), data.table::uniqueN(farm_list$track_terrain_dt$track_id),
       nrow(n_by_turbine), min(n_by_turbine$mean_slope_deg, na.rm = TRUE), max(n_by_turbine$mean_slope_deg, na.rm = TRUE),
       stats::median(n_by_turbine$mean_slope_deg, na.rm = TRUE)
     ))
     list(
       label = farm_label, n_turbines = length(band_ids),
+      median_slope = stats::median(sel$mean_slope_deg, na.rm = TRUE),
       track_dt = farm_list$track_dt[track_id %in% track_ids],
       tz = farm_list$tz
     )
@@ -454,6 +473,7 @@ if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
   bsh_m <- match_farm(bsh, "BSH")
   dgy_m <- match_farm(dgy, "DGY")
   matched_n_turbines <- c(BSH = bsh_m$n_turbines, DGY = dgy_m$n_turbines)
+  matched_median_slope <- c(BSH = round(bsh_m$median_slope, 1), DGY = round(dgy_m$median_slope, 1))
 
   matched_presence_both <- data.table::rbindlist(list(
     weekly_species_presence(bsh_m$track_dt, priority_species_compare, compare_start, compare_end, "BSH", tz = bsh_m$tz),
@@ -467,11 +487,11 @@ if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
 
   p_matched_presence <- plot_species_presence_paired(
     matched_presence_both,
-    title = sprintf("Weekly presence in comparable terrain (mean slope %g-%g deg)", terrain_match_slope_range[1], terrain_match_slope_range[2])
+    title = sprintf("Weekly presence in comparable terrain (%s turbines)", matched_criterion)
   )
   p_matched_intensity_bars <- plot_species_intensity_bars(
     matched_intensity_both,
-    title = sprintf("Weekly track intensity in comparable terrain (mean tracks/day/turbine; slope %g-%g deg)", terrain_match_slope_range[1], terrain_match_slope_range[2])
+    title = sprintf("Weekly track intensity in comparable terrain (mean tracks/day/turbine; %s turbines)", matched_criterion)
   )
 }
 
@@ -621,7 +641,9 @@ if (generate_report) {
     terrain_class_comparison = terrain_class_comparison,
     terrain_median_slope_bsh = if (!is.null(bsh$terrain_dt)) round(stats::median(bsh$terrain_dt$mean_slope_deg, na.rm = TRUE), 1) else NULL,
     terrain_median_slope_dgy = if (!is.null(dgy$terrain_dt)) round(stats::median(dgy$terrain_dt$mean_slope_deg, na.rm = TRUE), 1) else NULL,
-    matched_slope_range = paste(terrain_match_slope_range, collapse = "-"),
+    matched_criterion = matched_criterion,
+    matched_median_slope_bsh = if (!is.null(matched_median_slope)) unname(matched_median_slope["BSH"]) else NULL,
+    matched_median_slope_dgy = if (!is.null(matched_median_slope)) unname(matched_median_slope["DGY"]) else NULL,
     matched_n_turbines_bsh = if (!is.null(matched_n_turbines)) unname(matched_n_turbines["BSH"]) else NULL,
     matched_n_turbines_dgy = if (!is.null(matched_n_turbines)) unname(matched_n_turbines["DGY"]) else NULL,
     matched_presence_plot = p_matched_presence,
