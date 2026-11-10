@@ -416,10 +416,10 @@ species_intensity_summary[, species := species_label(species)]
 ## as classes passam a ser definidas com os MESMOS limiares absolutos nos 2
 ## parques, para as proporcoes poderem divergir se o relevo divergir.
 ##
-## Limiares comuns: por omissao, calibrados UMA vez sobre as turbinas dos 2
-## parques em conjunto (quantis 0.90 de ridge_proximity_m e 0.75 do declive
-## das nao-ridge, como classify_terrain()), e depois aplicados IGUAIS a cada
-## parque. Para fixar valores a priori (ex. a partir de literatura), definir
+## Limiares comuns: por omissao, calibrados UMA vez sobre o BSH (parque de
+## referencia; quantis 0.90 de ridge_proximity_m e 0.75 do declive das
+## nao-ridge, como classify_terrain()) e depois aplicados IGUAIS ao DGY (ver
+## terrain_threshold_reference abaixo). Para fixar valores a priori (ex. a partir de literatura), definir
 ## terrain_common_ridge_m e/ou terrain_common_slope_deg antes de dar Source
 ## (NULL = usar os quantis agrupados).
 ## Metrica unica: ridge_proximity_m (ridge) e mean_slope_deg (complex),
@@ -441,9 +441,22 @@ if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
   bsh$terrain_dt_own <- bsh$terrain_dt
   dgy$terrain_dt_own <- dgy$terrain_dt
 
-  pooled <- data.table::rbindlist(list(bsh$terrain_dt_own, dgy$terrain_dt_own), use.names = TRUE)
-  pooled_cls <- classify_terrain(pooled, ridge_relelev_m = terrain_common_ridge_m, complex_slope_deg = terrain_common_slope_deg)
-  terrain_common_thresholds <- attr(pooled_cls, "thresholds")
+  ## Origem dos limiares: "BSH" (por omissao) = calculo ORIGINAL do BSH
+  ## (quantis do proprio BSH: top 10% ridge, top 25% das restantes complex)
+  ## aplicado SEM alteracao ao DGY -- o BSH e' o parque de referencia, com
+  ## historico extenso; "pooled" = quantis dos 2 parques em conjunto (versao
+  ## anterior, que deixava o BSH quase todo "flat").
+  ## terrain_common_ridge_m / terrain_common_slope_deg (se definidos) tem
+  ## prioridade sobre qualquer das duas.
+  if (!exists("terrain_threshold_reference")) terrain_threshold_reference <- "BSH"
+  reference_dt <- switch(terrain_threshold_reference,
+    BSH = bsh$terrain_dt_own,
+    DGY = dgy$terrain_dt_own,
+    pooled = data.table::rbindlist(list(bsh$terrain_dt_own, dgy$terrain_dt_own), use.names = TRUE),
+    stop("terrain_threshold_reference deve ser 'BSH', 'DGY' ou 'pooled'")
+  )
+  reference_cls <- classify_terrain(reference_dt, ridge_relelev_m = terrain_common_ridge_m, complex_slope_deg = terrain_common_slope_deg)
+  terrain_common_thresholds <- attr(reference_cls, "thresholds")
 
   reclassify_common <- function(farm_list) {
     farm_list$terrain_dt <- classify_terrain(
@@ -712,6 +725,7 @@ if (generate_report) {
     matched_intensity_plot = p_matched_intensity_bars,
     matched_summary = matched_summary,
     terrain_slope_band_comparison = terrain_slope_band_comparison,
+    terrain_reference_label = if (exists("terrain_threshold_reference")) terrain_threshold_reference else NULL,
     terrain_ridge_cutoff_m = if (!is.null(terrain_common_thresholds)) round(terrain_common_thresholds$ridge_cutoff, 1) else NULL,
     terrain_slope_cutoff_deg = if (!is.null(terrain_common_thresholds)) round(terrain_common_thresholds$complex_slope_deg, 1) else NULL,
     terrain_map_plot_bsh = p_terrain_map_bsh,
