@@ -294,7 +294,7 @@ species_presence_summary <- summarise_species_presence_comparison(weekly_species
 ## cinzento claro. Serie anual alinhada (mesmo eixo x nos 2 parques).
 farm_colours <- c(BSH = "#2a78d6", DGY = "#e8830c")
 
-plot_species_presence_paired <- function(weekly_species_both, date_breaks = "4 weeks") {
+plot_species_presence_paired <- function(weekly_species_both, date_breaks = "4 weeks", title = "Weekly presence of priority species") {
   dt <- data.table::copy(weekly_species_both)[species %in% priority_species_compare]
   dt[, species_f := factor(species_label(species), levels = species_label(priority_species_compare))]
   dt[, farm_f := factor(farm, levels = c("DGY", "BSH"))]  # DGY primeiro => BSH fica por cima
@@ -306,7 +306,7 @@ plot_species_presence_paired <- function(weekly_species_both, date_breaks = "4 w
                       breaks = c("BSH", "DGY", "Absent"),
                       labels = c("BSH present", "DGY present", "Absent"), drop = FALSE) +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
-    labs(x = "Week starting", y = NULL, title = "Weekly presence of priority species") +
+    labs(x = "Week starting", y = NULL, title = title) +
     theme_minimal(base_size = 9) +
     theme(
       axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
@@ -359,7 +359,8 @@ weekly_intensity_both <- data.table::rbindlist(list(bsh_weekly_intensity, dgy_we
 ## Mini-graficos de barras semanais por especie e
 ## parque (BSH por cima de DGY), sem valores no eixo y -- so' a dinamica
 ## temporal. Cada linha tem a sua propria escala y (free_y), 0 na base.
-plot_species_intensity_bars <- function(weekly_intensity_both, date_breaks = "4 weeks") {
+plot_species_intensity_bars <- function(weekly_intensity_both, date_breaks = "4 weeks",
+                                        title = "Weekly track intensity per IDF unit (mean tracks/day/IDF unit)") {
   dt <- data.table::copy(weekly_intensity_both)[species %in% intensity_species]
   dt[, species_f := factor(species_label(species), levels = species_label(intensity_species))]
   dt[, farm_f := factor(farm, levels = c("BSH", "DGY"))]
@@ -370,7 +371,7 @@ plot_species_intensity_bars <- function(weekly_intensity_both, date_breaks = "4 
     scale_y_continuous(expand = expansion(mult = c(0, 0.08))) +
     scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
     labs(x = "Week starting", y = NULL,
-         title = "Weekly track intensity per IDF unit (mean tracks/day/IDF unit)",
+         title = title,
          caption = "Each row has its own y scale (starting at zero); rows are not comparable in absolute terms.") +
     theme_minimal(base_size = 9) +
     theme(
@@ -489,6 +490,69 @@ if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
   terrain_slope_band_comparison[, band := as.character(band)]
 }
 
+## --- 3.1 Comparacao em terreno comparavel (faixa de declive comum) -------
+## Em vez de ajustar limiares para os parques parecerem semelhantes, restringe
+## as analises de uso por especie as turbinas cujo declive medio envolvente
+## cai na MESMA faixa nos 2 parques (por omissao 2-5 graus: ~46% das turbinas
+## do BSH e ~30% do DGY -- ver terrain_slope_band_comparison). Cada track e'
+## atribuido a turbina mais proxima (1o registo, assign_track_terrain_class()).
+## Normalizacao: tracks/dia POR TURBINA da faixa (nao por IDF -- o n de IDF
+## que cobre so' as turbinas da faixa nao esta' disponivel neste script).
+if (!exists("terrain_match_slope_range")) terrain_match_slope_range <- c(2, 5)  # [min, max)
+
+matched_presence_both <- NULL
+matched_intensity_both <- NULL
+matched_summary <- NULL
+matched_n_turbines <- NULL
+p_matched_presence <- NULL
+p_matched_intensity_bars <- NULL
+
+if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
+
+  match_farm <- function(farm_list, farm_label) {
+    band_ids <- farm_list$terrain_dt[mean_slope_deg >= terrain_match_slope_range[1] & mean_slope_deg < terrain_match_slope_range[2], wtg_id]
+    track_ids <- farm_list$track_terrain_dt[nearest_turbine %in% band_ids, track_id]
+    list(
+      label = farm_label, n_turbines = length(band_ids),
+      track_dt = farm_list$track_dt[track_id %in% track_ids],
+      tz = farm_list$tz
+    )
+  }
+  bsh_m <- match_farm(bsh, "BSH")
+  dgy_m <- match_farm(dgy, "DGY")
+  matched_n_turbines <- c(BSH = bsh_m$n_turbines, DGY = dgy_m$n_turbines)
+
+  matched_presence_both <- data.table::rbindlist(list(
+    weekly_species_presence(bsh_m$track_dt, priority_species_compare, compare_start, compare_end, "BSH", tz = bsh_m$tz),
+    weekly_species_presence(dgy_m$track_dt, priority_species_compare, compare_start, compare_end, "DGY", tz = dgy_m$tz)
+  ))
+  matched_intensity_both <- data.table::rbindlist(list(
+    weekly_species_intensity(bsh_m$track_dt, intensity_species, compare_start, compare_end, "BSH", bsh_m$tz, bsh_m$n_turbines),
+    weekly_species_intensity(dgy_m$track_dt, intensity_species, compare_start, compare_end, "DGY", dgy_m$tz, dgy_m$n_turbines)
+  ))
+  ## nesta secao a coluna "..._per_idf" e' tracks/dia por TURBINA da faixa
+
+  matched_summary <- merge(
+    summarise_species_presence_comparison(matched_presence_both)[, .(Species = species, pct_BSH = pct_weeks_present_BSH, pct_DGY = pct_weeks_present_DGY)],
+    {
+      m <- matched_intensity_both[, .(tracks = sum(n_tracks), per_turbine = round(sum(n_tracks) / sum(n_days) / unique(n_idf_ref), 4)), by = .(species, farm)]
+      m[, species := species_label(species)]
+      data.table::dcast(m, species ~ farm, value.var = c("tracks", "per_turbine"))
+    },
+    by.x = "Species", by.y = "species", all.x = TRUE
+  )
+  matched_summary <- matched_summary[match(species_label(priority_species_compare), Species)][!is.na(Species)]
+
+  p_matched_presence <- plot_species_presence_paired(
+    matched_presence_both,
+    title = sprintf("Weekly presence in comparable terrain (mean slope %g-%g deg)", terrain_match_slope_range[1], terrain_match_slope_range[2])
+  )
+  p_matched_intensity_bars <- plot_species_intensity_bars(
+    matched_intensity_both,
+    title = sprintf("Weekly track intensity in comparable terrain (mean tracks/day/turbine; slope %g-%g deg)", terrain_match_slope_range[1], terrain_match_slope_range[2])
+  )
+}
+
 terrain_class_summary_bsh <- if (!is.null(bsh$terrain_dt)) summarise_terrain_class_counts(bsh$terrain_dt) else NULL
 terrain_class_summary_dgy <- if (!is.null(dgy$terrain_dt)) summarise_terrain_class_counts(dgy$terrain_dt) else NULL
 
@@ -598,6 +662,8 @@ comparison_sheets <- list(
   Intensity_weekly          = weekly_intensity_both[, .(species, farm, week_start, n_days, n_tracks, tracks_per_day, tracks_per_day_per_idf)],
   Terrain_metrics_summary   = terrain_metrics_summary,
   Terrain_slope_bands       = terrain_slope_band_comparison,
+  Matched_terrain_summary   = matched_summary,
+  Matched_terrain_weekly    = if (!is.null(matched_intensity_both)) matched_intensity_both[, .(species, farm, week_start, n_days, n_tracks, tracks_per_day, tracks_per_day_per_turbine = tracks_per_day_per_idf)] else NULL,
   Terrain_class_comparison  = terrain_class_comparison,
   Terrain_class_BSH         = bsh$terrain_dt,
   Terrain_class_DGY         = dgy$terrain_dt,
@@ -637,6 +703,14 @@ if (generate_report) {
 
     terrain_class_comparison = terrain_class_comparison,
     terrain_metrics_summary = terrain_metrics_summary,
+    terrain_median_slope_bsh = if (!is.null(terrain_metrics_summary)) terrain_metrics_summary[Metric == "Mean surrounding slope (deg)" & Farm == "BSH", Median] else NULL,
+    terrain_median_slope_dgy = if (!is.null(terrain_metrics_summary)) terrain_metrics_summary[Metric == "Mean surrounding slope (deg)" & Farm == "DGY", Median] else NULL,
+    matched_slope_range = paste(terrain_match_slope_range, collapse = "-"),
+    matched_n_turbines_bsh = if (!is.null(matched_n_turbines)) unname(matched_n_turbines["BSH"]) else NULL,
+    matched_n_turbines_dgy = if (!is.null(matched_n_turbines)) unname(matched_n_turbines["DGY"]) else NULL,
+    matched_presence_plot = p_matched_presence,
+    matched_intensity_plot = p_matched_intensity_bars,
+    matched_summary = matched_summary,
     terrain_slope_band_comparison = terrain_slope_band_comparison,
     terrain_ridge_cutoff_m = if (!is.null(terrain_common_thresholds)) round(terrain_common_thresholds$ridge_cutoff, 1) else NULL,
     terrain_slope_cutoff_deg = if (!is.null(terrain_common_thresholds)) round(terrain_common_thresholds$complex_slope_deg, 1) else NULL,
