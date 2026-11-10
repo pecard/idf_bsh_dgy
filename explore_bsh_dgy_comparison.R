@@ -408,93 +408,14 @@ species_intensity_summary[, species := species_label(species)]
 ## para os 2 parques dentro de import_farm_data() acima (bsh$terrain_dt,
 ## dgy$terrain_dt), SE o respetivo dem_file existir.
 
-## --- 3.0 Criterio IDENTICO nos 2 parques --------------------------------
-## classify_terrain() por omissao usa quantis do PROPRIO parque (top ~10% =
-## ridge em ambos, por construcao) -- proporcoes semelhantes de classes entao
-## NAO sao evidencia independente de terreno semelhante (e as metricas fisicas
-## diferem: ex. mediana do declive medio ~1.9 graus BSH vs ~6.3 DGY). Aqui
-## as classes passam a ser definidas com os MESMOS limiares absolutos nos 2
-## parques, para as proporcoes poderem divergir se o relevo divergir.
-##
-## Limiares comuns: por omissao, calibrados UMA vez sobre as turbinas dos 2
-## parques em conjunto (quantis 0.90 de ridge_proximity_m e 0.75 do declive
-## das nao-ridge, como classify_terrain()), e depois aplicados IGUAIS a cada
-## parque. Para fixar valores a priori (ex. a partir de literatura), definir
-## terrain_common_ridge_m e/ou terrain_common_slope_deg antes de dar Source
-## (NULL = usar os quantis agrupados).
-## Metrica unica: ridge_proximity_m (ridge) e mean_slope_deg (complex),
-## ambas no buffer de 250/500 m (compute_turbine_terrain_metrics()).
-
-if (!exists("terrain_common_ridge_m")) terrain_common_ridge_m <- NULL
-if (!exists("terrain_common_slope_deg")) terrain_common_slope_deg <- NULL
-## Intervalos FIXOS de declive medio (graus) para a distribuicao absoluta
-terrain_slope_breaks <- c(0, 2, 5, 10, Inf)
-terrain_slope_labels <- c("0-2 deg", "2-5 deg", "5-10 deg", ">10 deg")
-
-terrain_common_thresholds <- NULL
-terrain_metrics_summary <- NULL
-terrain_slope_band_comparison <- NULL
-
-if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
-
-  ## Classificacao relativa ao proprio parque (versao anterior) -- so' para o xlsx
-  bsh$terrain_dt_own <- bsh$terrain_dt
-  dgy$terrain_dt_own <- dgy$terrain_dt
-
-  pooled <- data.table::rbindlist(list(bsh$terrain_dt_own, dgy$terrain_dt_own), use.names = TRUE)
-  pooled_cls <- classify_terrain(pooled, ridge_relelev_m = terrain_common_ridge_m, complex_slope_deg = terrain_common_slope_deg)
-  terrain_common_thresholds <- attr(pooled_cls, "thresholds")
-
-  reclassify_common <- function(farm_list) {
-    farm_list$terrain_dt <- classify_terrain(
-      farm_list$terrain_dt_own,
-      ridge_relelev_m = terrain_common_thresholds$ridge_cutoff,
-      complex_slope_deg = terrain_common_thresholds$complex_slope_deg
-    )
-    farm_list$track_terrain_dt <- assign_track_terrain_class(farm_list$track_dt, farm_list$wtg, farm_list$terrain_dt)
-    farm_list$weekly_terrain_dt <- summarise_tracks_by_week_terrain(farm_list$track_terrain_dt, farm_list$terrain_dt)
-    farm_list
-  }
-  bsh <- reclassify_common(bsh)
-  dgy <- reclassify_common(dgy)
-
-  ## Distribuicao das metricas fisicas por parque (mostra as diferencas reais)
-  metric_cols <- c(mean_slope_deg = "Mean surrounding slope (deg)", mean_tri_m = "Terrain ruggedness index (m)", ridge_proximity_m = "Ridge proximity (m)")
-  terrain_metrics_summary <- data.table::rbindlist(lapply(c("BSH", "DGY"), function(f) {
-    dt <- if (f == "BSH") bsh$terrain_dt else dgy$terrain_dt
-    data.table::rbindlist(lapply(names(metric_cols), function(col) {
-      v <- dt[[col]]
-      data.table::data.table(
-        Metric = metric_cols[[col]], Farm = f, n_turbines = sum(!is.na(v)),
-        Min = round(min(v, na.rm = TRUE), 1), Q25 = round(stats::quantile(v, 0.25, na.rm = TRUE, names = FALSE), 1),
-        Median = round(stats::median(v, na.rm = TRUE), 1), Q75 = round(stats::quantile(v, 0.75, na.rm = TRUE, names = FALSE), 1),
-        Max = round(max(v, na.rm = TRUE), 1)
-      )
-    }))
-  }))
-  terrain_metrics_summary[, Metric := factor(Metric, levels = unname(metric_cols))]
-  data.table::setorder(terrain_metrics_summary, Metric, Farm)
-  terrain_metrics_summary[, Metric := as.character(Metric)]
-
-  ## Distribuicao por intervalos fixos de declive
-  slope_band <- function(dt, farm) {
-    b <- cut(dt$mean_slope_deg, breaks = terrain_slope_breaks, labels = terrain_slope_labels, right = FALSE, include.lowest = TRUE)
-    out <- data.table::data.table(band = factor(b, levels = terrain_slope_labels))[, .N, by = band][match(terrain_slope_labels, band)]
-    out[is.na(N), N := 0L]
-    out[, band := factor(terrain_slope_labels, levels = terrain_slope_labels)]
-    out[, `:=`(farm = farm, pct = round(100 * N / sum(N), 1))]
-    out
-  }
-  sb <- data.table::rbindlist(list(slope_band(bsh$terrain_dt, "BSH"), slope_band(dgy$terrain_dt, "DGY")))
-  terrain_slope_band_comparison <- data.table::dcast(sb, band ~ farm, value.var = c("N", "pct"))
-  terrain_slope_band_comparison[, band := as.character(band)]
-}
-
-## --- 3.1 Comparacao em terreno comparavel (faixa de declive comum) -------
-## Em vez de ajustar limiares para os parques parecerem semelhantes, restringe
+## --- 3.1 Uso por especie em terreno comparavel (faixa de declive comum) -------
+## As classes ridge/complex/flat sao definidas por quantis do PROPRIO parque
+## (classify_terrain() por omissao) -- as proporcoes sao semelhantes por
+## construcao e nao sao evidencia independente de terreno semelhante. Em vez
+## de ajustar limiares para os parques parecerem semelhantes, restringe
 ## as analises de uso por especie as turbinas cujo declive medio envolvente
 ## cai na MESMA faixa nos 2 parques (por omissao 2-5 graus: ~46% das turbinas
-## do BSH e ~30% do DGY -- ver terrain_slope_band_comparison). Cada track e'
+## do BSH e ~30% do DGY). Cada track e'
 ## atribuido a turbina mais proxima (1o registo, assign_track_terrain_class()).
 ## Normalizacao: tracks/dia POR TURBINA da faixa (nao por IDF -- o n de IDF
 ## que cobre so' as turbinas da faixa nao esta' disponivel neste script).
@@ -502,7 +423,6 @@ if (!exists("terrain_match_slope_range")) terrain_match_slope_range <- c(2, 5)  
 
 matched_presence_both <- NULL
 matched_intensity_both <- NULL
-matched_summary <- NULL
 matched_n_turbines <- NULL
 p_matched_presence <- NULL
 p_matched_intensity_bars <- NULL
@@ -531,17 +451,6 @@ if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
     weekly_species_intensity(dgy_m$track_dt, intensity_species, compare_start, compare_end, "DGY", dgy_m$tz, dgy_m$n_turbines)
   ))
   ## nesta secao a coluna "..._per_idf" e' tracks/dia por TURBINA da faixa
-
-  matched_summary <- merge(
-    summarise_species_presence_comparison(matched_presence_both)[, .(Species = species, pct_BSH = pct_weeks_present_BSH, pct_DGY = pct_weeks_present_DGY)],
-    {
-      m <- matched_intensity_both[, .(tracks = sum(n_tracks), per_turbine = round(sum(n_tracks) / sum(n_days) / unique(n_idf_ref), 4)), by = .(species, farm)]
-      m[, species := species_label(species)]
-      data.table::dcast(m, species ~ farm, value.var = c("tracks", "per_turbine"))
-    },
-    by.x = "Species", by.y = "species", all.x = TRUE
-  )
-  matched_summary <- matched_summary[match(species_label(priority_species_compare), Species)][!is.na(Species)]
 
   p_matched_presence <- plot_species_presence_paired(
     matched_presence_both,
@@ -660,15 +569,10 @@ comparison_sheets <- list(
   Species_weekly_DGY        = dgy_weekly_species[, .(species, week_start, present)],
   Intensity_summary         = species_intensity_summary,
   Intensity_weekly          = weekly_intensity_both[, .(species, farm, week_start, n_days, n_tracks, tracks_per_day, tracks_per_day_per_idf)],
-  Terrain_metrics_summary   = terrain_metrics_summary,
-  Terrain_slope_bands       = terrain_slope_band_comparison,
-  Matched_terrain_summary   = matched_summary,
   Matched_terrain_weekly    = if (!is.null(matched_intensity_both)) matched_intensity_both[, .(species, farm, week_start, n_days, n_tracks, tracks_per_day, tracks_per_day_per_turbine = tracks_per_day_per_idf)] else NULL,
   Terrain_class_comparison  = terrain_class_comparison,
   Terrain_class_BSH         = bsh$terrain_dt,
   Terrain_class_DGY         = dgy$terrain_dt,
-  Terrain_BSH_farm_relative = bsh$terrain_dt_own,
-  Terrain_DGY_farm_relative = dgy$terrain_dt_own,
   Terrain_weekly_BSH        = bsh$weekly_terrain_dt,
   Terrain_weekly_DGY        = dgy$weekly_terrain_dt
 )
@@ -702,18 +606,13 @@ if (generate_report) {
     species_intensity_summary = species_intensity_summary,
 
     terrain_class_comparison = terrain_class_comparison,
-    terrain_metrics_summary = terrain_metrics_summary,
-    terrain_median_slope_bsh = if (!is.null(terrain_metrics_summary)) terrain_metrics_summary[Metric == "Mean surrounding slope (deg)" & Farm == "BSH", Median] else NULL,
-    terrain_median_slope_dgy = if (!is.null(terrain_metrics_summary)) terrain_metrics_summary[Metric == "Mean surrounding slope (deg)" & Farm == "DGY", Median] else NULL,
+    terrain_median_slope_bsh = if (!is.null(bsh$terrain_dt)) round(stats::median(bsh$terrain_dt$mean_slope_deg, na.rm = TRUE), 1) else NULL,
+    terrain_median_slope_dgy = if (!is.null(dgy$terrain_dt)) round(stats::median(dgy$terrain_dt$mean_slope_deg, na.rm = TRUE), 1) else NULL,
     matched_slope_range = paste(terrain_match_slope_range, collapse = "-"),
     matched_n_turbines_bsh = if (!is.null(matched_n_turbines)) unname(matched_n_turbines["BSH"]) else NULL,
     matched_n_turbines_dgy = if (!is.null(matched_n_turbines)) unname(matched_n_turbines["DGY"]) else NULL,
     matched_presence_plot = p_matched_presence,
     matched_intensity_plot = p_matched_intensity_bars,
-    matched_summary = matched_summary,
-    terrain_slope_band_comparison = terrain_slope_band_comparison,
-    terrain_ridge_cutoff_m = if (!is.null(terrain_common_thresholds)) round(terrain_common_thresholds$ridge_cutoff, 1) else NULL,
-    terrain_slope_cutoff_deg = if (!is.null(terrain_common_thresholds)) round(terrain_common_thresholds$complex_slope_deg, 1) else NULL,
     terrain_map_plot_bsh = p_terrain_map_bsh,
     terrain_map_plot_dgy = p_terrain_map_dgy,
     terrain_weekly_plot_bsh = p_terrain_weekly_bsh,

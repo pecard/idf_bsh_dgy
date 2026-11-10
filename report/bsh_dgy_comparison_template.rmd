@@ -22,7 +22,6 @@ params:
   species_intensity_summary: !r NULL
 
   terrain_class_comparison: !r NULL
-  terrain_metrics_summary: !r NULL
   terrain_median_slope_bsh: !r NULL
   terrain_median_slope_dgy: !r NULL
   matched_slope_range: ""
@@ -30,10 +29,6 @@ params:
   matched_n_turbines_dgy: !r NULL
   matched_presence_plot: !r NULL
   matched_intensity_plot: !r NULL
-  matched_summary: !r NULL
-  terrain_slope_band_comparison: !r NULL
-  terrain_ridge_cutoff_m: !r NULL
-  terrain_slope_cutoff_deg: !r NULL
   terrain_map_plot_bsh: !r NULL
   terrain_map_plot_dgy: !r NULL
   terrain_weekly_plot_bsh: !r NULL
@@ -202,32 +197,7 @@ if (!is.null(params$species_intensity_summary)) {
 
 # Topography and Seasonal Space-Use Comparison
 
-Each turbine's surrounding terrain is described from a digital elevation model (DEM) by the mean elevation and mean slope within concentric 250 m and 500 m buffers around the turbine (see `R/turbine_terrain_classification.R`). DGY has its own DEM, so these metrics are computed independently for each farm. Two views are presented: the distribution of the physical metrics of each farm, and a classification of turbines as ridge, complex or flat using the same metrics and the same thresholds in both farms. Because the thresholds are common, the proportion of each class differs between farms where their relief differs. DGY is more rugged than BSH (median mean surrounding slope of `r params$terrain_median_slope_dgy` degrees at DGY and `r params$terrain_median_slope_bsh` degrees at BSH), so terrain is not treated here as equivalent across the two farms; instead, species use is also compared within the range of slope that both farms share (see Species Use in Comparable Terrain below).
-
-<!-- Source: terrain_metrics_summary, explore_bsh_dgy_comparison.R -->
-```{r terrain-metrics-table}
-if (!is.null(params$terrain_metrics_summary)) {
-  report_table(rename_display(
-    params$terrain_metrics_summary,
-    c(n_turbines = "Turbines (n)", Q25 = "Q25", Q75 = "Q75")
-  ))
-}
-```
-
-The distribution of turbines by fixed intervals of mean surrounding slope is shown below.
-
-<!-- Source: terrain_slope_band_comparison, explore_bsh_dgy_comparison.R -->
-```{r terrain-slope-band-table}
-if (!is.null(params$terrain_slope_band_comparison)) {
-  report_table(rename_display(
-    params$terrain_slope_band_comparison,
-    c(band = "Mean Slope Interval", N_BSH = "Turbines (BSH)", pct_BSH = "% Turbines (BSH)",
-      N_DGY = "Turbines (DGY)", pct_DGY = "% Turbines (DGY)")
-  ))
-}
-```
-
-Turbines are then classified with a single set of thresholds applied to both farms: ridge if the ridge-proximity metric (the larger of the turbine's elevation above the mean elevation of the 250 m buffer and the elevation gain between the 250 m and 500 m buffers) is at least `r params$terrain_ridge_cutoff_m` m; otherwise complex if the mean surrounding slope is at least `r params$terrain_slope_cutoff_deg` degrees; otherwise flat. The thresholds are calibrated once on the turbines of both farms taken together and are not recalculated per farm.
+Each turbine's surrounding terrain is classified as ridge, complex or flat from a digital elevation model (DEM), using the same methodology applied in the annual report (turbine elevation relative to its surroundings, and local ground slope -- see `R/turbine_terrain_classification.R`). DGY has its own DEM, so this classification -- and the associated weekly pattern of space use by terrain class (`R/track_terrain_temporal.R`) -- is computed independently for each farm. The class thresholds are percentiles of each farm's own turbines, so the class proportions are similar between farms by construction and are not independent evidence of similar terrain; DGY is more rugged than BSH (median mean surrounding slope of `r params$terrain_median_slope_dgy` degrees at DGY and `r params$terrain_median_slope_bsh` degrees at BSH). For this reason, species use is also compared within the range of slope that both farms share (see Species Use in Comparable Terrain below).
 
 <!-- Source: summarise_terrain_class_counts(), R/turbine_terrain_classification.R -->
 ```{r terrain-class-comparison-table}
@@ -275,7 +245,7 @@ if (!is.null(params$terrain_map_plot_dgy)) print(shrink_map(params$terrain_map_p
 
 ## Species Use in Comparable Terrain
 
-To compare species use under similar orographic conditions, the analysis is repeated using only the turbines whose mean surrounding slope lies in the interval common to both farms (`r params$matched_slope_range` degrees): `r params$matched_n_turbines_bsh` turbines at BSH and `r params$matched_n_turbines_dgy` at DGY. Each track is assigned to the nearest turbine (position of its first record), and only tracks nearest to a turbine in this interval are retained. As the number of IDF units covering this subset of turbines is not available, the intensity is expressed as mean tracks per day per turbine in the interval.
+To compare species use under similar orographic conditions, the analysis is repeated using only the turbines whose mean surrounding slope lies in the interval common to both farms (`r params$matched_slope_range` degrees): `r params$matched_n_turbines_bsh` turbines at BSH and `r params$matched_n_turbines_dgy` at DGY. Each track is assigned to the nearest turbine (position of its first record), and only tracks nearest to a turbine in this interval are retained. As the number of IDF units covering this subset of turbines is not available, the intensity is expressed as mean tracks per day per turbine in the interval; each row of the intensity plot has its own y scale, without axis values.
 
 <!-- Source: plot_species_presence_paired(), explore_bsh_dgy_comparison.R -->
 ```{r matched-presence-plot, fig.width=6.30, fig.height=7}
@@ -285,23 +255,13 @@ if (!is.null(params$matched_presence_plot)) print(params$matched_presence_plot)
 ```{r matched-intensity-plot, fig.width=6.30, fig.height=8}
 if (!is.null(params$matched_intensity_plot)) print(params$matched_intensity_plot)
 ```
-```{r matched-summary-table}
-if (!is.null(params$matched_summary)) {
-  report_table(rename_display(
-    params$matched_summary,
-    c(pct_BSH = "% Weeks Present (BSH)", pct_DGY = "% Weeks Present (DGY)",
-      tracks_BSH = "Tracks (BSH)", tracks_DGY = "Tracks (DGY)",
-      per_turbine_BSH = "Tracks/Day/Turbine (BSH)", per_turbine_DGY = "Tracks/Day/Turbine (DGY)")
-  ), max_col_width_cm = 2.4)
-}
-```
 ```{r matched-annex, results='asis'}
 annex_note(params$xlsx_comparison)
 ```
 
 ## Weekly Space-Use by Terrain Class
 
-Percentage of turbines of each terrain class (common thresholds, above) with at least one recorded track in that week -- same metric and window logic as the Availability/track sections above, applied within each farm (see `R/track_terrain_temporal.R`; each farm's own weekly bins, anchored to its own start of data, not the shared comparison window used for species presence above).
+Percentage of turbines of each terrain class with at least one recorded track in that week -- same metric and window logic as the Availability/track sections above, applied within each farm (see `R/track_terrain_temporal.R`; each farm's own weekly bins, anchored to its own start of data, not the shared comparison window used for species presence above).
 
 <!-- Source: plot_tracks_by_week_terrain(), R/track_terrain_temporal.R -->
 ```{r terrain-weekly-bsh, fig.width=6.30, fig.height=3.94}
