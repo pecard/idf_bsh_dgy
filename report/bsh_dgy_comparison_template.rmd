@@ -32,7 +32,6 @@ params:
   matched_intensity_plot: !r NULL
   matched_summary: !r NULL
   terrain_slope_band_comparison: !r NULL
-  terrain_reference_label: ""
   terrain_ridge_cutoff_m: !r NULL
   terrain_slope_cutoff_deg: !r NULL
   terrain_map_plot_bsh: !r NULL
@@ -228,7 +227,7 @@ if (!is.null(params$terrain_slope_band_comparison)) {
 }
 ```
 
-Turbines are then classified with a single set of thresholds applied to both farms: ridge if the ridge-proximity metric (the larger of the turbine's elevation above the mean elevation of the 250 m buffer and the elevation gain between the 250 m and 500 m buffers) is at least `r params$terrain_ridge_cutoff_m` m; otherwise complex if the mean surrounding slope is at least `r params$terrain_slope_cutoff_deg` degrees; otherwise flat. The thresholds are those obtained for the reference set `r params$terrain_reference_label` (the top 10% of turbines by ridge-proximity metric are classified as ridge, and the top 25% of the remaining turbines by mean slope as complex) and are applied unchanged to the other farm, not recalculated per farm. The class proportions of the reference set are therefore fixed by construction, and any difference in the proportions of the other farm reflects the difference in its relief.
+Turbines are then classified with a single set of thresholds applied to both farms: ridge if the ridge-proximity metric (the larger of the turbine's elevation above the mean elevation of the 250 m buffer and the elevation gain between the 250 m and 500 m buffers) is at least `r params$terrain_ridge_cutoff_m` m; otherwise complex if the mean surrounding slope is at least `r params$terrain_slope_cutoff_deg` degrees; otherwise flat. The thresholds are calibrated once on the turbines of both farms taken together and are not recalculated per farm.
 
 <!-- Source: summarise_terrain_class_counts(), R/turbine_terrain_classification.R -->
 ```{r terrain-class-comparison-table}
