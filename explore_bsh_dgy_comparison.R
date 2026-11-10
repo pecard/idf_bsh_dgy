@@ -432,6 +432,19 @@ if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
   match_farm <- function(farm_list, farm_label) {
     band_ids <- farm_list$terrain_dt[mean_slope_deg >= terrain_match_slope_range[1] & mean_slope_deg < terrain_match_slope_range[2], wtg_id]
     track_ids <- farm_list$track_terrain_dt[nearest_turbine %in% band_ids, track_id]
+
+    ## Diagnostico: o DGY so' tem 4 IDF a cobrir ~15 das 79 turbinas -- se as
+    ## turbinas da faixa de declive nao forem as monitorizadas, nao ha tracks
+    ## perto delas (falta de cobertura, nao erro de filtro).
+    n_by_turbine <- farm_list$track_terrain_dt[, .(n_tracks = .N), by = nearest_turbine]
+    n_by_turbine <- merge(n_by_turbine, farm_list$terrain_dt[, .(nearest_turbine = wtg_id, mean_slope_deg)], by = "nearest_turbine", all.x = TRUE)
+    message(sprintf(
+      "%s: %d/%d turbinas na faixa %g-%g deg; %d tracks nearest a essas turbinas (de %d); %d turbinas com tracks, declive medio dessas: %.1f-%.1f deg (mediana %.1f).",
+      farm_label, length(band_ids), nrow(farm_list$terrain_dt), terrain_match_slope_range[1], terrain_match_slope_range[2],
+      length(track_ids), data.table::uniqueN(farm_list$track_terrain_dt$track_id),
+      nrow(n_by_turbine), min(n_by_turbine$mean_slope_deg, na.rm = TRUE), max(n_by_turbine$mean_slope_deg, na.rm = TRUE),
+      stats::median(n_by_turbine$mean_slope_deg, na.rm = TRUE)
+    ))
     list(
       label = farm_label, n_turbines = length(band_ids),
       track_dt = farm_list$track_dt[track_id %in% track_ids],
