@@ -487,11 +487,11 @@ if (!is.null(bsh$terrain_dt) && !is.null(dgy$terrain_dt)) {
 
   p_matched_presence <- plot_species_presence_paired(
     matched_presence_both,
-    title = sprintf("Weekly presence in comparable terrain (%s turbines)", matched_criterion)
+    title = sprintf("Weekly presence in comparable terrain\n(%s turbines)", matched_criterion)
   )
   p_matched_intensity_bars <- plot_species_intensity_bars(
     matched_intensity_both,
-    title = sprintf("Weekly track intensity in comparable terrain (mean tracks/day/turbine; %s turbines)", matched_criterion)
+    title = sprintf("Weekly track intensity in comparable terrain\n(mean tracks/day/turbine; %s turbines)", matched_criterion)
   )
 }
 
