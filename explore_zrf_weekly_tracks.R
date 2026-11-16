@@ -1,26 +1,36 @@
 ##
 ## Zarafshan (ZRF) -- observacoes (tracks) por semana, por especie, no periodo com dado
 ##
-## Pedido do Paulo (2026-11): recuperar a leitura dos tracks de Zarafshan e fazer um grafico
-## semelhante ao da comparacao BSH vs DGY (explore_bsh_dgy_comparison.R, secao 2: 1 tile por
-## especie x semana), mas com as QUANTIDADES de observacoes por semana em vez de
-## presenca/ausencia, para o periodo em que ha' dados.
+## Pedido do Paulo (2026-11): recuperar a leitura dos tracks de Zarafshan e mostrar os padroes
+## temporais semanais das especies prioritarias (so' ZRF, sem comparar com outros projetos), com
+## 3 graficos, mais um diagnostico das unidades IDF ativas por semana:
+##   1. n.o de tracks por especie e semana (so' cores, sem numeros);
+##   2. presenca/ausencia semanal (como o grafico "Weekly presence of priority species" da
+##      comparacao BSH vs DGY);
+##   3. intensidade semanal por unidade IDF (tracks por dia por unidade IDF ativa), 1 linha por
+##      especie com escala de y propria;
+##   +  diagnostico: n.o de unidades IDF ativas por semana e atividade de cada unidade -- o n.o de
+##      unidades a recolher dados varia no tempo (avarias, unidades novas) e as contagens brutas
+##      dependem dele; o grafico 3 normaliza por esse n.o. Uma unidade conta como ativa numa semana
+##      se registou >= 1 ponto de track (mesma definicao de R/regional_assessment.R); os tracks nao
+##      distinguem unidade sem aves de unidade avariada (os heartbeats dariam o funcionamento real).
 ##
 ## Reutiliza, sem codigo novo de raiz:
 ##   - a leitura/cache de tracks de explore_bsh_dgy_comparison.R (import_farm_data():
 ##     reuse_or_load_cache() + read_tracks_data(), cache/<farm_code>/track_dt_unfilt.fst), so' tracks;
 ##   - a logica semanal e o heatmap de weekly_species_presence() /
 ##     plot_species_presence_heatmap() (bins de 7 dias ancorados a uma data, mesmo tema), agora em
-##     R/weekly_track_counts.R com contagens (tracks distintos, registos, dias com tracks).
+##     R/weekly_track_counts.R com contagens; unidades ativas: logica de
+##     regional_weekly_active_units() (R/regional_assessment.R).
 ##
 ## NAO faz parte do pipeline dos relatorios -- script AUTONOMO (como explore_bsh_dgy_comparison.R).
-## Semanas: bins de 7 dias a partir do 1.o dia com dados; a ultima semana pode ser parcial (marcada).
+## Semanas: bins de 7 dias a partir do 1.o dia com dados; a ultima semana pode ser parcial.
 ##
 ## Settings: por omissao os dados mais recentes de ZRF (TrackReport_Default_ZRF, ate' outubro de 2026,
 ## inputs/userSettings_IDF_availability_ZRF.R). Para os dados antigos do relatorio anual
 ## (TrackReport_, ate' agosto), definir antes de dar Source:
 ##   zrf_settings_file <- "userSettings_ZRF.R"
-## As especies prioritarias vem sempre de inputs/userSettings_ZRF.R (prioritysp).
+## Especies mostradas: species_filter (abaixo; editar a lista, nomes como em track_dt$spec).
 ##
 ## Uso: editar force_reread_cache abaixo se necessario e dar Source (source("explore_zrf_weekly_tracks.R")).
 ## Nota: o script nao foi corrido com dados reais no sandbox; as funcoes de
@@ -73,11 +83,11 @@ source(file.path(folder_input, zrf_settings_file))
 databases_dirs <- unique(c(databases_dir, if (exists("databases_dir_alt")) databases_dir_alt))
 folder_cache <- file.path("cache", farm_code)
 
-## As especies prioritarias vem do settings anual de ZRF, num ambiente a parte (para nao
-## sobrescrever databases_dir/farm_code/etc. do settings acima)
-env_zrf <- new.env()
-sys.source(file.path(folder_input, "userSettings_ZRF.R"), envir = env_zrf)
-prioritysp <- env_zrf$prioritysp
+## Especies a mostrar (nomes como em track_dt$spec)
+species_filter <- c(
+  'Steppe-Eagle', 'Bearded-Vulture', 'Egyptian-Vulture', 'Eurasian-Or-Himalayan-Griffon', 'Cinereous-Vulture',
+  'Golden-Eagle', 'Imperial-Eagle', 'Saker-Falcon', 'White-Tailed-Eagle'
+)
 
 ## current = NULL sempre: ver o comentario equivalente em import_farm_data()
 ## (explore_bsh_dgy_comparison.R) -- nunca reutilizar um track_dt_unfilt de outra corrida
@@ -99,22 +109,39 @@ message(sprintf("Tracks lidos: %s registos, %s tracks, de %s a %s.",
 ##
 ## Periodo = 1.o ao ultimo dia com tracks (nao o ini/end dos settings): "periodo com dado".
 
-wk <- weekly_track_counts(track_dt, prioritysp, tz = proj_timezone)
+wk <- weekly_track_counts(track_dt, species_filter, tz = proj_timezone)
 weekly_counts <- wk$weekly
 species_summary <- summarise_weekly_track_counts(weekly_counts)
+week_starts <- sort(unique(weekly_counts$week_start))
 message(sprintf("Periodo com dado: %s a %s (%d semanas, a ultima %s).",
-                wk$window$start, wk$window$end, uniqueN(weekly_counts$week_start),
+                wk$window$start, wk$window$end, length(week_starts),
                 if (any(weekly_counts$is_partial)) "parcial" else "completa"))
+absent_sp <- setdiff(species_filter, unique(track_dt$spec))
+if (length(absent_sp) > 0L) message("Aviso: especies do filtro sem nenhum track nos dados: ", paste(absent_sp, collapse = ", "))
 
-p_heatmap <- plot_weekly_track_counts_heatmap(
-  weekly_counts, title = sprintf("Zarafshan -- weekly number of tracks by species (%s to %s)", wk$window$start, wk$window$end))
-p_bars <- plot_weekly_track_counts_bars(
-  weekly_counts, prioritysp, title = sprintf("Zarafshan -- weekly number of tracks (%s to %s)", wk$window$start, wk$window$end))
+## Unidades IDF ativas por semana (diagnostico) e intensidade por unidade
+active_dt <- weekly_active_units(track_dt, proj_timezone, wk$window$start, wk$window$end)
+active_summary <- summarise_active_units(active_dt, week_starts, partial_weeks = unique(weekly_counts[is_partial == TRUE, week_start]))
+unit_activity <- summarise_unit_activity(active_dt, week_starts)
+intensity <- weekly_intensity_per_unit(weekly_counts, active_summary)
+message(sprintf("Unidades IDF ativas por semana: min %d, mediana %.0f, max %d (%d semana(s) abaixo de 80%% da mediana; %d unidades distintas).",
+                min(active_summary$n_active_units), median(active_summary$n_active_units), max(active_summary$n_active_units),
+                sum(active_summary$low_vs_median), uniqueN(active_dt$unit)))
 
-ggsave(file.path(folder_output, sprintf("zrf_weekly_tracks_heatmap_%s.png", run_stamp)), p_heatmap,
-       width = 11, height = 0.32 * (1 + length(prioritysp)) + 1.6, dpi = 200)
-ggsave(file.path(folder_output, sprintf("zrf_weekly_tracks_bars_%s.png", run_stamp)), p_bars,
-       width = 11, height = 3.6, dpi = 200)
+period_txt <- sprintf("%s to %s", wk$window$start, wk$window$end)
+p_counts    <- plot_weekly_track_counts_colours(weekly_counts, title = sprintf("Zarafshan -- weekly number of tracks by species (%s)", period_txt))
+p_presence  <- plot_weekly_presence(weekly_counts, title = sprintf("Zarafshan -- weekly presence of priority species (%s)", period_txt))
+p_intensity <- plot_weekly_intensity_per_unit(intensity, title = "Zarafshan -- weekly track intensity per IDF unit (mean tracks/day/IDF unit)")
+p_units     <- plot_weekly_active_units(active_summary, title = sprintf("Zarafshan -- IDF units active per week (%s)", period_txt))
+p_unit_tiles <- plot_unit_activity_tiles(active_dt, week_starts, title = sprintf("Zarafshan -- IDF unit activity by week (%s)", period_txt))
+
+h_species <- 0.32 * length(species_filter) + 1.8
+save_plot <- function(p, name, height) ggsave(file.path(folder_output, sprintf("zrf_weekly_%s_%s.png", name, run_stamp)), p, width = 11, height = height, dpi = 200, limitsize = FALSE)
+save_plot(p_counts, "tracks_by_species", h_species)
+save_plot(p_presence, "presence", h_species)
+save_plot(p_intensity, "intensity_per_unit", 0.62 * length(species_filter) + 1.8)
+save_plot(p_units, "active_units", 3.4)
+save_plot(p_unit_tiles, "unit_activity", 0.2 * max(5, uniqueN(active_dt$unit)) + 1.8)
 
 
 ##
@@ -132,10 +159,12 @@ write_xlsx_local(
   list(
     Weekly_counts = weekly_counts,
     Species_summary = species_summary,
+    Intensity_per_unit = intensity,
+    Active_units_per_week = active_summary,
+    Unit_activity_range = unit_activity,
     Run_info = run_info
   ),
   file.path(folder_output, sprintf("zrf_weekly_tracks_%s.xlsx", run_stamp))
 )
 message("Gravado em: ", normalizePath(folder_output))
-print(p_heatmap)
-print(p_bars)
+print(p_counts); print(p_presence); print(p_intensity); print(p_units); print(p_unit_tiles)
