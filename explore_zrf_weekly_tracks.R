@@ -23,7 +23,7 @@
 ## As especies prioritarias vem sempre de inputs/userSettings_ZRF.R (prioritysp).
 ##
 ## Uso: editar force_reread_cache abaixo se necessario e dar Source (source("explore_zrf_weekly_tracks.R")).
-## Nota: escrito sem R no sandbox onde foi desenhado o codigo da comparacao; as funcoes de
+## Nota: o script nao foi corrido com dados reais no sandbox; as funcoes de
 ## R/weekly_track_counts.R estao testadas com dados sinteticos (tests/test_weekly_track_counts.R).
 ##
 
