@@ -1,0 +1,120 @@
+##
+## Contagem SEMANAL de observacoes (tracks) por especie, a partir de track_dt
+##
+## Mesma logica de weekly_species_presence() / plot_species_presence_heatmap() de
+## explore_bsh_dgy_comparison.R (bins de 7 dias ancorados a uma data, 1 tile por
+## especie x semana), mas com QUANTIDADES em vez de presenca/ausencia (0/1):
+##   - n_tracks:  n.o de tracks distintos (track_id) com o 1.o registo nessa semana
+##   - n_records: n.o de registos (linhas de track_dt) nessa semana
+##   - days_with_tracks: n.o de dias da semana com pelo menos 1 track (esforco/cobertura)
+## A janela e' a do PROPRIO dado (1.o ao ultimo dia com tracks), salvo start/end.
+##
+## tz TEM de ser passado e usado em todo as.Date(POSIXct): as.Date() sem tz assume UTC e
+## desloca a data 1 dia para tras em Asia/Samarkand (UTC+5) -- ver
+## explore_bsh_dgy_comparison.R (mesmo cuidado).
+##
+## Depende de: data.table, ggplot2
+##
+
+## track_dt: track_id, timestamp (POSIXct, hora local), spec (especie)
+## species_list: especies a mostrar individualmente; "All species" (todas) e' acrescentada
+## Devolve list(weekly, window):
+##   weekly: species, week_start, week_end, n_tracks, n_records, days_with_tracks, is_partial
+##   window: list(start, end) -- datas (Date) do 1.o e do ultimo dia com tracks
+weekly_track_counts <- function(track_dt, species_list, tz, start = NULL, end = NULL) {
+  dt <- data.table::as.data.table(track_dt)[, .(track_id = as.character(track_id), timestamp, spec)]
+  dt[, day := as.Date(timestamp, tz = tz)]
+  if (is.null(start)) start <- min(dt$day)
+  if (is.null(end)) end <- max(dt$day)
+  start <- as.Date(start); end <- as.Date(end)
+  dt <- dt[day >= start & day <= end]
+  dt[, week_start := start + (as.integer(day - start) %/% 7L) * 7L]
+
+  week_starts <- seq(start, end, by = 7)
+  species_all <- c("All species", species_list)
+  grid <- data.table::CJ(species = species_all, week_start = week_starts)
+
+  per_species <- function(d, sp) {
+    d[, .(n_tracks = data.table::uniqueN(track_id), n_records = .N, days_with_tracks = data.table::uniqueN(day)), by = week_start][, species := sp]
+  }
+  counts <- data.table::rbindlist(c(
+    list(per_species(dt, "All species")),
+    lapply(species_list, function(sp) per_species(dt[spec == sp], sp))
+  ), use.names = TRUE)
+
+  out <- merge(grid, counts, by = c("species", "week_start"), all.x = TRUE)
+  for (col in c("n_tracks", "n_records", "days_with_tracks")) data.table::set(out, which(is.na(out[[col]])), col, 0L)
+  out[, week_end := pmin(week_start + 6L, end)]
+  out[, is_partial := (week_start + 6L) > end]
+  data.table::setcolorder(out, c("species", "week_start", "week_end", "n_tracks", "n_records", "days_with_tracks", "is_partial"))
+  out[, species := factor(species, levels = species_all)]
+  data.table::setorder(out, species, week_start)
+  out[, species := as.character(species)]
+  list(weekly = out[], window = list(start = start, end = end))
+}
+
+## Resumo por especie na janela: total de tracks/registos, n.o de semanas com presenca e
+## semana de maximo (de tracks)
+summarise_weekly_track_counts <- function(weekly) {
+  w <- data.table::as.data.table(weekly)
+  out <- w[, .(
+    n_tracks = sum(n_tracks), n_records = sum(n_records),
+    n_weeks_present = sum(n_tracks > 0L), n_weeks_total = .N,
+    peak_week_start = week_start[which.max(n_tracks)], peak_week_tracks = max(n_tracks)
+  ), by = species]
+  out[, pct_weeks_present := round(100 * n_weeks_present / n_weeks_total, 1)]
+  out[n_tracks == 0L, `:=`(peak_week_start = as.Date(NA), peak_week_tracks = NA_integer_)]
+  out[]
+}
+
+## Heatmap: 1 tile por especie x semana, cor = n.o de tracks (escala raiz quadrada; zero a cinza,
+## como "Absent" na comparacao BSH-DGY), com a contagem escrita no tile. Mesmo tema da comparacao
+## BSH-DGY (rotulos do eixo x na vertical).
+plot_weekly_track_counts_heatmap <- function(weekly, title = "Weekly number of tracks by species",
+                                             date_breaks = "4 weeks", label_size = 2.3) {
+  w <- data.table::copy(data.table::as.data.table(weekly))
+  w[, species := factor(species, levels = rev(unique(species)))]
+  w[, fill_n := ifelse(n_tracks > 0L, n_tracks, NA_real_)]
+  w[, label := ifelse(n_tracks > 0L, as.character(n_tracks), "")]
+  ggplot2::ggplot(w, ggplot2::aes(x = week_start, y = species, fill = fill_n)) +
+    ggplot2::geom_tile(colour = "white", linewidth = 0.3) +
+    ggplot2::geom_text(ggplot2::aes(label = label), size = label_size, colour = "black") +
+    ggplot2::scale_fill_gradient(name = "Tracks", low = "#cfe2f8", high = "#2a78d6", trans = "sqrt",
+                                 na.value = "#e8e8e8") +
+    ggplot2::scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
+    ggplot2::labs(x = "Week starting", y = NULL, title = title) +
+    ggplot2::theme_minimal(base_size = 9) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
+      axis.text.y = ggplot2::element_text(size = 7),
+      legend.position = "bottom",
+      panel.grid = ggplot2::element_blank()
+    )
+}
+
+## Barras: n.o de tracks por semana (todas as especies) e, a cheio, os das especies prioritarias.
+## Semana parcial (ultima) a hachurado claro -- ver is_partial.
+plot_weekly_track_counts_bars <- function(weekly, priority_species, title = "Weekly number of tracks",
+                                          date_breaks = "4 weeks") {
+  w <- data.table::as.data.table(weekly)
+  all_w <- w[species == "All species", .(week_start, n_tracks, is_partial)]
+  pri_w <- w[species %in% priority_species, .(n_tracks = sum(n_tracks)), by = week_start]
+  d <- rbind(
+    all_w[, .(week_start, group = "All species", n_tracks, is_partial)],
+    merge(pri_w, all_w[, .(week_start, is_partial)], by = "week_start")[, .(week_start, group = "Priority species", n_tracks, is_partial)]
+  )
+  d[, group := factor(group, levels = c("All species", "Priority species"))]
+  ggplot2::ggplot(d, ggplot2::aes(x = week_start, y = n_tracks, fill = group, alpha = is_partial)) +
+    ggplot2::geom_col(position = "identity", width = 6) +
+    ggplot2::scale_fill_manual(name = NULL, values = c("All species" = "#a9c7ef", "Priority species" = "#2a78d6")) +
+    ggplot2::scale_alpha_manual(values = c(`FALSE` = 1, `TRUE` = 0.45), guide = "none") +
+    ggplot2::scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0.01, 0)) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.05))) +
+    ggplot2::labs(x = "Week starting", y = "Tracks", title = title,
+                  caption = "Lighter bar = partial week (fewer than 7 days in the data period).") +
+    ggplot2::theme_minimal(base_size = 9) +
+    ggplot2::theme(
+      axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
+      legend.position = "bottom"
+    )
+}
