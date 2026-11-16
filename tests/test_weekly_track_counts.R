@@ -65,6 +65,13 @@ inten0 <- weekly_intensity_per_unit(wk2$weekly, data.table::copy(asum)[2, n_acti
 stopifnot(is.na(inten0[species == "Egyptian-Vulture" & week_start == ws[2], tracks_per_day_per_unit]))
 stopifnot(species_label("White-Tailed-Eagle") == "White Tailed Eagle")
 
+## classes de contagem com limites crescentes
+cc <- count_classes(c(0, 1, 9, 10, 49, 50, 99, 100, 499, 500, 999, 1000, 4999, 5000, 8000))
+stopifnot(identical(as.character(cc), c("0", "1\u20139", "1\u20139", "10\u201349", "10\u201349", "50\u201399", "50\u201399", "100\u2013499", "100\u2013499",
+                                        "500\u2013999", "500\u2013999", "1000\u20134999", "1000\u20134999", "\u2265 5000", "\u2265 5000")),
+          is.ordered(cc), identical(levels(cc)[1], "0"), length(levels(cc)) == 8L)
+cc2 <- count_classes(c(0, 3, 120))                                      # sem classes acima do maximo
+stopifnot(identical(levels(cc2), c("0", "1\u20139", "10\u201349", "50\u201399", "\u2265 100")), identical(as.character(cc2), c("0", "1\u20139", "\u2265 100")))
 for (pl in list(plot_weekly_track_counts_colours(w), plot_weekly_presence(w), plot_weekly_intensity_per_unit(inten),
                 plot_weekly_active_units(asum), plot_unit_activity_tiles(act, ws))) {
   ggsave(tempfile(fileext = ".png"), pl, width = 6, height = 3)

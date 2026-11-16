@@ -184,16 +184,40 @@ weekly_intensity_per_unit <- function(weekly, active_summary) {
 ## Rotulo legivel da especie ("White-Tailed-Eagle" -> "White Tailed Eagle")
 species_label <- function(x) gsub("-", " ", x)
 
-## Heatmap sem numeros: so' cores (n.o de tracks por especie e semana), sem a linha "All species"
-plot_weekly_track_counts_colours <- function(weekly, title = "Weekly number of tracks by species", date_breaks = "4 weeks") {
+## Classes de contagem com limites CRESCENTES (1-2-5 aprox.): 0 | 1-9 | 10-49 | 50-99 | 100-499 | 500-999 |
+## 1000-4999 | >= 5000. Uma escala continua (mesmo logaritmica) deixa as contagens baixas pouco distinguiveis
+## na barra de cores; classes discretas dao um degrau de cor claro em cada ordem de grandeza.
+## Devolve fator ordenado; "0" e' a 1.a classe. Classes vazias acima do maximo observado sao
+## descartadas (o fator mantem todas as classes ate' a do maximo).
+count_classes <- function(n, breaks = c(1, 10, 50, 100, 500, 1000, 5000)) {
+  breaks <- sort(unique(breaks))
+  top <- max(c(n, 0), na.rm = TRUE)
+  breaks <- breaks[breaks <= max(top, breaks[1L])]                # nao criar classes acima do maximo
+  lbl <- vapply(seq_along(breaks), function(i) {
+    if (i == length(breaks)) sprintf("\u2265 %s", format(breaks[i], big.mark = "", scientific = FALSE))
+    else sprintf("%s\u2013%s", format(breaks[i], big.mark = "", scientific = FALSE), format(breaks[i + 1L] - 1, big.mark = "", scientific = FALSE))
+  }, character(1))
+  levels_all <- c("0", lbl)
+  cls <- ifelse(n <= 0, 1L, findInterval(n, breaks) + 1L)
+  factor(levels_all[cls], levels = levels_all, ordered = TRUE)
+}
+
+## Heatmap sem numeros: so' cores. Cor = CLASSE do n.o de tracks por especie e semana (count_classes()),
+## zero a cinzento, sem a linha "All species". Paleta sequencial de claro a escuro, 1 cor por classe.
+plot_weekly_track_counts_colours <- function(weekly, title = "Weekly number of tracks by species", date_breaks = "4 weeks",
+                                             breaks = c(1, 10, 50, 100, 500, 1000, 5000)) {
   w <- data.table::as.data.table(weekly)[species != "All species"]
   w[, species_lbl := factor(species_label(species), levels = rev(unique(species_label(species))))]
-  w[, fill_n := ifelse(n_tracks > 0L, n_tracks, NA_real_)]
-  ggplot2::ggplot(w, ggplot2::aes(x = week_start, y = species_lbl, fill = fill_n)) +
+  w[, cls := count_classes(n_tracks, breaks)]
+  lv <- levels(w$cls)
+  cols <- c("#e8e8e8", grDevices::colorRampPalette(c("#e3eefa", "#a6cbe8", "#5aa0d6", "#2f74b5", "#1a4f96", "#0b2f66"))(length(lv) - 1L))
+  names(cols) <- lv
+  ggplot2::ggplot(w, ggplot2::aes(x = week_start, y = species_lbl, fill = cls)) +
     ggplot2::geom_tile(colour = "white", linewidth = 0.3) +
-    ggplot2::scale_fill_gradient(name = "Tracks", low = "#cfe2f8", high = "#2a78d6", trans = "sqrt", na.value = "#e8e8e8") +
+    ggplot2::scale_fill_manual(name = "Tracks per week", values = cols, drop = FALSE,
+                               guide = ggplot2::guide_legend(nrow = 1, byrow = TRUE)) +
     ggplot2::scale_x_date(date_breaks = date_breaks, date_labels = "%d %b %Y", expand = c(0, 0)) +
-    ggplot2::labs(x = "Week starting", y = NULL, title = title, caption = "Grey = no track in the week.") +
+    ggplot2::labs(x = "Week starting", y = NULL, title = title, caption = "Grey = no track in the week; classes grow by order of magnitude.") +
     ggplot2::theme_minimal(base_size = 9) +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6.5),
                    axis.text.y = ggplot2::element_text(size = 7), legend.position = "bottom", panel.grid = ggplot2::element_blank())
