@@ -125,7 +125,7 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
 }
 
 ## MOTOR rstanarm (Stan, HMC/NUTS) -- alternativa ao Metropolis proprio
-## Modelo equivalente ao do Metropolis: binomial negativa (link log), y ~ predictors,
+## Modelo equivalente ao do Metropolis: binomial negativa (neg_binomial_2, link log), y ~ predictors,
 ## priors normais (media 0, desvio sd_theta) nos coeficientes das mudancas (theta), prior
 ## normal no intercept (media a0, desvio 2.5, sem autoescala) e, para a dispersao, uma
 ## exponencial(0.1) na `reciprocal_dispersion` (o tamanho k da binomial negativa; media 10)
@@ -137,8 +137,10 @@ wfov_three_period <- function(wfov_dt, unit, event_time, days_pre = 7, days_befo
 ## Atributo "n_divergent": transicoes divergentes (diagnostico do HMC).
 .wfov_stan_chains <- function(df, predictors, a0, sd_theta, n_chains = 4L, iter = 2000L, warmup = 1000L, seed = 1L) {
   fml <- stats::as.formula(paste("y ~", paste(predictors, collapse = " + ")))
-  fit <- rstanarm::stan_glm.nb(
-    fml, data = df, link = "log",
+  # stan_glm() com a familia neg_binomial_2 (e NAO stan_glm.nb(), que chama stan_glm() sem o
+  # qualificador do pacote e falha se o rstanarm so' estiver carregado, nao anexado)
+  fit <- rstanarm::stan_glm(
+    fml, data = df, family = rstanarm::neg_binomial_2(link = "log"),
     prior_intercept = rstanarm::normal(location = a0, scale = 2.5, autoscale = FALSE),
     prior = rstanarm::normal(location = 0, scale = sd_theta, autoscale = FALSE),
     prior_aux = rstanarm::exponential(rate = 0.1, autoscale = FALSE),
